@@ -35,7 +35,7 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "com.mangaslayer.plus"
+        applicationId = "com.manhwaslime.app"
 
         versionCode = 34
         versionName = "0.20.4"
@@ -96,7 +96,7 @@ android {
         create("nightly") {
             initWith(release)
 
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = ""
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }

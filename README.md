@@ -1,3 +1,5 @@
+![Manhwa Slime](assets/banner.png)
+
 <div align="center">
 
 <a href="https://mihon.app">
