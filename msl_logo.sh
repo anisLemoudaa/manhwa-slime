@@ -21,5 +21,4 @@ if [ -z "$SKIP_GIT" ]; then
 fi
 ls .github/workflows | grep -v '^msp.yml$' | sed 's|^|.github/workflows/|' | xargs -r rm -f
 bash msl_logo.sh
-ls .github/workflows | grep -v '^msp.yml$' | sed 's|^|.github/workflows/|' | xargs -r rm -f
-bash msl_logo.sh
+ls .github/workflows | grep -v '^msp.yml$' | sed 's|^|.github/workflows/|
