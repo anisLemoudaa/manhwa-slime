@@ -19,6 +19,3 @@ ls app/src/main/res/drawable-nodpi/ic_mihon.png && echo "[ok] logo replaced"
 if [ -z "$SKIP_GIT" ]; then
   git add -A && git commit -m "Replace Mihon logo with slime" && git push && echo "[ok] pushed"
 fi
-ls .github/workflows | grep -v '^msp.yml$' | sed 's|^|.github/workflows/|' | xargs -r rm -f
-bash msl_logo.sh
-ls .github/workflows | grep -v '^msp.yml$' | sed 's|^|.github/workflows/|
