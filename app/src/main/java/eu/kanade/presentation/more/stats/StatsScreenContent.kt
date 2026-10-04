@@ -38,6 +38,9 @@ fun StatsScreenContent(
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
     ) {
         item {
+            RankSection(state.chapters)
+        }
+        item {
             OverviewSection(state.overview)
         }
         item {
