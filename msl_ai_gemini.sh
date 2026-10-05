@@ -1,3 +1,27 @@
+#!/bin/bash
+# الترجمة الذكية (Claude + Gemini المجاني) والخط الجميل في سكربت واحد
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT" || exit 1
+
+echo "== الترجمة الذكية والخط =="
+(
+cd "$ROOT" || exit 1
+# ترجمة ذكية (Claude) بدل الترجمة الآلية + خط عربي أجمل للفقاعات
+K=app/src/main/java/eu/kanade/tachiyomi/mslime
+[ -d "$K" ] || { echo "[!!] $K not found: run msl_final.sh first"; exit 1; }
+
+# 1) الخط
+mkdir -p app/src/main/assets/fonts
+F=app/src/main/assets/fonts/msl_bubble.ttf
+B=https://raw.githubusercontent.com/google/fonts/main/ofl
+ok=0
+for u in "$B/tajawal/Tajawal-Bold.ttf" "$B/almarai/Almarai-Bold.ttf" "$B/cairo/Cairo%5Bslnt%2Cwght%5D.ttf"; do
+  if curl -fsSL "$u" -o "$F" && [ "$(stat -c%s "$F")" -gt 20000 ]; then echo "[ok] font: $u"; ok=1; break; fi
+done
+[ "$ok" = 1 ] || { rm -f "$F"; echo "[!!] font download failed: bubbles will use the default font"; }
+
+# 2) كود الترجمة الجديد
+cat > $K/MslTranslate.kt <<'EOF'
 package eu.kanade.tachiyomi.mslime
 
 import android.app.Activity
@@ -114,45 +138,7 @@ object MslAi {
             "Reply with ONLY a JSON array of the same length containing the Arabic translations, no other text. " +
             "If an item is not real dialogue (watermark, site name, noise), return an empty string for it."
 
-    fun translate(key: String, texts: List<String>): List<String>? =
-        if (key.startsWith("AIza")) translateGemini(key, texts) else translateClaude(key, texts)
-
-    private fun translateGemini(key: String, texts: List<String>): List<String>? {
-        return try {
-            val arr = JSONArray()
-            texts.forEach { arr.put(it) }
-            val sys = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM)))
-            val user = JSONObject().put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", arr.toString())))
-            val body = JSONObject()
-                .put("systemInstruction", sys)
-                .put("contents", JSONArray().put(user))
-                .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
-                .toString()
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 15000
-            conn.readTimeout = 60000
-            conn.doOutput = true
-            conn.setRequestProperty("x-goog-api-key", key)
-            conn.setRequestProperty("content-type", "application/json")
-            conn.outputStream.use { it.write(body.toByteArray()) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val txt = stream.bufferedReader().readText()
-            if (code !in 200..299) return null
-            var out = JSONObject(txt).getJSONArray("candidates").getJSONObject(0)
-                .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
-            out = out.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-            val a = JSONArray(out)
-            List(a.length()) { a.getString(it) }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun translateClaude(key: String, texts: List<String>): List<String>? {
+    fun translate(key: String, texts: List<String>): List<String>? {
         return try {
             val arr = JSONArray()
             texts.forEach { arr.put(it) }
@@ -193,11 +179,11 @@ object MslTranslate {
 
     fun askKey(activity: Activity) {
         val et = EditText(activity)
-        et.hint = "AIza... أو sk-ant-..."
+        et.hint = "sk-ant-..."
         et.setSingleLine()
         et.setText(prefs(activity).getString("ai_key", ""))
         AlertDialog.Builder(activity)
-            .setTitle("مفتاح الترجمة الذكية (Gemini مجاني أو Claude)")
+            .setTitle("مفتاح الترجمة الذكية (Anthropic API)")
             .setView(et)
             .setPositiveButton("حفظ") { _, _ ->
                 prefs(activity).edit().putString("ai_key", et.text.toString().trim()).apply()
@@ -328,3 +314,75 @@ object MslTranslate {
         toast(activity, "اضغط على الصورة للعودة")
     }
 }
+EOF
+
+) || { echo "[!!] msl_ai part failed, stopping"; exit 1; }
+
+echo "== إضافة Gemini =="
+(
+cd "$ROOT" || exit 1
+# إضافة Gemini (مفتاح مجاني) كخيار للترجمة الذكية إلى جانب Claude
+F=app/src/main/java/eu/kanade/tachiyomi/mslime/MslTranslate.kt
+[ -f "$F" ] || { echo "[!!] $F not found: run msl_ai.sh first"; exit 1; }
+python3 - <<'EOF'
+p='app/src/main/java/eu/kanade/tachiyomi/mslime/MslTranslate.kt'
+s=open(p).read()
+if 'translateGemini' in s:
+    print('[ok] already patched'); raise SystemExit
+old='    fun translate(key: String, texts: List<String>): List<String>? {'
+if old not in s:
+    print('[!!] translate() not found'); raise SystemExit(1)
+new='''    fun translate(key: String, texts: List<String>): List<String>? =
+        if (key.startsWith("AIza")) translateGemini(key, texts) else translateClaude(key, texts)
+
+    private fun translateGemini(key: String, texts: List<String>): List<String>? {
+        return try {
+            val arr = JSONArray()
+            texts.forEach { arr.put(it) }
+            val sys = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM)))
+            val user = JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", arr.toString())))
+            val body = JSONObject()
+                .put("systemInstruction", sys)
+                .put("contents", JSONArray().put(user))
+                .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
+                .toString()
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 60000
+            conn.doOutput = true
+            conn.setRequestProperty("x-goog-api-key", key)
+            conn.setRequestProperty("content-type", "application/json")
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val txt = stream.bufferedReader().readText()
+            if (code !in 200..299) return null
+            var out = JSONObject(txt).getJSONArray("candidates").getJSONObject(0)
+                .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
+            out = out.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val a = JSONArray(out)
+            List(a.length()) { a.getString(it) }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun translateClaude(key: String, texts: List<String>): List<String>? {'''
+s=s.replace(old,new,1)
+s=s.replace('.setTitle("مفتاح الترجمة الذكية (Anthropic API)")','.setTitle("مفتاح الترجمة الذكية (Gemini مجاني أو Claude)")')
+s=s.replace('et.hint = "sk-ant-..."','et.hint = "AIza... أو sk-ant-..."')
+open(p,'w').write(s); print('[ok] Gemini support added')
+EOF
+
+) || echo "[!!] gemini part reported a problem"
+
+echo "== فحص =="
+grep -c translateGemini app/src/main/java/eu/kanade/tachiyomi/mslime/MslTranslate.kt
+ls app/src/main/assets/fonts 2>/dev/null
+
+if [ -z "$SKIP_GIT" ]; then
+  git add -A && git commit -m "AI translation (Claude + Gemini) and bubble font" && git push && echo "[ok] pushed"
+fi
