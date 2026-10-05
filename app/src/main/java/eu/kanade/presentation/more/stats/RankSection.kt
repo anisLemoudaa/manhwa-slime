@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -15,12 +16,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.more.stats.data.StatsData
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.mslime.MslShare
 
 private data class ReaderRank(val name: String, val min: Int, val title: String)
 
@@ -38,10 +41,12 @@ private val readerRanks = listOf(
 
 @Composable
 fun RankSection(chapters: StatsData.Chapters) {
+    val ctx = LocalContext.current
     val read = chapters.readChapterCount
     val index = readerRanks.indexOfLast { read >= it.min }.coerceAtLeast(0)
     val rank = readerRanks[index]
     val next = readerRanks.getOrNull(index + 1)
+    val nextLine = if (next != null) "باقي ${next.min - read} فصل للوصول إلى الرتبة ${next.name}" else "وصلت إلى أعلى رتبة 👑"
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
@@ -66,13 +71,23 @@ fun RankSection(chapters: StatsData.Chapters) {
                 progress = { (read - rank.min).toFloat() / (next.min - rank.min) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
-            Text(
-                text = "باقي ${next.min - read} فصل للوصول إلى الرتبة ${next.name}",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else {
-            Text(text = "وصلت إلى أعلى رتبة 👑", modifier = Modifier.padding(16.dp))
+        }
+        Text(text = nextLine, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        Button(
+            onClick = {
+                MslShare.shareRank(
+                    ctx,
+                    rank.name,
+                    rank.title,
+                    read,
+                    chapters.totalChapterCount,
+                    chapters.downloadCount,
+                    nextLine,
+                )
+            },
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+        ) {
+            Text("مشاركة بطاقتي")
         }
     }
 }

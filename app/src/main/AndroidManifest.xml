@@ -56,8 +56,6 @@
             android:theme="@style/Theme.Tachiyomi.SplashScreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
             <!-- Legacy deeplink to add extension store -->
@@ -248,6 +246,30 @@
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
 
+    
+        <activity
+            android:name=".mslime.SlimeIntroActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.MslIntro">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider
+            android:name=".mslime.MslInit"
+            android:authorities="${applicationId}.mslinit"
+            android:exported="false" />
+            <provider
+            android:name=".mslime.MslFileProvider"
+            android:authorities="${applicationId}.mslshare"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/msl_share_paths" />
+        </provider>
     </application>
 
 </manifest>
