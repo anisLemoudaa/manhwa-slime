@@ -25,8 +25,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,7 +47,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +58,8 @@ import eu.kanade.presentation.more.stats.RankSection
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.stats.StatsViewModel
+import androidx.compose.ui.res.painterResource
+import eu.kanade.tachiyomi.R
 import java.io.File
 import androidx.compose.material3.Tab as M3Tab
 
@@ -110,7 +109,7 @@ data object ProfileTab : Tab {
         get() = TabOptions(
             index = 2u,
             title = "الملف الشخصي",
-            icon = rememberVectorPainter(Icons.Outlined.Person),
+            icon = painterResource(R.drawable.ic_mihon),
         )
 
     @Composable
@@ -166,7 +165,7 @@ data object ProfileTab : Tab {
                         .offset(y = 48.dp)
                         .size(96.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF2DB8FD))
+                        .background(Color(0xFF0F0F13))
                         .clickable { avatarPicker.launch("image/*") },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -179,7 +178,7 @@ data object ProfileTab : Tab {
                         )
                     } else {
                         Image(
-                            painter = rememberVectorPainter(Icons.Outlined.Person),
+                            painter = painterResource(R.drawable.ic_mihon),
                             contentDescription = null,
                             modifier = Modifier.size(56.dp),
                         )
