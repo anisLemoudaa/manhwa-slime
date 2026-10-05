@@ -400,6 +400,7 @@ private fun MangaScreenSmallImpl(
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
+                            mslTitle = state.manga.title,
                         )
                     }
 
@@ -630,6 +631,7 @@ fun MangaScreenLargeImpl(
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
+                            mslTitle = state.manga.title,
                         )
                         ExpandableMangaDescription(
                             defaultExpandState = true,

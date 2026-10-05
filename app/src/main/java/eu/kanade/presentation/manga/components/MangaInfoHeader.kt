@@ -184,6 +184,7 @@ fun MangaActionRow(
     onTrackingClicked: () -> Unit,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
+    mslTitle: String = "",
     modifier: Modifier = Modifier,
 ) {
     val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
@@ -234,6 +235,18 @@ fun MangaActionRow(
             color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
             onClick = onTrackingClicked,
         )
+        if (mslTitle.isNotEmpty()) {
+            val showMsl = remember { androidx.compose.runtime.mutableStateOf(false) }
+            MangaActionButton(
+                title = "التعليقات",
+                icon = eu.kanade.tachiyomi.mslime.MslChatIcon,
+                color = defaultActionButtonColor,
+                onClick = { showMsl.value = true },
+            )
+            if (showMsl.value) {
+                eu.kanade.tachiyomi.mslime.MslCommentsDialog(title = mslTitle, onDismiss = { showMsl.value = false })
+            }
+        }
         if (onWebViewClicked != null) {
             MangaActionButton(
                 title = stringResource(MR.strings.action_web_view),
