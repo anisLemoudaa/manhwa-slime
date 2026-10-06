@@ -283,7 +283,7 @@ private fun Tx(
         color = color,
         fontSize = size,
         fontWeight = weight,
-        fontFamily = MslFont,
+        fontFamily = MslUiFont,
         lineHeight = size * 1.6f,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
@@ -458,7 +458,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                         onValueChange = { if (it.length <= 500) text = it },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(24.dp),
-                        textStyle = TextStyle(fontFamily = MslFont, fontSize = 15.sp, lineHeight = 24.sp),
+                        textStyle = TextStyle(fontFamily = MslUiFont, fontSize = 15.sp, lineHeight = 24.sp),
                         placeholder = { Tx("أضف تعليقك...", 15.sp) },
                         maxLines = 4,
                     )
