@@ -59,6 +59,7 @@ object MslAuth {
             .putLong("exp", exp)
             .putString("uid", p?.optString("sub") ?: "")
             .putString("email", p?.optString("email") ?: "")
+            .putString("picture", (p?.optJSONObject("user_metadata")?.optString("avatar_url") ?: "").ifEmpty { p?.optJSONObject("user_metadata")?.optString("picture") ?: "" })
             .apply()
         return null
     }

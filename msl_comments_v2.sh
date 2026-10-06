@@ -1,3 +1,50 @@
+#!/bin/bash
+# التعليقات (الإصدار 2): تصميم جديد + إعجاب/عدم إعجاب + "حرق" + صور ورتب المستخدمين + خط عربي
+cd "$(dirname "$0")" || exit 1
+K=app/src/main/java/eu/kanade/tachiyomi/mslime
+[ -d "$K" ] || { echo "[!!] $K not found: run msl_final.sh first"; exit 1; }
+
+# 1) الخط (Tajawal) داخل res/font
+mkdir -p app/src/main/res/font
+R=app/src/main/res/font/msl_font_regular.ttf
+B=app/src/main/res/font/msl_font_bold.ttf
+get() { # $1 = اسم الملف على الإنترنت, $2 = المسار
+  for base in "https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal" "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/tajawal"; do
+    if curl -fsSL "$base/$1" -o "$2" && [ "$(stat -c%s "$2")" -gt 20000 ]; then return 0; fi
+  done
+  rm -f "$2"; return 1
+}
+FONT=0
+get Tajawal-Regular.ttf $R && get Tajawal-Bold.ttf $B && FONT=1
+if [ "$FONT" = 1 ]; then
+  echo "[ok] font Tajawal downloaded"
+  cat > $K/MslTheme.kt <<'EOF'
+package eu.kanade.tachiyomi.mslime
+
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import eu.kanade.tachiyomi.R
+
+val MslFont = FontFamily(
+    Font(R.font.msl_font_regular, FontWeight.Normal),
+    Font(R.font.msl_font_bold, FontWeight.Bold),
+)
+EOF
+else
+  rm -f $R $B
+  echo "[!!] font download failed: default font will be used (everything else still works)"
+  cat > $K/MslTheme.kt <<'EOF'
+package eu.kanade.tachiyomi.mslime
+
+import androidx.compose.ui.text.font.FontFamily
+
+val MslFont: FontFamily = FontFamily.Default
+EOF
+fi
+
+# 2) كود التعليقات الجديد
+cat > $K/MslComments.kt <<'EOF'
 package eu.kanade.tachiyomi.mslime
 
 import android.content.Context
@@ -579,3 +626,39 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
         }
     }
 }
+EOF
+echo "[ok] MslComments.kt (v2) written"
+
+python3 - <<'EOF'
+import os
+# حفظ عدد الفصول المقروءة ليظهر مستواك ورتبتك في تعليقاتك
+pt='app/src/main/java/eu/kanade/tachiyomi/ui/profile/ProfileTab.kt'
+if os.path.exists(pt):
+    s=open(pt).read()
+    if 'putInt("read"' in s:
+        print('[ok] ProfileTab already caches read count')
+    elif 'val level = read / 25 + 1' in s:
+        s=s.replace('val level = read / 25 + 1','val level = read / 25 + 1\n        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).apply() }',1)
+        open(pt,'w').write(s); print('[ok] ProfileTab patched (read count cache)')
+    else:
+        print('[!!] ProfileTab: insertion point not found (rank in comments will show F)')
+else:
+    print('[note] ProfileTab.kt not found, skipping')
+# حفظ صورة حساب Google عند تسجيل الدخول
+pa='app/src/main/java/eu/kanade/tachiyomi/mslime/MslAuth.kt'
+if os.path.exists(pa):
+    a=open(pa).read()
+    old='.putString("email", p?.optString("email") ?: "")'
+    if '"picture"' in a:
+        print('[ok] MslAuth already stores picture')
+    elif old in a:
+        new=old+'\n            .putString("picture", (p?.optJSONObject("user_metadata")?.optString("avatar_url") ?: "").ifEmpty { p?.optJSONObject("user_metadata")?.optString("picture") ?: "" })'
+        a=a.replace(old,new,1); open(pa,'w').write(a); print('[ok] MslAuth patched (Google picture)')
+    else:
+        print('[!!] MslAuth: insertion point not found')
+else:
+    print('[note] MslAuth.kt not found: run msl_google.sh to enable Google sign-in (likes need it)')
+EOF
+if [ -z "$SKIP_GIT" ]; then
+  git add -A && git commit -m "Comments v2: new design, likes, spoiler tag, avatars and ranks" && git push && echo "[ok] pushed"
+fi

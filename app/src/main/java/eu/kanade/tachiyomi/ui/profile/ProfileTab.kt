@@ -141,6 +141,7 @@ data object ProfileTab : Tab {
         val s = state
         val read = if (s is StatsScreenState.Success) s.chapters.readChapterCount else 0
         val level = read / 25 + 1
+        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).apply() }
 
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(
