@@ -270,6 +270,19 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/msl_share_paths" />
         </provider>
+            <activity
+            android:name=".mslime.AuthCallbackActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="manhwaslime" android:host="auth" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

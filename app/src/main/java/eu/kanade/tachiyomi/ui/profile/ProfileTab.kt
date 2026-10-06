@@ -211,6 +211,7 @@ data object ProfileTab : Tab {
                 style = MaterialTheme.typography.bodyMedium,
             )
 
+            eu.kanade.tachiyomi.mslime.MslAccountCard()
             if (s is StatsScreenState.Success) {
                 val ms = s.overview.totalReadDuration
                 Row(

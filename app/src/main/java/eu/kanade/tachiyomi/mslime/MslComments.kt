@@ -94,7 +94,7 @@ object MslSupabase {
     fun uid(ctx: Context): String = sp(ctx).getString("uid", "") ?: ""
 
     /** جلسة مجهولة تلقائية، تُجدَّد عند الانتهاء. */
-    private fun token(ctx: Context): String? {
+    fun token(ctx: Context): String? {
         val p = sp(ctx)
         val access = p.getString("access", null)
         if (access != null && p.getLong("exp", 0) > System.currentTimeMillis() / 1000 + 60) return access
