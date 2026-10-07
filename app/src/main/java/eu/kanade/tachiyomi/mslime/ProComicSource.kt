@@ -1,14 +1,3 @@
-#!/bin/bash
-cd "$(dirname "$0")" || exit 1
-K=app/src/main/java/eu/kanade/tachiyomi/mslime
-SM=app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt
-HS=source-api/src/main/kotlin/eu/kanade/tachiyomi/source/online/HttpSource.kt
-[ -f "$SM" ] && [ -f "$HS" ] || { echo "[!!] files missing"; exit 1; }
-[ -f "$K/ProComicSource.kt" ] && { echo "[!!] ProComicSource.kt already exists"; exit 1; }
-# Chapter API compatibility check skipped: this project uses getMangaUpdate().
-grep -q "ProComicSource" "$SM" && { echo "[!!] already registered"; exit 1; }
-
-cat > "$K/ProComicSource.kt" <<'KT'
 package eu.kanade.tachiyomi.mslime
 
 import eu.kanade.tachiyomi.network.GET
@@ -223,21 +212,3 @@ class ProComicSource : HttpSource() {
 
     override fun imageUrlParse(response: Response): String = ""
 }
-KT
-
-python3 - <<'PY'
-p = "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt"
-s = open(p, encoding="utf-8").read()
-old = "mapOf(LocalSource.ID to localSource),"
-assert s.count(old) == 1, "pattern not found exactly once"
-new = ("mapOf<Long, Source>(\n"
-       "                    LocalSource.ID to localSource,\n"
-       "                    eu.kanade.tachiyomi.mslime.ProComicSource().let { it.id to it },\n"
-       "                ),")
-open(p, "w", encoding="utf-8").write(s.replace(old, new))
-print("[ok] registered in AndroidSourceManager")
-PY
-
-echo "--- chapters API sample (check field names) ---"
-curl -s 'https://procomic.pro/api/chapters?content_id=31' | python3 -c 'import sys,json;d=json.load(sys.stdin);a=d if isinstance(d,list) else next((v for v in d.values() if isinstance(v,list)),[]);print(type(d).__name__,list(d.keys()) if isinstance(d,dict) else len(d));print(len(a));print(a[0] if a else None)'
-echo "[ok] done. git diff --stat:"; git diff --stat

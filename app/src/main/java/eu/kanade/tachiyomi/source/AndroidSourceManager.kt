@@ -51,7 +51,10 @@ class AndroidSourceManager(
             extensionManager.loadedExtensionsFlow
                 .collectLatest { extensions ->
                     val mutableMap = ConcurrentHashMap<Long, Source>(
-                        mapOf(LocalSource.ID to localSource),
+                        mapOf<Long, Source>(
+                    LocalSource.ID to localSource,
+                    eu.kanade.tachiyomi.mslime.ProComicSource().let { it.id to it },
+                ),
                     )
                     extensions.forEach { extension ->
                         extension.sources.forEach {
