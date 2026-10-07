@@ -139,8 +139,9 @@ class ProComicSource : HttpSource() {
             val root = json.parseToJsonElement(resp.use { it.body.string() })
             val arr = findArray(root)
             arr.forEach { e -> (e as? JsonObject)?.let { toChapter(it, slug) }?.let(out::add) }
-            val pages = ((root as? JsonObject)?.get("meta") as? JsonObject)?.int("pages") ?: 1
-            if (page >= pages || arr.isEmpty()) break
+            val hasMore = ((root as? JsonObject)?.get("hasMore") as? JsonPrimitive)
+                ?.contentOrNull?.equals("true", ignoreCase = true) ?: false
+            if (!hasMore || arr.isEmpty()) break
             page++
         }
         return out.distinctBy { it.url }.sortedByDescending { it.chapter_number }
