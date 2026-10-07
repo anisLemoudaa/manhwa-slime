@@ -24,6 +24,9 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.view.Gravity
 import android.view.PixelCopy
+import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.widget.PopupMenu
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -58,10 +61,50 @@ class MslInit : ContentProvider() {
 object MslHook : Application.ActivityLifecycleCallbacks {
     private const val TAG = "msl_fab"
 
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("msl", Context.MODE_PRIVATE)
+
+    fun enabled(ctx: Context): Boolean = prefs(ctx).getBoolean("fab_enabled", true)
+
+    fun setEnabled(ctx: Context, v: Boolean) {
+        prefs(ctx).edit().putBoolean("fab_enabled", v).apply()
+    }
+
+    fun resetPosition(ctx: Context) {
+        prefs(ctx).edit().remove("fab_x").remove("fab_y").apply()
+    }
+
+    private fun showMenu(activity: Activity, fab: View) {
+        val pm = PopupMenu(activity, fab)
+        pm.menu.add(0, 1, 0, "إخفاء الزر (يُعاد من الملف الشخصي)")
+        pm.menu.add(0, 2, 1, "مفتاح الترجمة الذكية")
+        pm.menu.add(0, 3, 2, "إعادة الزر لمكانه")
+        pm.setOnMenuItemClickListener {
+            when (it.itemId) {
+                1 -> {
+                    setEnabled(activity, false)
+                    fab.visibility = View.GONE
+                }
+                2 -> MslTranslate.askKey(activity)
+                else -> resetPosition(activity)
+            }
+            true
+        }
+        pm.show()
+    }
+
     override fun onActivityResumed(activity: Activity) {
         if (!activity.javaClass.name.endsWith("ReaderActivity")) return
-        if (activity.window.decorView.findViewWithTag<View>(TAG) != null) return
+        val old = activity.window.decorView.findViewWithTag<View>(TAG)
+        if (!enabled(activity)) {
+            old?.visibility = View.GONE
+            return
+        }
+        if (old != null) {
+            old.visibility = View.VISIBLE
+            return
+        }
         val d = activity.resources.displayMetrics.density
+        val prefs = prefs(activity)
         val fab = TextView(activity)
         fab.tag = TAG
         fab.text = "ع"
@@ -74,11 +117,66 @@ object MslHook : Application.ActivityLifecycleCallbacks {
         shape.setColor(0xFF2DB8FD.toInt())
         fab.background = shape
         fab.setOnClickListener { MslTranslate.run(activity, fab) }
-        fab.setOnLongClickListener { MslTranslate.askKey(activity); true }
+
+        val handler = Handler(Looper.getMainLooper())
+        var downX = 0f
+        var downY = 0f
+        var offX = 0f
+        var offY = 0f
+        var moved = false
+        var longDone = false
+        val longRun = Runnable {
+            longDone = true
+            showMenu(activity, fab)
+        }
+        fab.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX
+                    downY = e.rawY
+                    offX = v.x - e.rawX
+                    offY = v.y - e.rawY
+                    moved = false
+                    longDone = false
+                    handler.postDelayed(longRun, ViewConfiguration.getLongPressTimeout().toLong())
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!moved && (Math.abs(e.rawX - downX) > 16 || Math.abs(e.rawY - downY) > 16)) {
+                        moved = true
+                        handler.removeCallbacks(longRun)
+                    }
+                    if (moved && !longDone) {
+                        val p = v.parent as View
+                        v.x = (e.rawX + offX).coerceIn(0f, (p.width - v.width).toFloat())
+                        v.y = (e.rawY + offY).coerceIn(0f, (p.height - v.height).toFloat())
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(longRun)
+                    if (e.actionMasked == MotionEvent.ACTION_UP && !moved && !longDone) v.performClick()
+                    if (moved) {
+                        val p = v.parent as View
+                        prefs.edit().putFloat("fab_x", v.x / p.width).putFloat("fab_y", v.y / p.height).apply()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+
         val size = (48 * d).toInt()
         val lp = FrameLayout.LayoutParams(size, size, Gravity.END or Gravity.CENTER_VERTICAL)
         lp.marginEnd = (8 * d).toInt()
         activity.addContentView(fab, lp)
+        fab.post {
+            val p = fab.parent as? View
+            if (p != null && prefs.contains("fab_x")) {
+                fab.x = (prefs.getFloat("fab_x", 0f) * p.width).coerceIn(0f, (p.width - fab.width).toFloat())
+                fab.y = (prefs.getFloat("fab_y", 0f) * p.height).coerceIn(0f, (p.height - fab.height).toFloat())
+            }
+        }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}

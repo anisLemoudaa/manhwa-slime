@@ -59,6 +59,7 @@ fun RankSection(chapters: StatsData.Chapters) {
                 Text(
                     text = "رتبتك: ${rank.name}",
                     fontSize = 22.sp,
+                    fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                 )

@@ -96,7 +96,7 @@ private fun joinedText(joined: Long): String {
 private fun StatCard(label: String, value: String, modifier: Modifier) {
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = value, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(text = value, fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text(text = label, style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -114,6 +114,11 @@ data object ProfileTab : Tab {
 
     @Composable
     override fun Content() {
+        eu.kanade.tachiyomi.mslime.MslThemed { ProfileContent() }
+    }
+
+    @Composable
+    private fun ProfileContent() {
         val ctx = LocalContext.current
         val viewModel = metroViewModel<StatsViewModel>()
         val state by viewModel.state.collectAsState()
@@ -194,6 +199,7 @@ data object ProfileTab : Tab {
                 Text(
                     text = name,
                     fontSize = 24.sp,
+                    fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { editName = true },
                 )
@@ -213,6 +219,7 @@ data object ProfileTab : Tab {
             )
 
             eu.kanade.tachiyomi.mslime.MslAccountCard()
+            eu.kanade.tachiyomi.mslime.MslReaderSettingsCard()
             if (s is StatsScreenState.Success) {
                 val ms = s.overview.totalReadDuration
                 Row(
