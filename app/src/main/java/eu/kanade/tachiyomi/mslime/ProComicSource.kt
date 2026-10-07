@@ -128,14 +128,14 @@ class ProComicSource : HttpSource() {
         }
     }
 
-    // ---------- chapters (Arabic only) ----------
+    // ---------- chapters ----------
     private suspend fun loadChapterList(manga: SManga): List<SChapter> {
         val id = idOf(manga.url)
         val slug = manga.url.removePrefix("/ar/").substringBeforeLast("-")
         val out = mutableListOf<SChapter>()
         var page = 1
         while (page <= 50) {
-            val resp = client.newCall(GET("$baseUrl/api/chapters?content_id=$id&page=$page", headers)).awaitSuccess()
+            val resp = client.newCall(GET("$baseUrl/api/chapters?contentId=$id&page=$page", headers)).awaitSuccess()
             val root = json.parseToJsonElement(resp.use { it.body.string() })
             val arr = findArray(root)
             arr.forEach { e -> (e as? JsonObject)?.let { toChapter(it, slug) }?.let(out::add) }
@@ -149,11 +149,6 @@ class ProComicSource : HttpSource() {
 
     private fun toChapter(o: JsonObject, slug: String): SChapter? {
         val id = o.strOrNull("id") ?: return null
-        val language = o.strOrNull("language") ?: o.strOrNull("lang") ?: o.strOrNull("locale")
-        if (language != null) {
-            val l = language.lowercase()
-            if (!(l.startsWith("ar") || l.contains("عرب"))) return null
-        }
         val numRaw = listOf("chapter_number", "number", "chapter", "chapterNumber", "order", "index")
             .firstNotNullOfOrNull { o.strOrNull(it) }
         val num = numRaw?.toFloatOrNull()
