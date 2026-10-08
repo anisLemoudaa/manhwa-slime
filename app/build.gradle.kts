@@ -215,6 +215,8 @@ dependencies {
     implementation(projects.coreMetadata)
     implementation(projects.sourceApi)
     implementation(projects.sourceLocal)
+    // Manhwa Slime Novel runtime: LNReader-compatible JavaScript sources.
+    implementation(libs.novelQuickjs)
     implementation(projects.data)
     implementation(projects.domain)
     implementation(projects.presentationCore)

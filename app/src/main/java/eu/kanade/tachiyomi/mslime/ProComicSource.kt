@@ -161,7 +161,8 @@ class ProComicSource : HttpSource() {
             url = "/ar/chapter/$slug-$numText-$id"
             name = o.strOrNull("title")?.takeIf { it.isNotBlank() } ?: "الفصل $numText"
             chapter_number = num ?: -1f
-            date_upload = parseDate(o.strOrNull("created_at") ?: o.strOrNull("published_at") ?: o.strOrNull("updated_at"))
+            date_upload =
+                parseDate(o.strOrNull("created_at") ?: o.strOrNull("published_at") ?: o.strOrNull("updated_at"))
         }
     }
 

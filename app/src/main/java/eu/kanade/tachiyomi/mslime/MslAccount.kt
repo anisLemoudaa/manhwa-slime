@@ -43,7 +43,10 @@ fun MslAccountCard() {
             if (email.isNotEmpty()) {
                 Text(text = "متصل بحساب Google", fontWeight = FontWeight.Bold)
                 Text(text = email)
-                TextButton(onClick = { MslAuth.signOut(ctx); rev++ }) { Text("تسجيل الخروج") }
+                TextButton(onClick = {
+                    MslAuth.signOut(ctx)
+                    rev++
+                }) { Text("تسجيل الخروج") }
             } else {
                 Text(text = "حسابك الحالي مجهول: تعليقاتك مرتبطة بهذا الهاتف فقط.")
                 Button(

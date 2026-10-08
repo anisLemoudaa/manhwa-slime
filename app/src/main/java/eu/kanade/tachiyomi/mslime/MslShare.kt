@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.mslime
 
 import android.content.Context
@@ -32,7 +34,8 @@ object MslShare {
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val bg = Paint()
-        bg.shader = LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFF0F0F13.toInt(), 0xFF123A5A.toInt(), Shader.TileMode.CLAMP)
+        bg.shader =
+            LinearGradient(0f, 0f, 0f, h.toFloat(), 0xFF0F0F13.toInt(), 0xFF123A5A.toInt(), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), bg)
         val logo = BitmapFactory.decodeResource(ctx.resources, R.drawable.ic_mihon)
         if (logo != null) {

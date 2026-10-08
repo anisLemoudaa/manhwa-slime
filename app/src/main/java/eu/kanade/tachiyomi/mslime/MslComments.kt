@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.mslime
 
 import android.content.Context
@@ -136,7 +138,13 @@ object MslSupabase {
         if (access != null && p.getLong("exp", 0) > System.currentTimeMillis() / 1000 + 60) return access
         val refresh = p.getString("refresh", null)
         if (!refresh.isNullOrEmpty()) {
-            val r = call("POST", "/auth/v1/token?grant_type=refresh_token", JSONObject().put("refresh_token", refresh).toString(), null)
+            val r =
+                call(
+                    "POST",
+                    "/auth/v1/token?grant_type=refresh_token",
+                    JSONObject().put("refresh_token", refresh).toString(),
+                    null,
+                )
             if (r.first in 200..299) return saveSession(ctx, JSONObject(r.second))
         }
         val s = call("POST", "/auth/v1/signup", "{\"data\":{}}", null)
@@ -177,7 +185,13 @@ object MslSupabase {
         if (ids.isEmpty() || sp(ctx).getString("access", null) == null) return emptyMap()
         return try {
             val tok = token(ctx) ?: return emptyMap()
-            val r = call("GET", "/rest/v1/comment_votes?select=comment_id,value&comment_id=in.(${ids.joinToString(",")})", null, tok)
+            val r =
+                call(
+                    "GET",
+                    "/rest/v1/comment_votes?select=comment_id,value&comment_id=in.(${ids.joinToString(",")})",
+                    null,
+                    tok,
+                )
             if (r.first !in 200..299) return emptyMap()
             val a = JSONArray(r.second)
             val m = HashMap<String, Int>()
@@ -192,7 +206,16 @@ object MslSupabase {
     }
 
     /** يعيد null عند النجاح، أو رسالة الخطأ. */
-    fun post(ctx: Context, key: String, name: String, body: String, spoiler: Boolean, level: Int, rank: String, avatar: String): String? {
+    fun post(
+        ctx: Context,
+        key: String,
+        name: String,
+        body: String,
+        spoiler: Boolean,
+        level: Int,
+        rank: String,
+        avatar: String,
+    ): String? {
         return try {
             val tok = token(ctx) ?: return "تعذّر إنشاء الجلسة المجهولة (فعّل Anonymous sign-ins)"
             val j = JSONObject()
@@ -222,7 +245,13 @@ object MslSupabase {
                 call("DELETE", "/rest/v1/comment_votes?comment_id=eq.$id&user_id=eq.${uid(ctx)}", null, tok)
             } else {
                 val j = JSONObject().put("comment_id", id).put("value", value)
-                call("POST", "/rest/v1/comment_votes?on_conflict=comment_id,user_id", j.toString(), tok, "resolution=merge-duplicates,return=minimal")
+                call(
+                    "POST",
+                    "/rest/v1/comment_votes?on_conflict=comment_id,user_id",
+                    j.toString(),
+                    tok,
+                    "resolution=merge-duplicates,return=minimal",
+                )
             }
             if (r.first in 200..299) null else "تعذّر التصويت (${r.first})"
         } catch (e: Exception) {
@@ -435,17 +464,39 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                         Tx("التعليقات ${items?.size?.let { "($it)" } ?: ""}", 20.sp, FontWeight.Bold)
                         Tx(title, 13.sp, FontWeight.Normal, MaterialTheme.colorScheme.primary, 1)
                     }
-                    Tx("إغلاق", 15.sp, FontWeight.Bold, MaterialTheme.colorScheme.primary, 1, Modifier.clickable { onDismiss() }.padding(8.dp))
+                    Tx(
+                        "إغلاق",
+                        15.sp,
+                        FontWeight.Bold,
+                        MaterialTheme.colorScheme.primary,
+                        1,
+                        Modifier.clickable {
+                            onDismiss()
+                        }.padding(8.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((i, label) in listOf("الأحدث", "الأكثر إعجاباً").withIndex()) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = if (sort == i) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            color = if (sort ==
+                                i
+                            ) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
                             modifier = Modifier.clickable { sort = i },
                         ) {
-                            Tx(label, 13.sp, FontWeight.Bold, Color.Unspecified, 1, Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+                            Tx(
+                                label,
+                                13.sp,
+                                FontWeight.Bold,
+                                Color.Unspecified,
+                                1,
+                                Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            )
                         }
                     }
                 }
@@ -474,7 +525,14 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                         color = if (spoiler) Color(0xFFFF7043) else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.clickable { spoiler = !spoiler },
                     ) {
-                        Tx("🔥 حرق", 14.sp, FontWeight.Bold, Color.Unspecified, 1, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                        Tx(
+                            "🔥 حرق",
+                            14.sp,
+                            FontWeight.Bold,
+                            Color.Unspecified,
+                            1,
+                            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -485,7 +543,16 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                 val read = prof.getInt("read", 0)
                                 scope.launch {
                                     val err = withContext(Dispatchers.IO) {
-                                        MslSupabase.post(ctx, key, myName, body, spoiler, MslRank.level(read), MslRank.of(read), myPicture)
+                                        MslSupabase.post(
+                                            ctx,
+                                            key,
+                                            myName,
+                                            body,
+                                            spoiler,
+                                            MslRank.level(read),
+                                            MslRank.of(read),
+                                            myPicture,
+                                        )
                                     }
                                     if (err == null) {
                                         text = ""
@@ -519,18 +586,48 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Tx(c.name, 15.sp, FontWeight.Bold, Color.Unspecified, 1, Modifier.weight(1f, fill = false))
+                                                Tx(
+                                                    c.name,
+                                                    15.sp,
+                                                    FontWeight.Bold,
+                                                    Color.Unspecified,
+                                                    1,
+                                                    Modifier.weight(1f, fill = false),
+                                                )
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Surface(shape = RoundedCornerShape(50), color = rankColor(c.rank).copy(alpha = 0.18f)) {
-                                                    Tx("Lv.${c.level} • ${c.rank}", 12.sp, FontWeight.Bold, rankColor(c.rank), 1, Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = rankColor(c.rank).copy(alpha = 0.18f),
+                                                ) {
+                                                    Tx(
+                                                        "Lv.${c.level} • ${c.rank}",
+                                                        12.sp,
+                                                        FontWeight.Bold,
+                                                        rankColor(c.rank),
+                                                        1,
+                                                        Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                    )
                                                 }
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Tx(timeAgo(c.at), 12.sp, FontWeight.Normal, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), 1)
+                                                Tx(
+                                                    timeAgo(c.at),
+                                                    12.sp,
+                                                    FontWeight.Normal,
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                    1,
+                                                )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 CommentMenu(mine) {
                                                     scope.launch {
                                                         withContext(Dispatchers.IO) {
-                                                            if (mine) MslSupabase.delete(ctx, c.id) else MslSupabase.report(ctx, c.id)
+                                                            if (mine) {
+                                                                MslSupabase.delete(
+                                                                    ctx,
+                                                                    c.id,
+                                                                )
+                                                            } else {
+                                                                MslSupabase.report(ctx, c.id)
+                                                            }
                                                         }
                                                         refresh++
                                                     }
@@ -541,35 +638,68 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                                 Surface(
                                                     shape = RoundedCornerShape(12.dp),
                                                     color = MaterialTheme.colorScheme.surfaceVariant,
-                                                    modifier = Modifier.fillMaxWidth().clickable { revealed = revealed + c.id },
+                                                    modifier = Modifier.fillMaxWidth().clickable {
+                                                        revealed =
+                                                            revealed + c.id
+                                                    },
                                                 ) {
-                                                    Tx("🔥 هذا التعليق يحتوي حرقاً — اضغط لإظهاره", 13.sp, FontWeight.Bold, Color.Unspecified, Int.MAX_VALUE, Modifier.padding(12.dp))
+                                                    Tx(
+                                                        "🔥 هذا التعليق يحتوي حرقاً — اضغط لإظهاره",
+                                                        13.sp,
+                                                        FontWeight.Bold,
+                                                        Color.Unspecified,
+                                                        Int.MAX_VALUE,
+                                                        Modifier.padding(12.dp),
+                                                    )
                                                 }
                                             } else {
                                                 Tx(c.body, 15.sp)
                                             }
-                                            Row(modifier = Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Row(
+                                                modifier = Modifier.padding(top = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
                                                 Tx(
                                                     "♥ ${c.likes}",
                                                     14.sp,
                                                     if (my == 1) FontWeight.Bold else FontWeight.Normal,
-                                                    if (my == 1) Color(0xFFFF4D6D) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                    if (my ==
+                                                        1
+                                                    ) {
+                                                        Color(0xFFFF4D6D)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                    },
                                                     1,
-                                                    Modifier.clickable { vote(c, 1) }.padding(end = 24.dp, top = 6.dp, bottom = 6.dp),
+                                                    Modifier.clickable {
+                                                        vote(c, 1)
+                                                    }.padding(end = 24.dp, top = 6.dp, bottom = 6.dp),
                                                 )
                                                 Tx(
                                                     "👎 ${c.dislikes}",
                                                     14.sp,
                                                     if (my == -1) FontWeight.Bold else FontWeight.Normal,
-                                                    if (my == -1) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                    if (my ==
+                                                        -1
+                                                    ) {
+                                                        Color(0xFFFFB300)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                    },
                                                     1,
-                                                    Modifier.clickable { vote(c, -1) }.padding(top = 6.dp, bottom = 6.dp),
+                                                    Modifier.clickable {
+                                                        vote(c, -1)
+                                                    }.padding(top = 6.dp, bottom = 6.dp),
                                                 )
                                             }
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(10.dp))
-                                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)))
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().height(
+                                            1.dp,
+                                        ).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                                    )
                                 }
                             }
                         }

@@ -53,7 +53,7 @@ dependencies {
     implementation(libs.natural.comparator)
 
     // JavaScript engine
-    implementation(libs.quickJs)
+    implementation(libs.novelQuickjs)
 
     testImplementation(libs.bundles.test)
     testRuntimeOnly(libs.junit.platform.launcher)

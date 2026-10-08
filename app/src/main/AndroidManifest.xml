@@ -246,7 +246,7 @@
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
 
-    
+
         <activity
             android:name=".mslime.SlimeIntroActivity"
             android:exported="true"

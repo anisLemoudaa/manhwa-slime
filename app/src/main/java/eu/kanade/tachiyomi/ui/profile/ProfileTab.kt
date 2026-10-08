@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,9 +58,8 @@ import dev.zacsweers.metrox.viewmodel.metroViewModel
 import eu.kanade.presentation.more.stats.RankSection
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.util.Tab
-import eu.kanade.tachiyomi.ui.stats.StatsViewModel
-import androidx.compose.ui.res.painterResource
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.ui.stats.StatsViewModel
 import java.io.File
 import androidx.compose.material3.Tab as M3Tab
 
@@ -96,7 +96,13 @@ private fun joinedText(joined: Long): String {
 private fun StatCard(label: String, value: String, modifier: Modifier) {
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = value, fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = value,
+                fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
             Text(text = label, style = MaterialTheme.typography.bodyMedium)
         }
     }

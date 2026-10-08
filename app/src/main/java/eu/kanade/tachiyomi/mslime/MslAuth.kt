@@ -59,7 +59,13 @@ object MslAuth {
             .putLong("exp", exp)
             .putString("uid", p?.optString("sub") ?: "")
             .putString("email", p?.optString("email") ?: "")
-            .putString("picture", (p?.optJSONObject("user_metadata")?.optString("avatar_url") ?: "").ifEmpty { p?.optJSONObject("user_metadata")?.optString("picture") ?: "" })
+            .putString(
+                "picture",
+                (p?.optJSONObject("user_metadata")?.optString("avatar_url") ?: "").ifEmpty {
+                    p?.optJSONObject("user_metadata")?.optString("picture")
+                        ?: ""
+                },
+            )
             .apply()
         return null
     }
@@ -76,14 +82,17 @@ object MslAuth {
                     if (tok == null) {
                         err = "تعذّر إنشاء الجلسة المجهولة"
                     } else {
-                        val c = URL("$BASE/auth/v1/user/identities/authorize?provider=google&redirect_to=$redirect&skip_http_redirect=true")
+                        val c = URL(
+                            "$BASE/auth/v1/user/identities/authorize?provider=google&redirect_to=$redirect&skip_http_redirect=true",
+                        )
                             .openConnection() as HttpURLConnection
                         c.connectTimeout = 15000
                         c.readTimeout = 20000
                         c.setRequestProperty("apikey", KEY)
                         c.setRequestProperty("Authorization", "Bearer $tok")
                         val code = c.responseCode
-                        val body = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
+                        val body =
+                            (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
                         if (code in 200..299) {
                             url = JSONObject(body).optString("url")
                         } else {
@@ -124,9 +133,21 @@ class AuthCallbackActivity : Activity() {
     private fun handle(i: Intent?) {
         val uri = i?.data
         val err = if (uri != null) MslAuth.handleRedirect(this, uri) else "لا توجد بيانات"
-        Toast.makeText(this, if (err == null) "تم تسجيل الدخول بنجاح" else "فشل تسجيل الدخول: $err", Toast.LENGTH_LONG).show()
+        Toast.makeText(
+            this,
+            if (err ==
+                null
+            ) {
+                "تم تسجيل الدخول بنجاح"
+            } else {
+                "فشل تسجيل الدخول: $err"
+            },
+            Toast.LENGTH_LONG,
+        ).show()
         val back = Intent(this, MainActivity::class.java)
-        back.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        back.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+        )
         startActivity(back)
         finish()
     }
