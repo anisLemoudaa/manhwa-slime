@@ -51,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.navigator.tab.TabOptions
@@ -62,6 +63,16 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.stats.StatsViewModel
 import java.io.File
 import androidx.compose.material3.Tab as M3Tab
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import eu.kanade.presentation.history.HistoryUiModel
+import eu.kanade.tachiyomi.ui.history.HistoryViewModel
+import eu.kanade.tachiyomi.novel.NovelHistoryEntry
+import eu.kanade.tachiyomi.novel.NovelHistoryStore
+import tachiyomi.domain.manga.model.MangaCover
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private fun prefs(c: Context) = c.getSharedPreferences("msl_profile", Context.MODE_PRIVATE)
 
@@ -108,6 +119,303 @@ private fun StatCard(label: String, value: String, modifier: Modifier) {
     }
 }
 
+private data class UnifiedHistoryRow(
+    val title: String,
+    val subtitle: String,
+    val readAt: Long,
+    val mangaCover: MangaCover? = null,
+    val isNovel: Boolean = false,
+)
+
+private fun historyDate(time: Long): String {
+    return runCatching {
+        SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(time))
+    }.getOrDefault("")
+}
+
+@Composable
+private fun UnifiedHistorySection(
+    historyState: HistoryViewModel.State,
+    novelHistory: List<NovelHistoryEntry>,
+) {
+    val mangaRows = historyState.list.orEmpty().mapNotNull { item ->
+        val history = (item as? HistoryUiModel.Item)?.item ?: return@mapNotNull null
+
+        UnifiedHistoryRow(
+            title = history.title,
+            subtitle = if (history.chapterNumber >= 0) {
+                "مانغا • الفصل ${history.chapterNumber}"
+            } else {
+                "مانغا"
+            },
+            readAt = history.readAt?.time ?: 0L,
+            mangaCover = history.coverData,
+            isNovel = false,
+        )
+    }
+
+    val novelRows = novelHistory.map {
+        UnifiedHistoryRow(
+            title = it.novelTitle,
+            subtitle = "رواية • ${it.chapterName}",
+            readAt = it.readAt,
+            mangaCover = null,
+            isNovel = true,
+        )
+    }
+
+    val rows = (mangaRows + novelRows)
+        .sortedByDescending { it.readAt }
+        .take(15)
+
+    if (rows.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+    ) {
+        Text(
+            text = "📖 سجل القراءة",
+            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 10.dp),
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 6.dp),
+            ) {
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (row.mangaCover != null) {
+                            eu.kanade.presentation.manga.components.MangaCover.Book(
+                                modifier = Modifier.size(width = 52.dp, height = 72.dp),
+                                data = row.mangaCover,
+                                onClick = {},
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 52.dp, height = 72.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.secondaryContainer,
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "رواية",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp),
+                        ) {
+                            Text(
+                                text = row.title,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                            )
+
+                            Text(
+                                text = row.subtitle,
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                            )
+
+                            Text(
+                                text = historyDate(row.readAt),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+
+private data class UnifiedReadingItem(
+    val title: String,
+    val chapter: String,
+    val timestamp: Long,
+    val type: String,
+    val coverUrl: String? = null,
+    val mangaCover: tachiyomi.domain.manga.model.MangaCover? = null,
+)
+
+private fun unifiedHistoryDate(timestamp: Long): String {
+    return runCatching {
+        SimpleDateFormat(
+            "yyyy/MM/dd HH:mm",
+            Locale.getDefault(),
+        ).format(Date(timestamp))
+    }.getOrDefault("")
+}
+
+@Composable
+private fun UnifiedReadingHistorySection(
+    historyState: HistoryViewModel.State,
+    novelHistory: List<NovelHistoryEntry>,
+) {
+    val mangaItems = historyState.list.orEmpty().mapNotNull { model ->
+        val history = (model as? HistoryUiModel.Item)?.item
+            ?: return@mapNotNull null
+
+        UnifiedReadingItem(
+            title = history.title,
+            chapter = if (history.chapterNumber >= 0) {
+                "الفصل ${history.chapterNumber}"
+            } else {
+                "آخر قراءة"
+            },
+            timestamp = history.readAt?.time ?: 0L,
+            type = "مانغا",
+            mangaCover = history.coverData,
+        )
+    }
+
+    val novelItems = novelHistory.map { entry ->
+        UnifiedReadingItem(
+            title = entry.novelTitle,
+            chapter = "الفصل: ${entry.chapterName}",
+            timestamp = entry.readAt,
+            type = "رواية",
+            coverUrl = entry.cover,
+        )
+    }
+
+    val items = (mangaItems + novelItems)
+        .filter { it.timestamp > 0L }
+        .sortedByDescending { it.timestamp }
+        .take(15)
+
+    if (items.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+    ) {
+        Text(
+            text = "📖 سجل القراءة",
+            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 10.dp),
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Column {
+                items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        Spacer(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                ),
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        when {
+                            item.mangaCover != null -> {
+                                eu.kanade.presentation.manga.components.MangaCover.Book(
+                                    modifier = Modifier.size(
+                                        width = 48.dp,
+                                        height = 68.dp,
+                                    ),
+                                    data = item.mangaCover,
+                                    onClick = {},
+                                )
+                            }
+
+                            else -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(
+                                            width = 48.dp,
+                                            height = 68.dp,
+                                        )
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme
+                                                .secondaryContainer,
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "📖",
+                                        fontSize = 22.sp,
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp),
+                        ) {
+                            Text(
+                                text = item.title,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+
+                            Text(
+                                text = "${item.type} • ${item.chapter}",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+
+                            Text(
+                                text = unifiedHistoryDate(item.timestamp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
 data object ProfileTab : Tab {
 
     override val options: TabOptions
@@ -128,6 +436,11 @@ data object ProfileTab : Tab {
         val ctx = LocalContext.current
         val viewModel = metroViewModel<StatsViewModel>()
         val state by viewModel.state.collectAsState()
+        val historyViewModel = metroViewModel<HistoryViewModel>()
+        val historyState by historyViewModel.state.collectAsState()
+        val novelHistory = remember(ctx) {
+            NovelHistoryStore(ctx).all()
+        }
         var rev by remember { mutableIntStateOf(0) }
         var tab by remember { mutableIntStateOf(0) }
         var editName by remember { mutableStateOf(false) }
@@ -226,6 +539,11 @@ data object ProfileTab : Tab {
 
             eu.kanade.tachiyomi.mslime.MslAccountCard()
             eu.kanade.tachiyomi.mslime.MslReaderSettingsCard()
+
+            UnifiedHistorySection(
+                historyState = historyState,
+                novelHistory = novelHistory,
+            )
             if (s is StatsScreenState.Success) {
                 val ms = s.overview.totalReadDuration
                 Row(
