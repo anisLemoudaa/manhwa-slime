@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +45,7 @@ private data class NovelUiState(
     val repoUrl: String = "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
     val repoEntries: List<NovelRepositoryEntry> = emptyList(),
     val inputMode: NovelInputMode = NovelInputMode.REPOSITORY,
+    val showFavorites: Boolean = false,
     val error: String? = null,
     val info: String? = null,
 )
@@ -62,8 +64,16 @@ fun NovelSectionContent() {
     val context = LocalContext.current
     val navigator = LocalNavigator.currentOrThrow
     val manager = remember { NovelManagerHolder.get(context) }
+    val favoritesStore = remember { NovelFavoritesStore(context) }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(NovelUiState()) }
+    var favoritesRevision by remember { mutableIntStateOf(0) }
+    val favoriteEntries = remember(favoritesRevision) {
+        favoritesStore.all()
+    }
+    val favoriteKeys = remember(favoriteEntries) {
+        favoriteEntries.map { "${it.sourceId}::${it.novelPath}" }.toSet()
+    }
 
     fun reload(sourceId: String? = state.selectedSource) {
         scope.launch {
@@ -91,6 +101,24 @@ fun NovelSectionContent() {
 
     NovelShell(
         state = state,
+        favoriteKeys = favoriteKeys,
+        onToggleFavorite = { item ->
+            val sid = state.selectedSource
+            if (sid != null) {
+                favoritesStore.toggle(
+                    NovelFavoriteEntry(
+                        sourceId = sid,
+                        novelPath = item.path,
+                        title = item.name,
+                        cover = item.cover,
+                    ),
+                )
+                favoritesRevision++
+            }
+        },
+        onToggleFavoriteFilter = {
+            state = state.copy(showFavorites = !state.showFavorites)
+        },
         onSearch = { q ->
             state = state.copy(query = q, info = null)
             val sid = state.selectedSource
@@ -153,6 +181,9 @@ fun NovelSectionContent() {
 @Composable
 private fun NovelShell(
     state: NovelUiState,
+    favoriteKeys: Set<String>,
+    onToggleFavorite: (NovelItem) -> Unit,
+    onToggleFavoriteFilter: () -> Unit,
     onSearch: (String) -> Unit,
     onSelectSource: (String) -> Unit,
     onAddRepository: () -> Unit,
@@ -191,6 +222,16 @@ private fun NovelShell(
                         Text("إضافة مصدر")
                     })
                 }
+
+                item {
+                    FilterChip(
+                        selected = state.showFavorites,
+                        onClick = onToggleFavoriteFilter,
+                        label = {
+                            Text("⭐ المفضلة")
+                        },
+                    )
+                }
                 items(state.sources) { source ->
                     FilterChip(
                         selected = state.selectedSource == source.id,
@@ -221,14 +262,38 @@ private fun NovelShell(
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 state.sources.isEmpty() -> EmptyNovelSources(onAddRepository)
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(145.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(state.novels) { item -> NovelCard(item, onOpen) }
+                else -> {
+                    val visibleNovels =
+                        if (state.showFavorites) {
+                            state.novels.filter {
+                                state.selectedSource != null &&
+                                    "${state.selectedSource}::${it.path}" in favoriteKeys
+                            }
+                        } else {
+                            state.novels
+                        }
+
+                    if (state.showFavorites && visibleNovels.isEmpty()) {
+                        EmptyFavorites()
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(145.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(visibleNovels) { item ->
+                                NovelCard(
+                                    item = item,
+                                    onOpen = onOpen,
+                                    isFavorite = state.selectedSource != null &&
+                                        "${state.selectedSource}::${item.path}" in favoriteKeys,
+                                    onToggleFavorite = onToggleFavorite,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -315,27 +380,77 @@ private fun EmptyNovelSources(onAdd: () -> Unit) {
 }
 
 @Composable
-private fun NovelCard(item: NovelItem, onOpen: (NovelItem) -> Unit) {
+private fun NovelCard(
+    item: NovelItem,
+    onOpen: (NovelItem) -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: (NovelItem) -> Unit,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onOpen(item) },
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
     ) {
-        Column {
-            AsyncImage(
-                model = item.cover,
-                contentDescription = item.name,
-                modifier = Modifier.fillMaxWidth().height(
-                    190.dp,
-                ).clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)),
-            )
-            Text(
-                item.name,
-                modifier = Modifier.padding(10.dp),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.Medium,
-            )
+        Box {
+            Column(
+                modifier = Modifier.clickable { onOpen(item) },
+            ) {
+                AsyncImage(
+                    model = item.cover,
+                    contentDescription = item.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 18.dp,
+                                topEnd = 18.dp,
+                            ),
+                        ),
+                )
+
+                Text(
+                    item.name,
+                    modifier = Modifier.padding(10.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = { onToggleFavorite(item) },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = if (isFavorite) "★" else "☆",
+                    fontSize = 22.sp,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun EmptyFavorites() {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            "⭐ لا توجد روايات مفضلة",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "أضف الروايات التي تريد الرجوع إليها لاحقًا.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -349,6 +464,8 @@ class NovelDetailsScreen(
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
+        val favoritesStore = remember { NovelFavoritesStore(context) }
+        var favoriteRevision by remember { mutableIntStateOf(0) }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(Unit) {
@@ -356,11 +473,43 @@ class NovelDetailsScreen(
             details = r.getOrNull()
             error = r.exceptionOrNull()?.message
         }
+        val isFavorite = remember(favoriteRevision, details) {
+            favoritesStore.contains(sourceId, path)
+        }
+
         Scaffold(
             topBar = {
-                TopAppBar(title = {
-                    Text(details?.name ?: fallbackName)
-                }, navigationIcon = { IconButton(onClick = { navigator.pop() }) { Text("‹", fontSize = 32.sp) } })
+                TopAppBar(
+                    title = {
+                        Text(details?.name ?: fallbackName)
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navigator.pop() }) {
+                            Text("‹", fontSize = 32.sp)
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                val d = details
+                                favoritesStore.toggle(
+                                    NovelFavoriteEntry(
+                                        sourceId = sourceId,
+                                        novelPath = path,
+                                        title = d?.name ?: fallbackName,
+                                        cover = d?.cover,
+                                    ),
+                                )
+                                favoriteRevision++
+                            },
+                        ) {
+                            Text(
+                                if (isFavorite) "★" else "☆",
+                                fontSize = 26.sp,
+                            )
+                        }
+                    },
+                )
             },
         ) { padding ->
             val d = details
@@ -404,10 +553,18 @@ class NovelDetailsScreen(
                             Text("الفصول", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         }
                     }
-                    items(d.chapters.orEmpty()) { chapter ->
+                    itemsIndexed(d.chapters.orEmpty()) { index, chapter ->
                         ListItem(
                             modifier = Modifier.clickable {
-                                navigator.push(NovelReaderScreen(sourceId, chapter.path, chapter.name))
+                                val reader = NovelReaderScreen(
+                                    sourceId = sourceId,
+                                    novelPath = d.path,
+                                    novelName = d.name ?: fallbackName,
+                                    novelCover = d.cover,
+                                    chapters = d.chapters.orEmpty(),
+                                    chapterIndex = index,
+                                )
+                                navigator.push(reader)
                             },
                             headlineContent = { Text(chapter.name) },
                             supportingContent = {
@@ -423,53 +580,251 @@ class NovelDetailsScreen(
 
 class NovelReaderScreen(
     private val sourceId: String,
-    private val chapterPath: String,
-    private val chapterName: String,
+    private val novelPath: String,
+    private val novelName: String,
+    private val novelCover: String?,
+    private val chapters: List<NovelChapter>,
+    private val chapterIndex: Int,
 ) : Screen() {
+
     @Composable
     override fun Content() {
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
-        val isDark = isSystemInDarkTheme()
+        val historyStore = remember { NovelHistoryStore(context) }
+        val dark = isSystemInDarkTheme()
+
+        var currentIndex by remember {
+            mutableIntStateOf(
+                chapterIndex.coerceIn(
+                    0,
+                    (chapters.size - 1).coerceAtLeast(0),
+                ),
+            )
+        }
+
         var html by remember { mutableStateOf<String?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(Unit) {
-            val r = runCatching { manager.chapter(sourceId, chapterPath) }
-            html = r.getOrNull()
-            error = r.exceptionOrNull()?.message
+        var loading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(currentIndex, sourceId) {
+            val chapter = chapters.getOrNull(currentIndex)
+
+            if (chapter == null) {
+                error = "الفصل غير موجود"
+                loading = false
+                return@LaunchedEffect
+            }
+
+            loading = true
+            html = null
+            error = null
+
+            val result = runCatching {
+                manager.chapter(sourceId, chapter.path)
+            }
+
+            result.onSuccess { content ->
+                html = content
+
+                historyStore.upsert(
+                    NovelHistoryEntry(
+                        sourceId = sourceId,
+                        novelPath = novelPath,
+                        novelTitle = novelName,
+                        cover = novelCover,
+                        chapterPath = chapter.path,
+                        chapterName = chapter.name,
+                        chapterNumber = chapter.chapterNumber,
+                        chapterIndex = currentIndex,
+                        totalChapters = chapters.size,
+                    ),
+                )
+            }
+
+            result.onFailure {
+                error = it.message ?: "تعذر تحميل الفصل"
+            }
+
+            loading = false
         }
+
+        val hasPrevious = currentIndex > 0
+        val hasNext = currentIndex < chapters.lastIndex
+
         Scaffold(
             topBar = {
-                TopAppBar(title = {
-                    Text(chapterName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }, navigationIcon = { IconButton(onClick = { navigator.pop() }) { Text("‹", fontSize = 32.sp) } })
-            },
-        ) { padding ->
-            when {
-                html == null && error == null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-                error != null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
-                }
-                else -> AndroidView(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    factory = {
-                        WebView(it).apply {
-                            webViewClient = WebViewClient()
-                            settings.javaScriptEnabled = false
-                            settings.domStorageEnabled = false
-                            settings.cacheMode = WebSettings.LOAD_DEFAULT
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = novelName,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+
+                            Text(
+                                text = chapters
+                                    .getOrNull(currentIndex)
+                                    ?.name
+                                    ?: "الفصل ${currentIndex + 1}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     },
-                    update = { webView ->
-                        val bg = if (isDark) "#111111" else "#ffffff"
-                        val fg = if (isDark) "#eeeeee" else "#171717"
-                        val style = "<style>body{font-family:sans-serif;font-size:18px;line-height:1.9;padding:18px;margin:0;background:$bg;color:$fg}img{max-width:100%;height:auto}a{color:inherit}</style>"
-                        webView.loadDataWithBaseURL(null, style + html.orEmpty(), "text/html", "UTF-8", null)
+                    navigationIcon = {
+                        IconButton(
+                            onClick = { navigator.pop() },
+                        ) {
+                            Text("‹", fontSize = 32.sp)
+                        }
                     },
                 )
+            },
+            bottomBar = {
+                Surface(
+                    tonalElevation = 4.dp,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                            enabled = hasPrevious && !loading,
+                            onClick = {
+                                if (hasPrevious) {
+                                    currentIndex--
+                                }
+                            },
+                        ) {
+                            Text("‹ السابق")
+                        }
+
+                        Text(
+                            text = "${currentIndex + 1}/${chapters.size}",
+                            fontWeight = FontWeight.Bold,
+                        )
+
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            enabled = hasNext && !loading,
+                            onClick = {
+                                if (hasNext) {
+                                    currentIndex++
+                                }
+                            },
+                        ) {
+                            Text("التالي ›")
+                        }
+                    }
+                }
+            },
+        ) { padding ->
+
+            when {
+                loading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .wrapContentSize(Alignment.Center),
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+
+                error != null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .wrapContentSize(Alignment.Center),
+                    ) {
+                        Text(
+                            text = error ?: "حدث خطأ",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+
+                html != null -> {
+                    AndroidView(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                webViewClient = WebViewClient()
+                                settings.javaScriptEnabled = false
+                                settings.domStorageEnabled = false
+                                settings.cacheMode =
+                                    WebSettings.LOAD_DEFAULT
+                            }
+                        },
+                        update = { webView ->
+                            val bg =
+                                if (dark) "#111111" else "#ffffff"
+
+                            val fg =
+                                if (dark) "#eeeeee" else "#171717"
+
+                            val style = """
+                                <style>
+                                body {
+                                    font-family: sans-serif;
+                                    font-size: 19px;
+                                    line-height: 1.95;
+                                    padding: 20px;
+                                    margin: 0;
+                                    background: $bg;
+                                    color: $fg;
+                                }
+
+                                img {
+                                    max-width: 100%;
+                                    height: auto;
+                                }
+
+                                p {
+                                    margin-bottom: 1.1em;
+                                }
+
+                                a {
+                                    color: inherit;
+                                }
+                                </style>
+                            """.trimIndent()
+
+                            webView.loadDataWithBaseURL(
+                                null,
+                                style + html.orEmpty(),
+                                "text/html",
+                                "UTF-8",
+                                null,
+                            )
+                        },
+                    )
+                }
+
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .wrapContentSize(Alignment.Center),
+                    ) {
+                        Text("لا يوجد محتوى")
+                    }
+                }
             }
         }
     }
