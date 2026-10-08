@@ -6,6 +6,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationItemColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
@@ -103,8 +104,12 @@ object HomeScreen : Screen() {
                     navigationSuiteType = navigationSuiteType,
                     state = navigationSuiteState,
                     navigationSuiteColors = NavigationSuiteDefaults.colors(
+                        navigationBarContainerColor = MaterialTheme.colorScheme
+                            .surfaceColorAtElevation(2.dp),
                         navigationRailContainerColor = MaterialTheme.colorScheme
-                            .surfaceColorAtElevation(3.dp),
+                            .surfaceColorAtElevation(2.dp),
+                        navigationBarContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationRailContentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                     navigationItemVerticalArrangement = Arrangement.Center,
                     navigationItems = {
@@ -175,9 +180,22 @@ object HomeScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
         val selected = tabNavigator.current::class == tab::class
+
+        val navigationItemColors = NavigationItemColors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedTextColorTopIconPosition = MaterialTheme.colorScheme.primary,
+            selectedTextColorStartIconPosition = MaterialTheme.colorScheme.primary,
+            selectedIndicatorColor = MaterialTheme.colorScheme.primaryContainer,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            disabledIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         NavigationSuiteItem(
             navigationSuiteType = navigationSuiteType,
             selected = selected,
+            colors = navigationItemColors,
             onClick = {
                 if (!selected) {
                     tabNavigator.current = tab
