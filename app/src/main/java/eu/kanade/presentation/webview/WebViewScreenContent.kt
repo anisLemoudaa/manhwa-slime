@@ -6,6 +6,7 @@ import android.os.Message
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -48,6 +49,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.util.system.getHtml
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.setUserAgent
+import java.io.ByteArrayInputStream
 import kotlinx.coroutines.launch
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
@@ -73,6 +75,7 @@ fun WebViewScreenContent(
     onNavigateUp: () -> Unit,
     initialTitle: String?,
     url: String,
+    adFreeReader: Boolean = false,
     defaultUserAgentProvider: () -> String,
     onShare: (String) -> Unit,
     onOpenInBrowser: (String) -> Unit,
@@ -105,7 +108,7 @@ fun WebViewScreenContent(
         onDispose { isActive = false }
     }
 
-    val webClient = remember {
+    val webClient = remember(adFreeReader) {
         object : AccompanistWebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -117,10 +120,34 @@ fun WebViewScreenContent(
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
+                if (adFreeReader) {
+                    view.evaluateJavascript(ProComicAdPolicy.hideAdsScript, null)
+                }
                 scope.launch {
                     val html = view.getHtml()
                     showCloudflareHelp = "window._cf_chl_opt" in html || "Ray ID is" in html
                 }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): WebResourceResponse? {
+                val requestedUrl = request?.url?.toString()
+                    ?: return super.shouldInterceptRequest(view, request)
+                if (!adFreeReader || !ProComicAdPolicy.shouldBlockResource(requestedUrl)) {
+                    return super.shouldInterceptRequest(view, request)
+                }
+
+                val isSiteAdApi = requestedUrl.contains("/api/ads", ignoreCase = true) ||
+                    requestedUrl.contains("/api/advertising", ignoreCase = true)
+                val body = if (isSiteAdApi) "{}" else "/* ad resource blocked */"
+                val mimeType = if (isSiteAdApi) "application/json" else "text/javascript"
+                return WebResourceResponse(
+                    mimeType,
+                    "utf-8",
+                    ByteArrayInputStream(body.toByteArray(Charsets.UTF_8)),
+                )
             }
 
             override fun doUpdateVisitedHistory(
@@ -141,6 +168,11 @@ fun WebViewScreenContent(
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
 
+                if (adFreeReader) {
+                    if (ProComicAdPolicy.shouldBlockResource(url)) return true
+                    if (request.isForMainFrame && !ProComicAdPolicy.isAllowedMainFrame(url)) return true
+                }
+
                 // Ignore intents urls
                 if (url.startsWith("intent://")) return true
 
@@ -157,7 +189,7 @@ fun WebViewScreenContent(
         }
     }
 
-    val webChromeClient = remember {
+    val webChromeClient = remember(adFreeReader) {
         object : AccompanistWebChromeClient() {
             override fun onCreateWindow(
                 view: WebView,
@@ -166,7 +198,7 @@ fun WebViewScreenContent(
                 resultMsg: Message,
             ): Boolean {
                 // if it wasn't initiated by a user gesture, we should ignore it like a normal browser would
-                if (isUserGesture) {
+                if (!adFreeReader && isUserGesture) {
                     windowStack.push(WebViewWindow(resultMsg, WebViewNavigator(coroutineScope)))
                     return true
                 }

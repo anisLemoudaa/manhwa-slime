@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.core.net.toUri
 import dev.zacsweers.metro.Inject
+import eu.kanade.presentation.webview.ProComicAdPolicy
 import eu.kanade.presentation.webview.WebViewScreenContent
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -61,6 +62,11 @@ class WebViewActivity : BaseActivity() {
         }
 
         val url = intent.extras?.getString(URL_KEY) ?: return
+        val adFreeReader = intent.getBooleanExtra(AD_FREE_READER_KEY, false)
+        if (adFreeReader && !ProComicAdPolicy.isAllowedMainFrame(url)) {
+            finish()
+            return
+        }
         assistUrl = url
 
         setComposeContent {
@@ -84,6 +90,7 @@ class WebViewActivity : BaseActivity() {
                 onNavigateUp = { finish() },
                 initialTitle = intent.extras?.getString(TITLE_KEY),
                 url = url,
+                adFreeReader = adFreeReader,
                 headers = headers.orEmpty(),
                 defaultUserAgentProvider = network::defaultUserAgentProvider,
                 onUrlChange = { assistUrl = it },
@@ -134,13 +141,21 @@ class WebViewActivity : BaseActivity() {
         private const val URL_KEY = "url_key"
         private const val SOURCE_KEY = "source_key"
         private const val TITLE_KEY = "title_key"
+        private const val AD_FREE_READER_KEY = "ad_free_reader_key"
 
-        fun newIntent(context: Context, url: String, sourceId: Long? = null, title: String? = null): Intent {
+        fun newIntent(
+            context: Context,
+            url: String,
+            sourceId: Long? = null,
+            title: String? = null,
+            adFreeReader: Boolean = false,
+        ): Intent {
             return Intent(context, WebViewActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra(URL_KEY, url)
                 putExtra(SOURCE_KEY, sourceId)
                 putExtra(TITLE_KEY, title)
+                putExtra(AD_FREE_READER_KEY, adFreeReader)
             }
         }
     }

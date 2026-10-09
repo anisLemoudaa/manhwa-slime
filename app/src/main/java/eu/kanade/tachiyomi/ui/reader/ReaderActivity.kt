@@ -60,6 +60,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -205,10 +206,32 @@ class ReaderActivity : BaseActivity() {
             .launchIn(lifecycleScope)
 
         viewModel.state
+            .map { state ->
+                state.proComicReaderUrl?.let { url ->
+                    Triple(url, state.proComicReaderTitle, state.source?.id)
+                }
+            }
+            .distinctUntilChanged()
+            .filterNotNull()
+            .onEach { (url, title, sourceId) ->
+                startActivity(
+                    WebViewActivity.newIntent(
+                        context = this,
+                        url = url,
+                        sourceId = sourceId,
+                        title = title,
+                        adFreeReader = true,
+                    ),
+                )
+                finish()
+            }
+            .launchIn(lifecycleScope)
+
+        viewModel.state
             .map { it.manga }
             .distinctUntilChanged()
             .filterNotNull()
-            .onEach { updateViewer() }
+            .onEach { if (viewModel.state.value.source !is ProComicSource) updateViewer() }
             .launchIn(lifecycleScope)
 
         viewModel.state
@@ -585,7 +608,13 @@ class ReaderActivity : BaseActivity() {
         val manga = viewModel.manga ?: return
         val source = viewModel.getSource() ?: return
         assistUrl?.let {
-            val intent = WebViewActivity.newIntent(this@ReaderActivity, it, source.id, manga.title)
+            val intent = WebViewActivity.newIntent(
+                this@ReaderActivity,
+                it,
+                source.id,
+                manga.title,
+                adFreeReader = source is ProComicSource,
+            )
             startActivity(intent)
         }
     }
@@ -696,7 +725,9 @@ class ReaderActivity : BaseActivity() {
 
     /** Called only at the transition page between chapters. */
     fun onNextChapterTransition() {
-        MslAds.showPendingInterstitialAtChapterBreak(this)
+        if (viewModel.state.value.source !is ProComicSource) {
+            MslAds.showPendingInterstitialAtChapterBreak(this)
+        }
     }
 
     /**

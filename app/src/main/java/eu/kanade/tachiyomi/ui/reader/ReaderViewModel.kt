@@ -33,6 +33,7 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
@@ -333,6 +334,18 @@ class ReaderViewModel(
                 incognitoMode = getIncognitoState.await(manga.source)
                 mutableState.update { it.copy(manga = manga, source = source) }
                 if (chapterId == -1L) chapterId = initialChapterId
+
+                if (source is ProComicSource) {
+                    val chapter = chapterList.first { it.chapter.id == chapterId }.chapter
+                    check(chapter.url.startsWith("/ar/chapter/")) { "Invalid ProComic chapter path" }
+                    mutableState.update {
+                        it.copy(
+                            proComicReaderUrl = source.baseUrl + chapter.url,
+                            proComicReaderTitle = chapter.name,
+                        )
+                    }
+                    return@withIOContext
+                }
 
                 loader = ChapterLoader(context, downloadManager, downloadProvider, chapterCache, manga, source)
 
@@ -992,6 +1005,8 @@ class ReaderViewModel(
     data class State(
         val manga: Manga? = null,
         val source: Source? = null,
+        val proComicReaderUrl: String? = null,
+        val proComicReaderTitle: String? = null,
         val initError: Throwable? = null,
         val viewerChapters: ViewerChapters? = null,
         val bookmarked: Boolean = false,
