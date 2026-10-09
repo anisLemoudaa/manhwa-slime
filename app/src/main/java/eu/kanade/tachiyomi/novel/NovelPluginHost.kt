@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.novel
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import android.content.Context
 import android.util.Base64
 import com.dokar.quickjs.QuickJs
@@ -187,55 +188,162 @@ class NovelPluginHost(
     private fun runFetch(url: String, optsJson: String): String {
         return try {
             val opts = JSON.decodeFromString<NovelFetchOptions>(optsJson)
-            val request = Request.Builder().url(url).apply {
-                opts.headers?.forEach { (k, v) -> header(k, v) }
-                if (opts.headers?.keys?.none { it.equals("User-Agent", true) } != false &&
-                    deviceUserAgent.isNotBlank()
+            val redirectClient = client.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+
+            var currentUrl = url.toHttpUrl()
+            var currentMethod = opts.method?.uppercase() ?: "GET"
+            var dropBody = currentMethod == "GET" || currentMethod == "HEAD"
+
+            val requestHeaders = LinkedHashMap<String, String>()
+            opts.headers?.forEach { (key, value) -> requestHeaders[key] = value }
+
+            if (requestHeaders.keys.none { it.equals("User-Agent", true) } &&
+                deviceUserAgent.isNotBlank()
+            ) {
+                requestHeaders["User-Agent"] = deviceUserAgent
+            }
+
+            val visited = linkedSetOf<String>()
+            var redirects = 0
+            var finalResponse: okhttp3.Response? = null
+
+            while (finalResponse == null) {
+                if (!visited.add(currentUrl.toString())) {
+                    error("Redirect loop detected")
+                }
+
+                val request = Request.Builder().url(currentUrl).apply {
+                    requestHeaders.forEach { (key, value) -> header(key, value) }
+
+                    val body = when {
+                        dropBody -> null
+                        opts.bodyBase64 != null ->
+                            Base64.decode(opts.bodyBase64, Base64.NO_WRAP).toRequestBody()
+                        opts.multipart != null ->
+                            MultipartBody.Builder().setType(MultipartBody.FORM).apply {
+                                opts.multipart.forEach { pair ->
+                                    addFormDataPart(
+                                        pair.getOrElse(0) { "" },
+                                        pair.getOrElse(1) { "" },
+                                    )
+                                }
+                            }.build()
+                        opts.body != null -> opts.body.toRequestBody()
+                        currentMethod in setOf("POST", "PUT", "PATCH") ->
+                            ByteArray(0).toRequestBody()
+                        else -> null
+                    }
+
+                    method(currentMethod, body)
+                }.build()
+
+                val response = redirectClient.newCall(request).execute()
+                val location = response.header("Location")
+                val nextUrl = if (
+                    response.code in setOf(301, 302, 303, 307, 308) &&
+                    !location.isNullOrBlank()
                 ) {
-                    header("User-Agent", deviceUserAgent)
+                    currentUrl.resolve(location!!)
+                } else {
+                    null
                 }
-                val method = opts.method?.uppercase() ?: "GET"
-                val body = when {
-                    opts.bodyBase64 != null -> Base64.decode(opts.bodyBase64, Base64.NO_WRAP).toRequestBody()
-                    opts.multipart != null -> MultipartBody.Builder().setType(MultipartBody.FORM).apply {
-                        opts.multipart.forEach { pair ->
-                            addFormDataPart(pair.getOrElse(0) { "" }, pair.getOrElse(1) { "" })
+
+                if (nextUrl == null) {
+                    finalResponse = response
+                } else {
+                    val statusCode = response.code
+                    response.close()
+
+                    redirects++
+                    if (redirects > 10) {
+                        error("Too many redirects (limit: 10)")
+                    }
+
+                    if (nextUrl.toString() in visited) {
+                        error("Redirect loop detected")
+                    }
+
+                    if (!nextUrl.host.equals(currentUrl.host, ignoreCase = true)) {
+                        requestHeaders.keys.removeAll {
+                            it.equals("Authorization", true) ||
+                                it.equals("Cookie", true)
                         }
-                    }.build()
-                    opts.body != null && method !in setOf("GET", "HEAD") -> opts.body.toRequestBody()
-                    method in setOf("POST", "PUT", "PATCH") -> ByteArray(0).toRequestBody()
-                    else -> null
+                    }
+
+                    if (statusCode == 303 ||
+                        ((statusCode == 301 || statusCode == 302) &&
+                            currentMethod == "POST")
+                    ) {
+                        currentMethod = "GET"
+                        dropBody = true
+                    }
+
+                    currentUrl = nextUrl
                 }
-                method(method, body)
-            }.build()
-            client.newCall(request).execute().use { response ->
+            }
+
+            val responseToProcess = finalResponse
+                ?: error("Network request did not produce a response")
+
+            responseToProcess.use { response ->
                 val responseBytes = response.body.bytes()
                 val binary = opts.binary == true
+                val bodyText = if (binary) "" else responseBytes.toString(Charsets.UTF_8)
+
+                val captchaLikely =
+                    response.code == 403 ||
+                    response.code == 429 ||
+                    (!binary && Regex(
+                        "captcha|verify you are human|checking your browser|" +
+                            "just a moment|cf-chl-|challenge-platform|cloudflare ray id",
+                        RegexOption.IGNORE_CASE,
+                    ).containsMatchIn(bodyText.take(120_000)))
+
+                val headers = buildJsonObject {
+                    response.headers.names().forEach { name ->
+                        put(name.lowercase(), response.header(name).orEmpty())
+                    }
+                    if (captchaLikely) {
+                        put("x-msl-access-note", "captcha_or_access_block")
+                    }
+                }
+
                 buildJsonObject {
                     put("status", response.code)
-                    put("statusText", response.message)
-                    put("url", response.request.url.toString())
-                    put("body", if (binary) "" else responseBytes.toString(Charsets.UTF_8))
                     put(
-                        "bodyBase64",
-                        if (binary) JsonPrimitive(Base64.encodeToString(responseBytes, Base64.NO_WRAP)) else JsonNull,
-                    )
-                    put(
-                        "headers",
-                        buildJsonObject {
-                            response.headers.names().forEach { h -> put(h.lowercase(), response.header(h).orEmpty()) }
+                        "statusText",
+                        if (captchaLikely) {
+                            "Access challenge or blocking detected"
+                        } else {
+                            response.message
                         },
                     )
+                    put("url", response.request.url.toString())
+                    put("body", bodyText)
+                    put(
+                        "bodyBase64",
+                        if (binary) {
+                            JsonPrimitive(
+                                Base64.encodeToString(responseBytes, Base64.NO_WRAP),
+                            )
+                        } else {
+                            JsonNull
+                        },
+                    )
+                    put("headers", headers)
                 }.toString()
             }
-        } catch (t: Throwable) {
+        } catch (t: Exception) {
             buildJsonObject {
                 put("status", 0)
-                put("statusText", "")
+                put("statusText", t.message ?: t.javaClass.simpleName)
                 put("url", url)
                 put("body", "")
                 put("bodyBase64", JsonNull)
-                put("headers", buildJsonObject { })
+                put("headers", buildJsonObject {})
                 put("error", t.message ?: t.javaClass.simpleName)
             }.toString()
         }

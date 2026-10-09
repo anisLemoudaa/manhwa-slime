@@ -35,6 +35,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class NovelUiState(
@@ -70,6 +72,8 @@ fun NovelSectionContent() {
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(NovelUiState()) }
     var favoritesRevision by remember { mutableIntStateOf(0) }
+    var pluginsInitialized by remember { mutableStateOf(false) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
     val favoriteEntries = remember(favoritesRevision) {
         favoritesStore.all()
     }
@@ -78,21 +82,36 @@ fun NovelSectionContent() {
     }
 
     fun reload(sourceId: String? = state.selectedSource) {
+        searchJob?.cancel()
         scope.launch {
+            // Load installed JS plugins once instead of reinitializing every source change.
             val sources = runCatching {
-                manager.ensureLoaded()
+                if (!pluginsInitialized) {
+                    manager.ensureLoaded()
+                    pluginsInitialized = true
+                }
                 manager.installed()
             }.getOrDefault(emptyList())
+
             val sid = sourceId ?: sources.firstOrNull()?.id
-            state = state.copy(sources = sources, selectedSource = sid, loading = true, error = null, info = null)
+            state = state.copy(
+                sources = sources,
+                selectedSource = sid,
+                loading = true,
+                error = null,
+                info = null,
+            )
+
             if (sid != null) {
                 val data = runCatching { manager.latest(sid) }
-                state =
-                    state.copy(
+                // Ignore a late response if the user has already selected another source.
+                if (state.selectedSource == sid) {
+                    state = state.copy(
                         novels = data.getOrDefault(emptyList()),
                         loading = false,
                         error = data.exceptionOrNull()?.message,
                     )
+                }
             } else {
                 state = state.copy(novels = emptyList(), loading = false)
             }
@@ -123,17 +142,33 @@ fun NovelSectionContent() {
         },
         onSearch = { q ->
             state = state.copy(query = q, info = null)
+            searchJob?.cancel()
+
             val sid = state.selectedSource
-            if (sid != null && q.trim().isNotEmpty()) {
-                scope.launch {
-                    val r = runCatching { manager.search(sid, q.trim()) }
-                    state = state.copy(novels = r.getOrDefault(emptyList()), error = r.exceptionOrNull()?.message)
+            val query = q.trim()
+
+            if (sid != null && query.isNotEmpty()) {
+                // Wait until typing pauses before making a network/plugin request.
+                searchJob = scope.launch {
+                    delay(350)
+                    val r = runCatching { manager.search(sid, query) }
+
+                    // Do not let stale results overwrite a newer query or selected source.
+                    if (state.selectedSource == sid && state.query.trim() == query) {
+                        state = state.copy(
+                            novels = r.getOrDefault(emptyList()),
+                            error = r.exceptionOrNull()?.message,
+                        )
+                    }
                 }
-            } else if (q.trim().isEmpty()) {
+            } else if (query.isEmpty()) {
                 reload()
             }
         },
-        onSelectSource = { sid -> reload(sid) },
+        onSelectSource = { sid ->
+            searchJob?.cancel()
+            reload(sid)
+        },
         onAddRepository = { state = state.copy(repoDialog = true, error = null, info = null) },
         onInputModeChange = {
             state = state.copy(inputMode = it, repoEntries = emptyList(), error = null, info = null)
