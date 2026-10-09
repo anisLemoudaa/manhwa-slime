@@ -6,9 +6,12 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.core.net.toUri
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.zacsweers.metro.Inject
 import eu.kanade.presentation.webview.ProComicAdPolicy
 import eu.kanade.presentation.webview.WebViewScreenContent
@@ -36,12 +39,16 @@ class WebViewActivity : BaseActivity() {
     @Inject private lateinit var network: NetworkHelper
 
     private var assistUrl: String? = null
+    private var immersiveReaderMode = false
+    private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 
     init {
         registerSecureActivity(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val adFreeReader = intent.getBooleanExtra(AD_FREE_READER_KEY, false)
+        if (adFreeReader) enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(
                 OVERRIDE_TRANSITION_OPEN,
@@ -54,6 +61,7 @@ class WebViewActivity : BaseActivity() {
         }
         super.onCreate(savedInstanceState)
         appGraph.inject(this)
+        immersiveReaderMode = adFreeReader
 
         if (!WebViewUtil.supportsWebView(this)) {
             toast(MR.strings.information_webview_required, Toast.LENGTH_LONG)
@@ -62,11 +70,11 @@ class WebViewActivity : BaseActivity() {
         }
 
         val url = intent.extras?.getString(URL_KEY) ?: return
-        val adFreeReader = intent.getBooleanExtra(AD_FREE_READER_KEY, false)
         if (adFreeReader && !ProComicAdPolicy.isAllowedMainFrame(url)) {
             finish()
             return
         }
+        if (adFreeReader) applyImmersiveReaderMode()
         assistUrl = url
 
         setComposeContent {
@@ -99,6 +107,25 @@ class WebViewActivity : BaseActivity() {
                 onClearCookies = this::clearCookies,
             )
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (immersiveReaderMode) applyImmersiveReaderMode()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && immersiveReaderMode) applyImmersiveReaderMode()
+    }
+
+    private fun applyImmersiveReaderMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        windowInsetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     override fun onProvideAssistContent(outContent: AssistContent) {

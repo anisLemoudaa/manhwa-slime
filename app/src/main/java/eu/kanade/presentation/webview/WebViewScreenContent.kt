@@ -12,14 +12,13 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -259,7 +258,11 @@ fun WebViewScreenContent(
     }
 
     BackHandler(adFreeReader || windowStack.size > 1) {
-        if (windowStack.size > 1) popState() else onNavigateUp()
+        when {
+            windowStack.size > 1 -> popState()
+            adFreeReader && navigator.canGoBack -> navigator.navigateBack()
+            else -> onNavigateUp()
+        }
     }
 
     Scaffold(
@@ -359,6 +362,7 @@ fun WebViewScreenContent(
                 }
             }
         },
+        contentWindowInsets = if (adFreeReader) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
     ) { contentPadding ->
         // We need to key the WebView composable to the window object since simply updating the WebView composable will
         // not cause it to re-invoke the WebView factory and render the new current window's WebView. This lets us
@@ -409,22 +413,6 @@ fun WebViewScreenContent(
                     },
                 )
 
-                if (adFreeReader) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(12.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                    ) {
-                        IconButton(onClick = onNavigateUp) {
-                            Icon(
-                                imageVector = MaterialSymbols.Rounded.Close,
-                                contentDescription = stringResource(MR.strings.action_close),
-                            )
-                        }
-                    }
-                }
             }
         }
     }
