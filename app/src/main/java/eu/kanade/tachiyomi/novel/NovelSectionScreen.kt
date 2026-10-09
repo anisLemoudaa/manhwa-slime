@@ -611,6 +611,19 @@ class NovelReaderScreen(
         val manager = remember { NovelManagerHolder.get(context) }
         val historyStore = remember { NovelHistoryStore(context) }
         val dark = isSystemInDarkTheme()
+        val readerPrefs = remember {
+            context.getSharedPreferences("manhwa_slime_reader_prefs", android.content.Context.MODE_PRIVATE)
+        }
+        var fontSize by remember {
+            mutableFloatStateOf(readerPrefs.getFloat("font_size", 20f).coerceIn(14f, 32f))
+        }
+        var lineSpacing by remember {
+            mutableFloatStateOf(readerPrefs.getFloat("line_spacing", 2.05f).coerceIn(1.2f, 3f))
+        }
+        var fontFamily by remember {
+            mutableStateOf(readerPrefs.getString("font_family", "Noto Naskh Arabic") ?: "Noto Naskh Arabic")
+        }
+        var showReaderSettings by remember { mutableStateOf(false) }
 
         var currentIndex by remember {
             mutableIntStateOf(
@@ -698,6 +711,11 @@ class NovelReaderScreen(
                             onClick = { navigator.pop() },
                         ) {
                             Text("‹", fontSize = 32.sp)
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { showReaderSettings = true }) {
+                            Text("Aa", fontWeight = FontWeight.Bold)
                         }
                     },
                 )
@@ -798,9 +816,9 @@ class NovelReaderScreen(
                                 * { box-sizing: border-box; }
                                 html { background: $bg; }
                                 body {
-                                    font-family: "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif;
-                                    font-size: 20px;
-                                    line-height: 2.05;
+                                    font-family: "$fontFamily", "Noto Sans Arabic", sans-serif;
+                                    font-size: ${fontSize}px;
+                                    line-height: $lineSpacing;
                                     padding: 26px 21px 40px;
                                     margin: 0;
                                     background: $bg;
@@ -853,6 +871,77 @@ class NovelReaderScreen(
                     }
                 }
             }
+
+        if (showReaderSettings) {
+            AlertDialog(
+                onDismissRequest = { showReaderSettings = false },
+                title = { Text("تخصيص القراءة") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("حجم الخط: ${fontSize.toInt()}")
+                        Slider(
+                            value = fontSize,
+                            onValueChange = {
+                                fontSize = it
+                                readerPrefs.edit().putFloat("font_size", it).apply()
+                            },
+                            valueRange = 14f..32f,
+                            steps = 17,
+                        )
+                        Text("تباعد الأسطر: ${String.format(java.util.Locale.US, "%.2f", lineSpacing)}")
+                        Slider(
+                            value = lineSpacing,
+                            onValueChange = {
+                                lineSpacing = it
+                                readerPrefs.edit().putFloat("line_spacing", it).apply()
+                            },
+                            valueRange = 1.2f..3f,
+                            steps = 17,
+                        )
+                        Text("نوع الخط")
+                        listOf("Noto Naskh Arabic", "Noto Sans Arabic", "serif", "sans-serif").forEach { family ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        fontFamily = family
+                                        readerPrefs.edit().putString("font_family", family).apply()
+                                    }
+                                    .padding(vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = fontFamily == family,
+                                    onClick = {
+                                        fontFamily = family
+                                        readerPrefs.edit().putString("font_family", family).apply()
+                                    },
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(family)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showReaderSettings = false }) { Text("تم") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            fontSize = 20f
+                            lineSpacing = 2.05f
+                            fontFamily = "Noto Naskh Arabic"
+                            readerPrefs.edit()
+                                .putFloat("font_size", fontSize)
+                                .putFloat("line_spacing", lineSpacing)
+                                .putString("font_family", fontFamily)
+                                .apply()
+                        },
+                    ) { Text("إعادة الضبط") }
+                },
+            )
+        }
         }
     }
 }
