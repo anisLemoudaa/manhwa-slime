@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -122,6 +125,7 @@ fun WebViewScreenContent(
                 super.onPageFinished(view, url)
                 if (adFreeReader) {
                     view.evaluateJavascript(ProComicAdPolicy.hideAdsScript, null)
+                    view.evaluateJavascript(ProComicAdPolicy.readerOnlyScript, null)
                 }
                 scope.launch {
                     val html = view.getHtml()
@@ -254,11 +258,13 @@ fun WebViewScreenContent(
         }
     }
 
-    BackHandler(windowStack.size > 1, popState)
+    BackHandler(adFreeReader || windowStack.size > 1) {
+        if (windowStack.size > 1) popState() else onNavigateUp()
+    }
 
     Scaffold(
         topBar = {
-            Box {
+            if (!adFreeReader) Box {
                 Column {
                     AppBar(
                         title = currentWindow.state.pageTitle ?: initialTitle,
@@ -358,49 +364,68 @@ fun WebViewScreenContent(
         // not cause it to re-invoke the WebView factory and render the new current window's WebView. This lets us
         // completely reset the WebView composable when the current window switches.
         key(currentWindow) {
-            WebView(
-                state = currentWindow.state,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding),
-                navigator = navigator,
-                onCreated = { webView ->
-                    webView.setDefaultSettings()
+            Box(modifier = Modifier.fillMaxSize()) {
+                WebView(
+                    state = currentWindow.state,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding),
+                    navigator = navigator,
+                    onCreated = { webView ->
+                        webView.setDefaultSettings()
 
-                    // Debug mode (chrome://inspect/#devices)
-                    if (BuildConfig.DEBUG &&
-                        0 != webView.context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE
-                    ) {
-                        WebView.setWebContentsDebuggingEnabled(true)
-                    }
-
-                    webView.setUserAgent(headers["user-agent"] ?: defaultUserAgentProvider())
-                },
-                onDispose = { webView ->
-                    val window = windowStack.items.find { it.webView == webView }
-                    if (window == null) {
-                        // If we couldn't find any window on the stack that owns this WebView, it means that we can
-                        // safely dispose of it because the window containing it has been closed.
-                        webView.destroy()
-                    } else {
-                        // The composable is being disposed but the WebView object is not.
-                        // When the WebView element is recomposed, we will want the WebView to resume from its state
-                        // before it was unmounted, we won't want it to reset back to its original target.
-                        window.state.content = WebContent.NavigatorOnly
-                    }
-                },
-                client = webClient,
-                chromeClient = webChromeClient,
-                factory = { context ->
-                    currentWindow.webView
-                        ?: WebView(context).also { webView ->
-                            currentWindow.webView = webView
-                            currentWindow.popupMessage?.let {
-                                initializePopup(webView, it)
-                            }
+                        // Debug mode (chrome://inspect/#devices)
+                        if (BuildConfig.DEBUG &&
+                            0 != webView.context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE
+                        ) {
+                            WebView.setWebContentsDebuggingEnabled(true)
                         }
-                },
-            )
+
+                        webView.setUserAgent(headers["user-agent"] ?: defaultUserAgentProvider())
+                    },
+                    onDispose = { webView ->
+                        val window = windowStack.items.find { it.webView == webView }
+                        if (window == null) {
+                            // If we couldn't find any window on the stack that owns this WebView, it means that we can
+                            // safely dispose of it because the window containing it has been closed.
+                            webView.destroy()
+                        } else {
+                            // The composable is being disposed but the WebView element is not.
+                            // When the WebView element is recomposed, we will want it to resume from its state
+                            // before it was unmounted, we won't want it to reset back to its original target.
+                            window.state.content = WebContent.NavigatorOnly
+                        }
+                    },
+                    client = webClient,
+                    chromeClient = webChromeClient,
+                    factory = { context ->
+                        currentWindow.webView
+                            ?: WebView(context).also { webView ->
+                                currentWindow.webView = webView
+                                currentWindow.popupMessage?.let {
+                                    initializePopup(webView, it)
+                                }
+                            }
+                    },
+                )
+
+                if (adFreeReader) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    ) {
+                        IconButton(onClick = onNavigateUp) {
+                            Icon(
+                                imageVector = MaterialSymbols.Rounded.Close,
+                                contentDescription = stringResource(MR.strings.action_close),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
