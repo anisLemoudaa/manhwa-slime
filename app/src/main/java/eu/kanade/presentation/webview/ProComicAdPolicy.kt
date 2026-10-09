@@ -90,11 +90,34 @@ internal object ProComicAdPolicy {
                 return rows.every(function(row) { return element.contains(row); });
             };
 
+            const findNextChapterUrl = function() {
+                const links = Array.from(document.querySelectorAll('a[href]'));
+                const nextLink = links.find(function(link) {
+                    const label = (link.textContent || '').replace(/\s+/g, '').toLowerCase();
+                    const rel = (link.rel || '').toLowerCase().split(/\s+/);
+                    return label === 'التالي' || label === 'next' || rel.includes('next');
+                });
+                if (!nextLink) return null;
+                try {
+                    const nextUrl = new URL(nextLink.href, window.location.href);
+                    const host = nextUrl.hostname.toLowerCase();
+                    const isProComic = host === 'procomic.pro' || host.endsWith('.procomic.pro');
+                    if (nextUrl.protocol !== 'https:' || !isProComic ||
+                        !nextUrl.pathname.includes('/chapter/') || nextUrl.pathname === window.location.pathname) {
+                        return null;
+                    }
+                    return nextUrl.href;
+                } catch (error) {
+                    return null;
+                }
+            };
+
             const applyReaderOnly = function() {
                 ensureStyle();
                 const main = document.querySelector('main');
                 const rows = Array.from(document.querySelectorAll('[data-reader-image-row]'));
                 if (!main || rows.length === 0) return;
+                window.__mslimeNextChapterUrl = findNextChapterUrl();
 
                 // Find the first parent whose single child contains every page row while
                 // its other children are site chrome (title, description, controls, comments).
@@ -162,13 +185,99 @@ internal object ProComicAdPolicy {
                 }
             };
 
+            let lastContentHeight = 0;
+            let lastRowCount = 0;
+            let contentStableAt = Date.now();
+            let reachedBottomAt = 0;
+
+            const checkForNextChapter = function(userSwipedUp) {
+                if (window.__mslimeNavigatingNext) return;
+                const nextUrl = findNextChapterUrl();
+                window.__mslimeNextChapterUrl = nextUrl;
+                if (!nextUrl) {
+                    reachedBottomAt = 0;
+                    return;
+                }
+
+                const rows = Array.from(document.querySelectorAll('[data-reader-image-row]'));
+                if (rows.length === 0 || (!window.__mslimeReaderHasScrolled && !userSwipedUp)) {
+                    reachedBottomAt = 0;
+                    return;
+                }
+                const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+                if (height !== lastContentHeight || rows.length !== lastRowCount) {
+                    lastContentHeight = height;
+                    lastRowCount = rows.length;
+                    contentStableAt = Date.now();
+                }
+
+                const viewport = window.innerHeight || 1;
+                const distanceFromBottom = height - (window.scrollY + viewport);
+                const threshold = Math.max(120, Math.min(360, viewport * 0.14));
+                const fitsViewport = height <= viewport + threshold;
+                if (
+                    distanceFromBottom > threshold ||
+                    (window.scrollY <= 1 && fitsViewport && !window.__mslimeReaderHasScrolled && !userSwipedUp)
+                ) {
+                    reachedBottomAt = 0;
+                    return;
+                }
+
+                const morePagesPending = Array.from(document.querySelectorAll('div')).some(function(element) {
+                    return element.children.length === 0 &&
+                        /سيتم تحميل بقية الصفحات عند المتابعة|remaining pages.*continue/i.test(element.textContent || '');
+                });
+                if (morePagesPending) {
+                    reachedBottomAt = 0;
+                    return;
+                }
+
+                if (!reachedBottomAt) reachedBottomAt = Date.now();
+                const stayedAtEnd = Date.now() - reachedBottomAt >= 1100;
+                const contentIsStable = Date.now() - contentStableAt >= 900;
+                if (stayedAtEnd && contentIsStable) {
+                    window.__mslimeNavigatingNext = true;
+                    window.location.assign(nextUrl);
+                }
+            };
+
             window.__mslimeApplyProComicReaderOnly = applyReaderOnly;
+            window.__mslimeCheckProComicEnd = checkForNextChapter;
             if (!window.__mslimeProComicReaderObserver) {
                 window.__mslimeProComicReaderObserver = new MutationObserver(applyReaderOnly);
                 window.__mslimeProComicReaderObserver.observe(document.documentElement, {
                     childList:true,
                     subtree:true
                 });
+            }
+            if (!window.__mslimeProComicAutoNextInstalled) {
+                let touchStartY = null;
+                let previousScrollY = window.scrollY;
+                window.addEventListener('scroll', function() {
+                    const currentScrollY = window.scrollY;
+                    if (currentScrollY > previousScrollY + 1) window.__mslimeReaderHasScrolled = true;
+                    previousScrollY = currentScrollY;
+                    window.__mslimeCheckProComicEnd(false);
+                }, {passive:true});
+                window.addEventListener('resize', function() {
+                    window.__mslimeCheckProComicEnd(false);
+                }, {passive:true});
+                window.addEventListener('touchstart', function(event) {
+                    touchStartY = event.changedTouches[0].clientY;
+                }, {passive:true});
+                window.addEventListener('touchend', function(event) {
+                    const endY = event.changedTouches[0].clientY;
+                    const swipedUp = touchStartY !== null && touchStartY - endY > 48;
+                    touchStartY = null;
+                    if (swipedUp) {
+                        window.__mslimeReaderHasScrolled = true;
+                        window.__mslimeCheckProComicEnd(true);
+                    }
+                }, {passive:true});
+                window.setInterval(function() {
+                    window.__mslimeCheckProComicEnd(false);
+                }, 400);
+                window.__mslimeProComicAutoNextInstalled = true;
             }
             applyReaderOnly();
         })();
