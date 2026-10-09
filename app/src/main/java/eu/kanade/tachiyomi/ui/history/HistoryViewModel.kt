@@ -40,6 +40,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
@@ -61,6 +62,7 @@ class HistoryViewModel(
     private val getCategories: GetCategories,
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga,
     private val getHistory: GetHistory,
+    private val getChapter: GetChapter,
     private val getManga: GetManga,
     private val getNextChapters: GetNextChapters,
     private val libraryPreferences: LibraryPreferences,
@@ -116,6 +118,10 @@ class HistoryViewModel(
 
     suspend fun getNextChapter(): Chapter? {
         return withIOContext { getNextChapters.await(onlyUnread = false).firstOrNull() }
+    }
+
+    suspend fun getChapterById(chapterId: Long): Chapter? {
+        return withIOContext { getChapter.await(chapterId) }
     }
 
     fun getNextChapterForManga(mangaId: Long, chapterId: Long) {

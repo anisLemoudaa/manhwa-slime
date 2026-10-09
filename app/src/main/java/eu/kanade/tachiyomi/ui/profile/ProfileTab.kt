@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +55,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.launch
+import eu.kanade.tachiyomi.novel.NovelManagerHolder
+import eu.kanade.tachiyomi.novel.NovelReaderScreen
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.zacsweers.metrox.viewmodel.metroViewModel
 import eu.kanade.presentation.more.stats.RankSection
@@ -124,7 +131,9 @@ private data class UnifiedHistoryRow(
     val subtitle: String,
     val readAt: Long,
     val mangaCover: MangaCover? = null,
-    val isNovel: Boolean = false,
+    val mangaId: Long? = null,
+    val chapterId: Long? = null,
+    val novelEntry: NovelHistoryEntry? = null,
 )
 
 private fun historyDate(time: Long): String {
@@ -137,6 +146,8 @@ private fun historyDate(time: Long): String {
 private fun UnifiedHistorySection(
     historyState: HistoryViewModel.State,
     novelHistory: List<NovelHistoryEntry>,
+    onOpenManga: (mangaId: Long, chapterId: Long) -> Unit,
+    onOpenNovel: (NovelHistoryEntry) -> Unit,
 ) {
     val mangaRows = historyState.list.orEmpty().mapNotNull { item ->
         val history = (item as? HistoryUiModel.Item)?.item ?: return@mapNotNull null
@@ -150,7 +161,8 @@ private fun UnifiedHistorySection(
             },
             readAt = history.readAt?.time ?: 0L,
             mangaCover = history.coverData,
-            isNovel = false,
+            mangaId = history.mangaId,
+            chapterId = history.chapterId,
         )
     }
 
@@ -160,7 +172,7 @@ private fun UnifiedHistorySection(
             subtitle = "رواية • ${it.chapterName}",
             readAt = it.readAt,
             mangaCover = null,
-            isNovel = true,
+            novelEntry = it,
         )
     }
 
@@ -190,9 +202,20 @@ private fun UnifiedHistorySection(
                 modifier = Modifier.padding(vertical = 6.dp),
             ) {
                 rows.forEach { row ->
+                    val openManga = row.mangaId?.let { mangaId ->
+                        row.chapterId?.let { chapterId ->
+                            { onOpenManga(mangaId, chapterId) }
+                        }
+                    }
+                    val openNovel = row.novelEntry?.let { entry ->
+                        { onOpenNovel(entry) }
+                    }
+                    val openRow = openManga ?: openNovel
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable(enabled = openRow != null) { openRow?.invoke() }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -200,7 +223,7 @@ private fun UnifiedHistorySection(
                             eu.kanade.presentation.manga.components.MangaCover.Book(
                                 modifier = Modifier.size(width = 52.dp, height = 72.dp),
                                 data = row.mangaCover,
-                                onClick = {},
+                                onClick = { openManga?.invoke() },
                             )
                         } else {
                             Box(
@@ -434,6 +457,8 @@ data object ProfileTab : Tab {
     @Composable
     private fun ProfileContent() {
         val ctx = LocalContext.current
+        val navigator = LocalNavigator.currentOrThrow
+        val scope = rememberCoroutineScope()
         val viewModel = metroViewModel<StatsViewModel>()
         val state by viewModel.state.collectAsState()
         val historyViewModel = metroViewModel<HistoryViewModel>()
@@ -543,6 +568,53 @@ data object ProfileTab : Tab {
             UnifiedHistorySection(
                 historyState = historyState,
                 novelHistory = novelHistory,
+                onOpenManga = { _, chapterId ->
+                    scope.launch {
+                        val chapter = historyViewModel.getChapterById(chapterId)
+                        if (chapter != null) {
+                            ctx.startActivity(
+                                ReaderActivity.newIntent(
+                                    ctx,
+                                    chapter.mangaId,
+                                    chapter.id,
+                                ),
+                            )
+                        }
+                    }
+                },
+                onOpenNovel = { entry ->
+                    scope.launch {
+                        val details = runCatching {
+                            NovelManagerHolder.get(ctx).details(
+                                entry.sourceId,
+                                entry.novelPath,
+                            )
+                        }.getOrNull() ?: return@launch
+
+                        val chapters = details.chapters.orEmpty()
+                        if (chapters.isEmpty()) return@launch
+
+                        val exactIndex = chapters.indexOfFirst {
+                            it.path == entry.chapterPath
+                        }
+
+                        val index = when {
+                            exactIndex >= 0 -> exactIndex
+                            else -> entry.chapterIndex.coerceIn(0, chapters.lastIndex)
+                        }
+
+                        navigator.push(
+                            NovelReaderScreen(
+                                sourceId = entry.sourceId,
+                                novelPath = entry.novelPath,
+                                novelName = entry.novelTitle,
+                                novelCover = details.cover ?: entry.cover,
+                                chapters = chapters,
+                                chapterIndex = index,
+                            ),
+                        )
+                    }
+                },
             )
             if (s is StatsScreenState.Success) {
                 val ms = s.overview.totalReadDuration

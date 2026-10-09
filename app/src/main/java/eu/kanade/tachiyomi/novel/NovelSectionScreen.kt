@@ -4,6 +4,8 @@
 
 package eu.kanade.tachiyomi.novel
 
+import eu.kanade.tachiyomi.mslime.MslCommentsDialog
+
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -462,6 +464,7 @@ class NovelDetailsScreen(
     @Composable
     override fun Content() {
         val context = LocalContext.current
+        var showNovelComments by remember { mutableStateOf(false) }
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
         val favoritesStore = remember { NovelFavoritesStore(context) }
@@ -550,6 +553,13 @@ class NovelDetailsScreen(
                                 )
                             }
                             Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { showNovelComments = true },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("💬 التعليقات")
+                            }
+                            Spacer(Modifier.height(8.dp))
                             Text("الفصول", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -575,6 +585,13 @@ class NovelDetailsScreen(
                 }
             }
         }
+        if (showNovelComments) {
+            MslCommentsDialog(
+                title = details?.name ?: fallbackName,
+                onDismiss = { showNovelComments = false },
+            )
+        }
+
     }
 }
 
@@ -771,36 +788,46 @@ class NovelReaderScreen(
                             }
                         },
                         update = { webView ->
-                            val bg =
-                                if (dark) "#111111" else "#ffffff"
-
-                            val fg =
-                                if (dark) "#eeeeee" else "#171717"
+                            val bg = if (dark) "#10131A" else "#F7F8FC"
+                            val fg = if (dark) "#E7EAF2" else "#252A36"
+                            val accent = if (dark) "#A99BFF" else "#6652D9"
 
                             val style = """
+                                <meta name="viewport" content="width=device-width, initial-scale=1">
                                 <style>
+                                * { box-sizing: border-box; }
+                                html { background: $bg; }
                                 body {
-                                    font-family: sans-serif;
-                                    font-size: 19px;
-                                    line-height: 1.95;
-                                    padding: 20px;
+                                    font-family: "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif;
+                                    font-size: 20px;
+                                    line-height: 2.05;
+                                    padding: 26px 21px 40px;
                                     margin: 0;
                                     background: $bg;
                                     color: $fg;
+                                    overflow-wrap: anywhere;
+                                    text-align: start;
                                 }
-
-                                img {
-                                    max-width: 100%;
-                                    height: auto;
+                                h1, h2, h3 {
+                                    line-height: 1.65;
+                                    color: $accent;
+                                    margin: 1.5em 0 .7em;
                                 }
-
-                                p {
-                                    margin-bottom: 1.1em;
+                                p { margin: 0 0 1.35em; }
+                                img, video { max-width: 100%; height: auto; border-radius: 12px; }
+                                a { color: $accent; }
+                                blockquote {
+                                    margin: 1.2em 0;
+                                    padding: 8px 16px;
+                                    border-inline-start: 3px solid $accent;
+                                    background: ${if (dark) "#191D27" else "#ECEAFF"};
+                                    border-radius: 8px;
                                 }
-
-                                a {
-                                    color: inherit;
+                                pre, code {
+                                    white-space: pre-wrap;
+                                    overflow-wrap: anywhere;
                                 }
+                                table { max-width: 100%; display: block; overflow-x: auto; }
                                 </style>
                             """.trimIndent()
 
