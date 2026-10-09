@@ -84,6 +84,7 @@ fun WebViewScreenContent(
     onClearCookies: (String) -> Unit,
     headers: Map<String, String> = emptyMap(),
     onUrlChange: (String) -> Unit = {},
+    onWebViewCreated: (WebView) -> Unit = {},
 ) {
     val coroutineScope = rememberCoroutineScope()
 
@@ -377,6 +378,7 @@ fun WebViewScreenContent(
                     navigator = navigator,
                     onCreated = { webView ->
                         webView.setDefaultSettings()
+                        onWebViewCreated(webView)
 
                         // Debug mode (chrome://inspect/#devices)
                         if (BuildConfig.DEBUG &&

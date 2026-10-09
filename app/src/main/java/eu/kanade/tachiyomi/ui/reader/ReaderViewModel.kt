@@ -337,14 +337,23 @@ class ReaderViewModel(
 
                 if (source is ProComicSource) {
                     val chapter = chapterList.first { it.chapter.id == chapterId }.chapter
-                    check(chapter.url.startsWith("/ar/chapter/")) { "Invalid ProComic chapter path" }
-                    mutableState.update {
-                        it.copy(
-                            proComicReaderUrl = source.baseUrl + chapter.url,
-                            proComicReaderTitle = chapter.name,
-                        )
+                    val downloaded = downloadManager.isChapterDownloaded(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.title,
+                        manga.source,
+                    )
+                    if (!downloaded) {
+                        check(chapter.url.startsWith("/ar/chapter/")) { "Invalid ProComic chapter path" }
+                        mutableState.update {
+                            it.copy(
+                                proComicReaderUrl = source.baseUrl + chapter.url,
+                                proComicReaderTitle = chapter.name,
+                            )
+                        }
+                        return@withIOContext
                     }
-                    return@withIOContext
                 }
 
                 loader = ChapterLoader(context, downloadManager, downloadProvider, chapterCache, manga, source)

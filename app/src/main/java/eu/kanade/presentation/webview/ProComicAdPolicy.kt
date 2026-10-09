@@ -112,6 +112,53 @@ internal object ProComicAdPolicy {
                 }
             };
 
+            const collectRenderedChapterPages = function() {
+                const chapterPath = window.location.pathname;
+                if (window.__mslimeCollectedProComicChapter !== chapterPath) {
+                    window.__mslimeCollectedProComicChapter = chapterPath;
+                    window.__mslimeCollectedProComicPageUrls = [];
+                }
+                const collected = new Set(window.__mslimeCollectedProComicPageUrls || []);
+                Array.from(document.querySelectorAll('[data-reader-image-row] img'))
+                    .map(function(image) { return image.currentSrc || image.src; })
+                    .filter(function(rawUrl) {
+                        try {
+                            const imageUrl = new URL(rawUrl, window.location.href);
+                            return imageUrl.protocol === 'https:' &&
+                                imageUrl.hostname.toLowerCase() === 'app.procomic.pro' &&
+                                imageUrl.pathname.includes('/chapters/');
+                        } catch (error) {
+                            return false;
+                        }
+                    })
+                    .forEach(function(pageUrl) { collected.add(pageUrl); });
+                window.__mslimeCollectedProComicPageUrls = Array.from(collected);
+                return window.__mslimeCollectedProComicPageUrls;
+            };
+
+            const syncRenderedChapterPages = function() {
+                const bridge = window.MslProComicDownloadBridge;
+                const chapterPath = window.location.pathname;
+                if (!bridge) return;
+                if (window.__mslimeSyncedProComicChapter !== chapterPath) {
+                    window.__mslimeSyncedProComicChapter = chapterPath;
+                    window.__mslimeSyncedProComicPageCount = 0;
+                }
+                const pageUrls = collectRenderedChapterPages();
+                const syncedCount = window.__mslimeSyncedProComicPageCount || 0;
+                if (!pageUrls || pageUrls.length <= syncedCount) return;
+                const newPageUrls = pageUrls.slice(syncedCount, Math.min(pageUrls.length, syncedCount + 100));
+                if (newPageUrls.length === 0) return;
+                try {
+                    bridge.cacheChapterPages(window.location.href, JSON.stringify(newPageUrls));
+                    window.__mslimeSyncedProComicPageCount = syncedCount + newPageUrls.length;
+                } catch (error) {}
+            };
+
+            const cacheRenderedChapterPages = function() {
+                syncRenderedChapterPages();
+            };
+
             const applyReaderOnly = function() {
                 ensureStyle();
                 const main = document.querySelector('main');
@@ -194,16 +241,14 @@ internal object ProComicAdPolicy {
                 if (window.__mslimeNavigatingNext) return;
                 const nextUrl = findNextChapterUrl();
                 window.__mslimeNextChapterUrl = nextUrl;
-                if (!nextUrl) {
-                    reachedBottomAt = 0;
-                    return;
-                }
 
                 const rows = Array.from(document.querySelectorAll('[data-reader-image-row]'));
                 if (rows.length === 0 || (!window.__mslimeReaderHasScrolled && !userSwipedUp)) {
                     reachedBottomAt = 0;
                     return;
                 }
+                collectRenderedChapterPages();
+                syncRenderedChapterPages();
                 const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
                 if (height !== lastContentHeight || rows.length !== lastRowCount) {
                     lastContentHeight = height;
@@ -236,8 +281,24 @@ internal object ProComicAdPolicy {
                 const stayedAtEnd = Date.now() - reachedBottomAt >= 1100;
                 const contentIsStable = Date.now() - contentStableAt >= 900;
                 if (stayedAtEnd && contentIsStable) {
-                    window.__mslimeNavigatingNext = true;
-                    window.location.assign(nextUrl);
+                    cacheRenderedChapterPages();
+                    const bridge = window.MslProComicDownloadBridge;
+                    const allPages = collectRenderedChapterPages();
+                    const syncedCount = window.__mslimeSyncedProComicPageCount || 0;
+                    if (bridge && syncedCount < allPages.length) return;
+                    if (bridge && typeof bridge.chapterPagesReady === 'function') {
+                        const ready = bridge.chapterPagesReady(window.location.href);
+                        if (!ready) return;
+                    }
+                    if (bridge && typeof bridge.isDownloadPreparation === 'function' &&
+                        bridge.isDownloadPreparation()) {
+                        window.__mslimeDownloadPreparationReady = true;
+                        return;
+                    }
+                    if (nextUrl) {
+                        window.__mslimeNavigatingNext = true;
+                        window.location.assign(nextUrl);
+                    }
                 }
             };
 

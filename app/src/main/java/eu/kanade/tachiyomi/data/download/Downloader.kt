@@ -10,6 +10,7 @@ import eu.kanade.domain.manga.model.getComicInfo
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.mslime.MslWallet
+import eu.kanade.tachiyomi.mslime.ProComicChapterNotPreparedException
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.network.HttpException
@@ -475,7 +476,12 @@ class Downloader(
             // If the page list threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = Download.State.ERROR
-            notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
+            val errorMessage = if (error is ProComicChapterNotPreparedException) {
+                context.stringResource(MR.strings.procomic_download_scroll_hint)
+            } else {
+                error.message
+            }
+            notifier.onError(errorMessage, download.chapter.name, download.manga.title, download.manga.id)
         }
     }
 

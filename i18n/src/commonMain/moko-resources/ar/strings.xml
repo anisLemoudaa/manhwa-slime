@@ -180,6 +180,8 @@
     <string name="sort_by_source">حسب المصدر</string>
     <string name="sort_by_number">حسب رقم الفصل</string>
     <string name="manga_download">تنزيل</string>
+    <string name="procomic_download_scroll_hint">مرّر الفصل إلى نهايته مرة واحدة حتى تُحمّل جميع صفحاته؛ سيبدأ التنزيل تلقائيًا.</string>
+    <string name="procomic_download_started">اكتمل تجهيز صفحات الفصل وبدأ التنزيل.</string>
     <string name="download_unread">غير مقروء</string>
     <string name="confirm_delete_chapters">هل أنت متأكد من أنك تريد حذف الفصول المحددة؟</string>
     <string name="manga_tracking_tab">التتبع</string>

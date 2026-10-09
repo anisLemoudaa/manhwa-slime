@@ -21,9 +21,66 @@ import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
+
+internal fun orderProComicPageUrls(candidates: List<String>): List<String> {
+    val pageNumber = Regex("""/p(\d+)(?:/|-)""", RegexOption.IGNORE_CASE)
+    val numbered = candidates.mapNotNull { url ->
+        pageNumber.find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?.let { it to url }
+    }.groupBy(
+        keySelector = { it.first },
+        valueTransform = { it.second },
+    )
+
+    val numberedUrls = numbered.toSortedMap().values.mapNotNull { variants ->
+        variants.distinct().minByOrNull { url ->
+            val cleanPath = url.substringBefore('?').lowercase(Locale.ROOT)
+            when {
+                cleanPath.contains("-desktop") -> 0
+                cleanPath.contains("-mobile") -> 2
+                else -> 1
+            }
+        }
+    }
+    val unnumberedUrls = candidates.filter { pageNumber.find(it) == null }
+
+    return (numberedUrls + unnumberedUrls).distinct().ifEmpty { candidates.distinct() }
+}
+
+internal fun extractProComicPageUrls(html: String): List<String> {
+    val normalizedHtml = html
+        .replace("\\/", "/")
+        .replace("\\u002F", "/")
+        .replace("\\u002f", "/")
+        .replace("&amp;", "&")
+
+    val urlRegex = Regex(
+        """(?:https?://app\.procomic\.pro/chapters/[^"'\\\s<>]+|//app\.procomic\.pro/chapters/[^"'\\\s<>]+|(?<![A-Za-z0-9._:/])/chapters/[^"'\\\s<>]+)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    val candidates = urlRegex.findAll(normalizedHtml)
+        .map { it.value.trimEnd(',', ';', ')', ']', '}') }
+        .map { url ->
+            when {
+                url.startsWith("//") -> "https:$url"
+                url.startsWith("/") -> "https://app.procomic.pro$url"
+                else -> url
+            }
+        }
+        .distinct()
+        .toList()
+
+    return orderProComicPageUrls(candidates)
+}
 
 class ProComicSource : HttpSource() {
 
@@ -33,6 +90,69 @@ class ProComicSource : HttpSource() {
     override val supportsLatest = true
 
     private val json = Json { ignoreUnknownKeys = true }
+    private data class CachedReaderPageList(val savedAt: Long, val urls: List<String>, val complete: Boolean)
+    private val readerPageLists = ConcurrentHashMap<String, CachedReaderPageList>()
+    private val readerPageListTtlMs = 30 * 60 * 1000L
+
+    internal fun cacheReaderPageUrls(chapterUrl: String, imageUrls: List<String>) {
+        val chapter = runCatching { URI(chapterUrl) }.getOrNull() ?: return
+        val host = chapter.host?.lowercase(Locale.ROOT).orEmpty()
+        val chapterPath = chapter.path.orEmpty()
+        if (
+            chapter.scheme != "https" ||
+            host != "procomic.pro" ||
+            !chapterPath.startsWith("/ar/chapter/")
+        ) return
+
+        val chapterId = chapterPath.substringAfterLast('-').takeIf { it.isNotBlank() && it.all(Char::isDigit) }
+            ?: return
+        val pagePath = Regex("""/p\d+(?:/|-)""", RegexOption.IGNORE_CASE)
+        val urls = imageUrls.asSequence()
+            .take(2_000)
+            .mapNotNull { rawUrl ->
+                val image = runCatching { URI(rawUrl) }.getOrNull() ?: return@mapNotNull null
+                if (image.scheme != "https" || image.host?.equals("app.procomic.pro", ignoreCase = true) != true) {
+                    return@mapNotNull null
+                }
+                val segments = image.path.orEmpty().split('/').filter(String::isNotBlank)
+                if (segments.getOrNull(0) != "chapters" || segments.getOrNull(2) != chapterId) return@mapNotNull null
+                if (!pagePath.containsMatchIn(image.path.orEmpty())) return@mapNotNull null
+                rawUrl
+            }
+            .toList()
+        val orderedUrls = orderProComicPageUrls(urls).take(2_000)
+        if (orderedUrls.isEmpty()) return
+
+        val now = System.currentTimeMillis()
+        readerPageLists.entries.removeIf { now - it.value.savedAt > readerPageListTtlMs }
+        val previousUrls = readerPageLists[chapterPath]?.urls.orEmpty()
+        val mergedUrls = orderProComicPageUrls(previousUrls + orderedUrls).take(2_000)
+        val wasComplete = readerPageLists[chapterPath]?.complete == true
+        readerPageLists[chapterPath] = CachedReaderPageList(now, mergedUrls, wasComplete)
+    }
+
+    internal fun markReaderPageListComplete(chapterUrl: String): Boolean {
+        val chapter = runCatching { URI(chapterUrl) }.getOrNull() ?: return false
+        if (
+            chapter.scheme != "https" ||
+            chapter.host?.equals("procomic.pro", ignoreCase = true) != true ||
+            !chapter.path.orEmpty().startsWith("/ar/chapter/")
+        ) return false
+        val path = chapter.path.orEmpty()
+        val cached = readerPageLists[path] ?: return false
+        if (cached.urls.isEmpty() || System.currentTimeMillis() - cached.savedAt > readerPageListTtlMs) return false
+        readerPageLists[path] = cached.copy(savedAt = System.currentTimeMillis(), complete = true)
+        return true
+    }
+
+    internal fun cachedReaderPageUrls(chapterPath: String): List<String>? {
+        val cachedPages = readerPageLists[chapterPath] ?: return null
+        if (System.currentTimeMillis() - cachedPages.savedAt <= readerPageListTtlMs) {
+            return cachedPages.urls
+        }
+        readerPageLists.remove(chapterPath, cachedPages)
+        return null
+    }
 
     override fun headersBuilder(): Headers.Builder =
         super.headersBuilder().add("Referer", "$baseUrl/")
@@ -197,84 +317,20 @@ class ProComicSource : HttpSource() {
     override fun pageListRequest(chapter: SChapter): Request = GET(baseUrl + chapter.url, headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val html = response.use { it.body.string() }
-
-        // توحيد الروابط التي قد تكون مخزنة داخل JSON أو JavaScript.
-        val normalizedHtml = html
-            .replace("\\/", "/")
-            .replace("\\u002F", "/")
-            .replace("\\u002f", "/")
-            .replace("&amp;", "&")
-
-        // استخراج جميع روابط صور الفصول، وليس نسخة desktop فقط.
-        val urlRegex = Regex(
-            """https?://app\.procomic\.pro/chapters/[^"'\\\s<>]+""",
-            RegexOption.IGNORE_CASE,
-        )
-
-        val candidates = urlRegex.findAll(normalizedHtml)
-            .map { it.value.trimEnd(',', ';', ')', ']', '}') }
-            .filter { it.contains("/chapters/", ignoreCase = true) }
-            .distinct()
-            .toList()
-
-        // استخراج رقم الصفحة من اسم الصورة، مثل p1- وp25-.
-        val pageNumber = Regex(
-            """/p(\d+)-""",
-            RegexOption.IGNORE_CASE,
-        )
-
-        // جمع نسخ الصور حسب رقم الصفحة لتجنب تكرار الصفحة نفسها.
-        val numbered = candidates.mapNotNull { url ->
-            val number = pageNumber.find(url)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
-
-            number?.let { it to url }
-        }.groupBy(
-            keySelector = { it.first },
-            valueTransform = { it.second },
-        )
-
-        // تفضيل نسخة desktop عند وجودها، مع الاحتفاظ بالبدائل.
-        val numberedUrls = numbered.toSortedMap().values.mapNotNull { variants ->
-            variants.distinct().minByOrNull { url ->
-                val cleanPath = url.substringBefore('?').lowercase(Locale.ROOT)
-
-                when {
-                    cleanPath.contains("-desktop") -> 0
-                    cleanPath.contains("-mobile") -> 2
-                    else -> 1
-                }
-            }
+        val chapterPath = response.request.url.encodedPath
+        val cachedPages = readerPageLists[chapterPath]
+        if (cachedPages != null && System.currentTimeMillis() - cachedPages.savedAt <= readerPageListTtlMs) {
+            response.close()
+            if (!cachedPages.complete) throw ProComicChapterNotPreparedException()
+            return cachedPages.urls.mapIndexed { index, url -> Page(index, imageUrl = url) }
         }
-
-        // عدم إسقاط الصور التي لا يتضمن اسمها رقم صفحة معروفًا.
-        val unnumberedUrls = candidates.filter {
-            pageNumber.find(it) == null
-        }
-
-        val urls = (numberedUrls + unnumberedUrls)
-            .distinct()
-            .ifEmpty { candidates }
-
-        // تسجيل معلومات مفيدة إذا بقي عدد الصفحات المستخرجة صغيرًا.
-        if (urls.size <= 3) {
-            android.util.Log.w(
-                "ProComicSource",
-                "Parsed ${urls.size} unique page image URLs " +
-                    "from ${candidates.size} matching URLs. " +
-                    "If the chapter has more pages, the remaining URLs " +
-                    "may be loaded through the site's API or JavaScript.",
-            )
-        }
-
-        return urls.mapIndexed { index, url ->
-            Page(index, imageUrl = url)
-        }
+        if (cachedPages != null) readerPageLists.remove(chapterPath, cachedPages)
+        response.close()
+        throw ProComicChapterNotPreparedException()
     }
 
 
     override fun imageUrlParse(response: Response): String = ""
 }
+
+class ProComicChapterNotPreparedException : Exception()
