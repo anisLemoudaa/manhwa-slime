@@ -89,6 +89,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
+import eu.kanade.tachiyomi.mslime.MslAds
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isBenchmarkBuildType
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
@@ -167,6 +168,8 @@ class MainActivity : BaseActivity() {
             finish()
             return
         }
+
+        MslAds.requestConsentAndInitialize(this)
 
         setComposeContent {
             val context = LocalContext.current

@@ -4,8 +4,9 @@
 
 package eu.kanade.tachiyomi.novel
 
-import eu.kanade.tachiyomi.mslime.MslCommentsDialog
-
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -35,9 +36,18 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.MslCommentsDialog
+import eu.kanade.tachiyomi.mslime.MslWallet
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 
 private data class NovelUiState(
     val sources: List<NovelSourceRuntime> = emptyList(),
@@ -312,6 +322,8 @@ private fun NovelShell(
 
                     if (state.showFavorites && visibleNovels.isEmpty()) {
                         EmptyFavorites()
+                    } else if (visibleNovels.isEmpty()) {
+                        EmptyNovelResults(state.query, state.error != null)
                     } else {
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(145.dp),
@@ -491,6 +503,28 @@ private fun EmptyFavorites() {
     }
 }
 
+@Composable
+private fun EmptyNovelResults(query: String, hasError: Boolean) {
+    val message = when {
+        hasError -> "تعذر تحميل الروايات من هذا المصدر."
+        query.isNotBlank() -> "لم يتم العثور على نتائج لـ «${query.trim()}»."
+        else -> "لا توجد روايات متاحة لهذا المصدر حاليًا."
+    }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (query.isNotBlank() && !hasError) {
+            Spacer(Modifier.height(8.dp))
+            Text("جرّب عنوانًا آخر أو تحقق من المصدر المحدد.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 class NovelDetailsScreen(
     private val sourceId: String,
     private val path: String,
@@ -645,6 +679,9 @@ class NovelReaderScreen(
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
         val historyStore = remember { NovelHistoryStore(context) }
+        val offlineStore = remember { NovelOfflineStore(context) }
+        val scope = rememberCoroutineScope()
+        val snackbarHostState = remember { SnackbarHostState() }
         val dark = isSystemInDarkTheme()
         val readerPrefs = remember {
             context.getSharedPreferences("manhwa_slime_reader_prefs", android.content.Context.MODE_PRIVATE)
@@ -672,12 +709,14 @@ class NovelReaderScreen(
         var html by remember { mutableStateOf<String?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         var loading by remember { mutableStateOf(true) }
+        var offlineSaved by remember { mutableStateOf(false) }
+        var offlineSaving by remember { mutableStateOf(false) }
 
         LaunchedEffect(currentIndex, sourceId) {
             val chapter = chapters.getOrNull(currentIndex)
 
             if (chapter == null) {
-                error = "الفصل غير موجود"
+                error = context.stringResource(MR.strings.coin_chapter_missing)
                 loading = false
                 return@LaunchedEffect
             }
@@ -685,9 +724,13 @@ class NovelReaderScreen(
             loading = true
             html = null
             error = null
+            val cachedContent = runCatching {
+                withContext(Dispatchers.IO) { offlineStore.read(sourceId, novelPath, chapter.path) }
+            }.getOrNull()
+            offlineSaved = cachedContent != null
 
             val result = runCatching {
-                manager.chapter(sourceId, chapter.path)
+                cachedContent ?: manager.chapter(sourceId, chapter.path)
             }
 
             result.onSuccess { content ->
@@ -709,7 +752,7 @@ class NovelReaderScreen(
             }
 
             result.onFailure {
-                error = it.message ?: "تعذر تحميل الفصل"
+                error = it.message ?: context.stringResource(MR.strings.coin_chapter_load_failed)
             }
 
             loading = false
@@ -749,12 +792,65 @@ class NovelReaderScreen(
                         }
                     },
                     actions = {
+                        TextButton(
+                            enabled = MslWallet.enabled && html != null && !loading && !offlineSaving && !offlineSaved,
+                            onClick = {
+                                val chapter = chapters.getOrNull(currentIndex) ?: return@TextButton
+                                val content = html ?: return@TextButton
+                                scope.launch {
+                                    offlineSaving = true
+                                    try {
+                                        val reservationId = UUID.randomUUID().toString()
+                                        val reservation = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                MslWallet.reserveDownload(
+                                                    context,
+                                                    reservationId,
+                                                    "novel:$sourceId:$novelPath:${chapter.path}",
+                                                )
+                                            }
+                                        }.getOrNull()
+                                        if (reservation == null) {
+                                            runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
+                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_balance_check_failed))
+                                            return@launch
+                                        }
+                                        if (!reservation.allowed) {
+                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_no_balance))
+                                            return@launch
+                                        }
+                                        val saved = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                offlineStore.save(sourceId, novelPath, chapter.path, content)
+                                            }
+                                        }
+                                        if (saved.isFailure) {
+                                            runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
+                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_save_failed))
+                                            return@launch
+                                        }
+                                        runCatching { withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) } }
+                                        offlineSaved = true
+                                        snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_saved_message))
+                                    } finally {
+                                        offlineSaving = false
+                                    }
+                                }
+                            },
+                        ) {
+                            Text(when {
+                                offlineSaved -> stringResource(MR.strings.coin_download_saved_label)
+                                offlineSaving -> stringResource(MR.strings.coin_download_saving)
+                                else -> stringResource(MR.strings.coin_download_button)
+                            })
+                        }
                         TextButton(onClick = { showReaderSettings = true }) {
                             Text("Aa", fontWeight = FontWeight.Bold)
                         }
                     },
                 )
             },
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             bottomBar = {
                 Surface(
                     tonalElevation = 4.dp,
@@ -776,7 +872,7 @@ class NovelReaderScreen(
                                 }
                             },
                         ) {
-                            Text("‹ السابق")
+                            Text(stringResource(MR.strings.coin_reader_previous))
                         }
 
                         Text(
@@ -786,14 +882,26 @@ class NovelReaderScreen(
 
                         Button(
                             modifier = Modifier.weight(1f),
-                            enabled = hasNext && !loading,
+                            enabled = hasNext && !loading && html != null,
                             onClick = {
                                 if (hasNext) {
+                                    if (!offlineSaved) {
+                                        val chapter = chapters.getOrNull(currentIndex)
+                                        if (chapter != null) {
+                                            MslAds.recordOnlineChapterCompleted(
+                                                context,
+                                                "novel:$sourceId:$novelPath:${chapter.path}",
+                                            )
+                                            context.findActivity()?.let { activity ->
+                                                MslAds.showPendingInterstitialAtChapterBreak(activity)
+                                            }
+                                        }
+                                    }
                                     currentIndex++
                                 }
                             },
                         ) {
-                            Text("التالي ›")
+                            Text(stringResource(MR.strings.coin_reader_next))
                         }
                     }
                 }
@@ -979,4 +1087,13 @@ class NovelReaderScreen(
         }
         }
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return current as? Activity
 }

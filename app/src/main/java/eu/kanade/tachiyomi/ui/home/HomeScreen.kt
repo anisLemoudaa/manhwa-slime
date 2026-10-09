@@ -67,6 +67,7 @@ import cafe.adriel.voyager.navigator.tab.TabNavigator
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.novel.NovelSectionContent
+import eu.kanade.tachiyomi.mslime.MslCoinWalletHeader
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
@@ -223,6 +224,7 @@ object HomeScreen : Screen() {
         onModeChange: (MediaMode) -> Unit,
     ) {
         Column(Modifier.fillMaxSize()) {
+            MslCoinWalletHeader()
             MediaModeSwitcher(mode = mode, onModeChange = onModeChange)
             AnimatedContent(
                 targetState = mode,

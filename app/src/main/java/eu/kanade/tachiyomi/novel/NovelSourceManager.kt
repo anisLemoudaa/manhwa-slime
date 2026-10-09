@@ -9,16 +9,40 @@ import okhttp3.Request
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
+private data class BundledNovelSource(
+    val manifest: NovelRepositoryEntry,
+    val assetPath: String,
+)
+
 class NovelSourceManager(
     context: Context,
     private val store: NovelPluginStore = NovelPluginStore(context.applicationContext),
     private val network: NetworkHelper = Injekt.get(),
     private val host: NovelPluginHost = NovelPluginHost(context.applicationContext, store, network),
 ) {
+    private val appContext = context.applicationContext
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
+    private val bundledSources = listOf(
+        BundledNovelSource(
+            NovelRepositoryEntry("cenele", "فضاء الروايات", "https://cenele.com", "ar", "1.0.0", "builtin://cenele"),
+            "novel-plugins/cenele.js",
+        ),
+        BundledNovelSource(
+            NovelRepositoryEntry("kolnovel", "ملوك الروايات", "https://kolnovel.com", "ar", "1.0.0", "builtin://kolnovel"),
+            "novel-plugins/kolnovel.js",
+        ),
+        BundledNovelSource(
+            NovelRepositoryEntry("sunovels", "شمس الروايات", "https://sunovels.com", "ar", "1.0.0", "builtin://sunovels"),
+            "novel-plugins/sunovels.js",
+        ),
+        BundledNovelSource(
+            NovelRepositoryEntry("mknov", "مملكة الروايات", "https://mknov.com", "ar", "1.0.0", "builtin://mknov"),
+            "novel-plugins/mknov.js",
+        ),
+    )
 
     suspend fun repositories(): List<String> = store.repositories()
 
@@ -78,7 +102,21 @@ class NovelSourceManager(
     }
 
     suspend fun ensureLoaded() = withContext(Dispatchers.IO) {
-        store.installed().forEach { item ->
+        val installed = store.installed().toMutableList()
+        val loadedBundledIds = mutableSetOf<String>()
+        bundledSources.forEach { source ->
+            if (installed.any { it.metadata.id == source.manifest.id }) return@forEach
+            runCatching {
+                val code = appContext.assets.open(source.assetPath).bufferedReader().use { it.readText() }
+                val info = host.loadPlugin(source.manifest, code)
+                val file = store.savePlugin(source.manifest.url, code)
+                installed += NovelInstalledPlugin(source.manifest.url, info, null, file.name)
+                loadedBundledIds += info.id
+            }
+        }
+        store.setInstalled(installed)
+        installed.forEach { item ->
+            if (item.metadata.id in loadedBundledIds) return@forEach
             val f = store.pluginFile(item)
             if (!f.exists()) return@forEach
             val code = f.readText()

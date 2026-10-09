@@ -21,6 +21,9 @@ data class Download(
 ) {
     var pages: List<Page>? = null
 
+    /** Stable server-side coin reservation key, persisted by [DownloadStore]. */
+    var coinReservationId: String? = null
+
     val totalProgress: Int
         get() = pages?.sumOf(Page::progress) ?: 0
 

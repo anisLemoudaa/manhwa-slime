@@ -9,6 +9,7 @@ import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.model.getComicInfo
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.network.HttpException
@@ -61,6 +62,7 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import java.io.File
+import java.util.UUID
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 
@@ -171,9 +173,11 @@ class Downloader(
      * Removes everything from the queue.
      */
     fun clearQueue() {
+        val removed = queueState.value.toList()
         cancelDownloaderJob()
 
         internalClearQueue()
+        refundReservations(removed)
         notifier.dismissProgress()
     }
 
@@ -231,7 +235,67 @@ class Downloader(
 
     private fun CoroutineScope.launchDownloadJob(download: Download) = launchIO {
         try {
+            if (MslWallet.enabled) {
+                var reservationId = download.coinReservationId
+                if (reservationId.isNullOrBlank()) {
+                    reservationId = UUID.randomUUID().toString()
+                    download.coinReservationId = reservationId
+                    store.addAll(listOf(download))
+                }
+                var reservation = runCatching {
+                    MslWallet.reserveDownload(
+                        context,
+                        reservationId,
+                        "${download.source.id}:${download.manga.id}:${download.chapter.id}",
+                    )
+                }.getOrNull()
+                if (reservation?.status == "refunded") {
+                    reservationId = UUID.randomUUID().toString()
+                    download.coinReservationId = reservationId
+                    store.addAll(listOf(download))
+                    reservation = runCatching {
+                        MslWallet.reserveDownload(
+                            context,
+                            reservationId,
+                            "${download.source.id}:${download.manga.id}:${download.chapter.id}",
+                        )
+                    }.getOrNull()
+                }
+                if (reservation == null || !reservation.allowed) {
+                    download.status = Download.State.ERROR
+                    notifier.onError(
+                        if (reservation == null) context.stringResource(MR.strings.coin_download_balance_check_failed)
+                        else context.stringResource(MR.strings.coin_download_no_balance),
+                        download.chapter.name,
+                        download.manga.title,
+                        download.manga.id,
+                    )
+                    if (areAllDownloadsFinished()) stop()
+                    return@launchIO
+                }
+            }
+
             downloadChapter(download)
+
+            if (MslWallet.enabled) {
+                val reservationId = download.coinReservationId
+                if (!reservationId.isNullOrBlank()) {
+                    when (download.status) {
+                        Download.State.DOWNLOADED -> {
+                            if (!runCatching { MslWallet.commitDownload(context, reservationId) }.getOrDefault(false)) {
+                                logcat(LogPriority.WARN) { "Coin reservation commit will need reconciliation for ${download.chapter.id}" }
+                            }
+                        }
+                        Download.State.ERROR -> {
+                            if (runCatching { MslWallet.refundDownload(context, reservationId) }.getOrDefault(false)) {
+                                download.coinReservationId = null
+                                store.addAll(listOf(download))
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            }
 
             // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
@@ -680,9 +744,11 @@ class Downloader(
         }
     }
 
-    private inline fun removeFromQueueIf(predicate: (Download) -> Boolean) {
+    private fun removeFromQueueIf(predicate: (Download) -> Boolean) {
+        var removed: List<Download> = emptyList()
         _queueState.update { queue ->
             val downloads = queue.filter { predicate(it) }
+            removed = downloads
             store.removeAll(downloads)
             downloads.forEach { download ->
                 if (download.status == Download.State.DOWNLOADING || download.status == Download.State.QUEUE) {
@@ -690,6 +756,14 @@ class Downloader(
                 }
             }
             queue - downloads
+        }
+        refundReservations(removed.filter { it.status != Download.State.DOWNLOADED })
+    }
+
+    private fun refundReservations(downloads: List<Download>) {
+        if (!MslWallet.enabled) return
+        downloads.mapNotNull { it.coinReservationId }.distinct().forEach { reservationId ->
+            scope.launch { MslWallet.refundDownload(context, reservationId) }
         }
     }
 

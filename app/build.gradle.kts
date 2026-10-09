@@ -31,11 +31,38 @@ if (Config.includeTelemetry) {
 
 val keystorePropertiesFile = layout.settingsDirectory.file("keystore.properties").asFile
 
+val admobAppId = providers.gradleProperty("admobAppId")
+    .orElse(providers.environmentVariable("ADMOB_APP_ID"))
+    .getOrElse("")
+    .trim()
+val admobRewardedUnitId = providers.gradleProperty("admobRewardedAdUnitId")
+    .orElse(providers.environmentVariable("ADMOB_REWARDED_AD_UNIT_ID"))
+    .getOrElse("")
+    .trim()
+val admobInterstitialUnitId = providers.gradleProperty("admobInterstitialAdUnitId")
+    .orElse(providers.environmentVariable("ADMOB_INTERSTITIAL_AD_UNIT_ID"))
+    .getOrElse("")
+    .trim()
+val coinWalletEnabled = providers.gradleProperty("coinWalletEnabled").getOrElse("false").toBoolean()
+val interstitialChapterInterval = providers.gradleProperty("interstitialChapterInterval")
+    .getOrElse("10")
+    .toIntOrNull()
+    ?.coerceAtLeast(1) ?: 10
+val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
+
 android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
         applicationId = "com.manhwaslime.app"
+
+        manifestPlaceholders["ADMOB_APP_ID"] = admobAppId.ifBlank { testAdmobAppId }
+        buildConfigField("String", "ADMOB_APP_ID", "\"${admobAppId.ifBlank { testAdmobAppId }}\"")
+        buildConfigField("boolean", "ADMOB_APP_ID_CONFIGURED", "${admobAppId.isNotBlank()}")
+        buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$admobRewardedUnitId\"")
+        buildConfigField("String", "ADMOB_INTERSTITIAL_AD_UNIT_ID", "\"$admobInterstitialUnitId\"")
+        buildConfigField("boolean", "COIN_WALLET_ENABLED", "$coinWalletEnabled")
+        buildConfigField("int", "INTERSTITIAL_CHAPTER_INTERVAL", "$interstitialChapterInterval")
 
         versionCode = 34
         versionName = "0.20.4"
@@ -204,6 +231,9 @@ baselineProfile {
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.5.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    implementation("com.android.billingclient:billing-ktx:9.1.0")
     baselineProfile(projects.baselineProfile)
 
     implementation(projects.i18n)

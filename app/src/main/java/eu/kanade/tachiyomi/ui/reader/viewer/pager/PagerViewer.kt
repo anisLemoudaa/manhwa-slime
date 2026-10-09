@@ -252,6 +252,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
+            if (transition is ChapterTransition.Next) activity.onNextChapterTransition()
             logcat { "Request preload destination chapter because we're on the transition" }
             activity.requestPreloadChapter(toChapter)
         } else if (transition is ChapterTransition.Next) {

@@ -1,0 +1,7 @@
+# Only AdMob's signed SSV callback is unauthenticated at the Supabase gateway.
+# The function itself verifies Google's ECDSA signature before granting any coins.
+[functions.admob-ssv]
+verify_jwt = false
+
+[functions.verify-play-purchase]
+verify_jwt = true
