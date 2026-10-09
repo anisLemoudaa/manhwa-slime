@@ -198,14 +198,83 @@ class ProComicSource : HttpSource() {
 
     override fun pageListParse(response: Response): List<Page> {
         val html = response.use { it.body.string() }
-        val all = Regex("""https://app\.procomic\.pro/chapters/[^"\\\s<>]+""")
-            .findAll(html).map { it.value }.distinct().toList()
-        val urls = all.filter { it.contains("-desktop") }.ifEmpty { all }
-        val order = Regex("""/p(\d+)-""")
-        return urls
-            .sortedBy { order.find(it)?.groupValues?.get(1)?.toIntOrNull() ?: Int.MAX_VALUE }
-            .mapIndexed { i, u -> Page(i, imageUrl = u) }
+
+        // توحيد الروابط التي قد تكون مخزنة داخل JSON أو JavaScript.
+        val normalizedHtml = html
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+            .replace("\\u002f", "/")
+            .replace("&amp;", "&")
+
+        // استخراج جميع روابط صور الفصول، وليس نسخة desktop فقط.
+        val urlRegex = Regex(
+            """https?://app\.procomic\.pro/chapters/[^"'\\\s<>]+""",
+            RegexOption.IGNORE_CASE,
+        )
+
+        val candidates = urlRegex.findAll(normalizedHtml)
+            .map { it.value.trimEnd(',', ';', ')', ']', '}') }
+            .filter { it.contains("/chapters/", ignoreCase = true) }
+            .distinct()
+            .toList()
+
+        // استخراج رقم الصفحة من اسم الصورة، مثل p1- وp25-.
+        val pageNumber = Regex(
+            """/p(\d+)-""",
+            RegexOption.IGNORE_CASE,
+        )
+
+        // جمع نسخ الصور حسب رقم الصفحة لتجنب تكرار الصفحة نفسها.
+        val numbered = candidates.mapNotNull { url ->
+            val number = pageNumber.find(url)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+
+            number?.let { it to url }
+        }.groupBy(
+            keySelector = { it.first },
+            valueTransform = { it.second },
+        )
+
+        // تفضيل نسخة desktop عند وجودها، مع الاحتفاظ بالبدائل.
+        val numberedUrls = numbered.toSortedMap().values.mapNotNull { variants ->
+            variants.distinct().minByOrNull { url ->
+                val cleanPath = url.substringBefore('?').lowercase(Locale.ROOT)
+
+                when {
+                    cleanPath.contains("-desktop") -> 0
+                    cleanPath.contains("-mobile") -> 2
+                    else -> 1
+                }
+            }
+        }
+
+        // عدم إسقاط الصور التي لا يتضمن اسمها رقم صفحة معروفًا.
+        val unnumberedUrls = candidates.filter {
+            pageNumber.find(it) == null
+        }
+
+        val urls = (numberedUrls + unnumberedUrls)
+            .distinct()
+            .ifEmpty { candidates }
+
+        // تسجيل معلومات مفيدة إذا بقي عدد الصفحات المستخرجة صغيرًا.
+        if (urls.size <= 3) {
+            android.util.Log.w(
+                "ProComicSource",
+                "Parsed ${urls.size} unique page image URLs " +
+                    "from ${candidates.size} matching URLs. " +
+                    "If the chapter has more pages, the remaining URLs " +
+                    "may be loaded through the site's API or JavaScript.",
+            )
+        }
+
+        return urls.mapIndexed { index, url ->
+            Page(index, imageUrl = url)
+        }
     }
+
 
     override fun imageUrlParse(response: Response): String = ""
 }
