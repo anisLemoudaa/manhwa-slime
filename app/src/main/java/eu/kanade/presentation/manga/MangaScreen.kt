@@ -404,6 +404,17 @@ private fun MangaScreenSmallImpl(
                         )
                     }
 
+                    item {
+                        val socialKey = remember(state.source.id, state.manga.url) {
+                            eu.kanade.tachiyomi.mslime.MslSocial.titleKey(
+                                "manga",
+                                state.source.id.toString(),
+                                state.manga.url,
+                            )
+                        }
+                        eu.kanade.tachiyomi.mslime.MslSocialStats(socialKey)
+                    }
+
                     item(
                         key = MangaScreenItem.DESCRIPTION_WITH_TAG,
                         contentType = MangaScreenItem.DESCRIPTION_WITH_TAG,

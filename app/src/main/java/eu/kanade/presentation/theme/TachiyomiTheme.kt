@@ -2,11 +2,15 @@ package eu.kanade.presentation.theme
 
 import android.content.Context
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.presentation.theme.colorscheme.BaseColorScheme
 import eu.kanade.presentation.theme.colorscheme.CatppuccinColorScheme
@@ -24,6 +28,9 @@ import eu.kanade.presentation.theme.colorscheme.TidalWaveColorScheme
 import eu.kanade.presentation.theme.colorscheme.TokyoNightColorScheme
 import eu.kanade.presentation.theme.colorscheme.YinYangColorScheme
 import eu.kanade.presentation.theme.colorscheme.YotsubaColorScheme
+import eu.kanade.tachiyomi.mslime.MslDisplayFont
+import eu.kanade.tachiyomi.mslime.MslUiFont
+import eu.kanade.tachiyomi.mslime.withFonts
 import mihon.app.di.appGraph
 
 @Composable
@@ -56,6 +63,14 @@ private fun BaseTachiyomiTheme(
 ) {
     val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
+    val typography = remember { Typography().withFonts(MslUiFont, MslDisplayFont) }
+    val shapes = remember {
+        Shapes(
+            small = RoundedCornerShape(12.dp),
+            medium = RoundedCornerShape(18.dp),
+            large = RoundedCornerShape(26.dp),
+        )
+    }
     MaterialExpressiveTheme(
         colorScheme = remember(appTheme, isDark, isAmoled) {
             getThemeColorScheme(
@@ -65,6 +80,8 @@ private fun BaseTachiyomiTheme(
                 isAmoled = isAmoled,
             )
         },
+        typography = typography,
+        shapes = shapes,
         content = content,
     )
 }

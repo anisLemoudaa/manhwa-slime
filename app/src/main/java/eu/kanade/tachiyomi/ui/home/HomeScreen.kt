@@ -66,8 +66,6 @@ import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabNavigator
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
-import eu.kanade.tachiyomi.novel.NovelSectionContent
-import eu.kanade.tachiyomi.mslime.MslCoinWalletHeader
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
@@ -100,25 +98,24 @@ object HomeScreen : Screen() {
     private const val TabNavigatorKey = "HomeTabs"
 
     private val TABS = listOf(
+        HomeDashboardTab,
         LibraryTab,
-        UpdatesTab,
-        ProfileTab,
         BrowseTab,
-        MoreTab,
+        NovelTab,
+        ProfileTab,
     )
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         TabNavigator(
-            tab = LibraryTab,
+            tab = HomeDashboardTab,
             key = TabNavigatorKey,
         ) { tabNavigator ->
             // Provide usable navigator to content screen
             CompositionLocalProvider(LocalNavigator provides navigator) {
                 val tabletUi = isTabletUi()
                 var showBottomBar by remember { mutableStateOf(true) }
-                var mediaMode by remember { mutableStateOf(MediaMode.MANGA) }
 
                 LaunchedEffect(tabletUi) {
                     showBottomNavEvent.receiveAsFlow().collectLatest { show ->
@@ -144,10 +141,7 @@ object HomeScreen : Screen() {
                             }
                         },
                     ) {
-                        HomeModeContent(
-                            mode = mediaMode,
-                            onModeChange = { mediaMode = it },
-                        )
+                        HomeTabContent()
                     }
                 } else {
                     Scaffold(
@@ -169,18 +163,16 @@ object HomeScreen : Screen() {
                                 .fillMaxSize()
                                 .padding(contentPadding),
                         ) {
-                            HomeModeContent(
-                                mode = mediaMode,
-                                onModeChange = { mediaMode = it },
-                            )
+                            HomeTabContent()
                         }
                     }
                 }
             }
 
             val goToLibraryTab = { tabNavigator.current = LibraryTab }
+            val goToHomeTab = { tabNavigator.current = HomeDashboardTab }
 
-            BackHandler(enabled = tabNavigator.current != LibraryTab, onBack = goToLibraryTab)
+            BackHandler(enabled = tabNavigator.current != HomeDashboardTab, onBack = goToHomeTab)
 
             LaunchedEffect(Unit) {
                 launch {
@@ -213,97 +205,6 @@ object HomeScreen : Screen() {
                     }
                 }
             }
-        }
-    }
-
-    private enum class MediaMode { MANGA, NOVELS }
-
-    @Composable
-    private fun HomeModeContent(
-        mode: MediaMode,
-        onModeChange: (MediaMode) -> Unit,
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            MslCoinWalletHeader()
-            MediaModeSwitcher(mode = mode, onModeChange = onModeChange)
-            AnimatedContent(
-                targetState = mode,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "mediaModeContent",
-                modifier = Modifier.weight(1f),
-            ) { target ->
-                when (target) {
-                    MediaMode.MANGA -> HomeTabContent()
-                    MediaMode.NOVELS -> NovelSectionContent()
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun MediaModeSwitcher(
-        mode: MediaMode,
-        onModeChange: (MediaMode) -> Unit,
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            shape = RoundedCornerShape(24.dp),
-            tonalElevation = 3.dp,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                MediaModeTab(
-                    title = "المانهوا",
-                    selected = mode == MediaMode.MANGA,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onModeChange(MediaMode.MANGA) },
-                )
-                MediaModeTab(
-                    title = "الروايات",
-                    selected = mode == MediaMode.NOVELS,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onModeChange(MediaMode.NOVELS) },
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun MediaModeTab(
-        title: String,
-        selected: Boolean,
-        modifier: Modifier,
-        onClick: () -> Unit,
-    ) {
-        val background by animateColorAsState(
-            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-            label = "mediaModeTabBackground",
-        )
-        val contentColor by animateColorAsState(
-            if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            label = "mediaModeTabColor",
-        )
-        Box(
-            modifier = modifier
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(20.dp))
-                .background(background)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                title,
-                color = contentColor,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                fontSize = 14.sp,
-            )
         }
     }
 
@@ -351,7 +252,10 @@ object HomeScreen : Screen() {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 tabs.fastForEach { tab ->
-                    val selected = tabNavigator.current::class == tab::class
+                    val currentTab = tabNavigator.current
+                    val selected = currentTab::class == tab::class ||
+                        (tab == HomeDashboardTab && currentTab in listOf(UpdatesTab, HistoryTab, MoreTab))
+                    val hiddenDestination = currentTab in listOf(UpdatesTab, HistoryTab, MoreTab)
                     val backgroundColor by animateColorAsState(
                         targetValue = if (selected) {
                             MaterialTheme.colorScheme.primaryContainer
@@ -376,7 +280,9 @@ object HomeScreen : Screen() {
                             .clip(RoundedCornerShape(22.dp))
                             .background(backgroundColor)
                             .clickable {
-                                if (selected) {
+                                if (tab == HomeDashboardTab && hiddenDestination) {
+                                    tabNavigator.current = HomeDashboardTab
+                                } else if (selected) {
                                     scope.launch { tab.onReselect(navigator) }
                                 } else {
                                     tabNavigator.current = tab
@@ -429,7 +335,10 @@ object HomeScreen : Screen() {
         val tabNavigator = LocalTabNavigator.current
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
-        val selected = tabNavigator.current::class == tab::class
+        val currentTab = tabNavigator.current
+        val selected = currentTab::class == tab::class ||
+            (tab == HomeDashboardTab && currentTab in listOf(UpdatesTab, HistoryTab, MoreTab))
+        val hiddenDestination = currentTab in listOf(UpdatesTab, HistoryTab, MoreTab)
 
         val navigationItemColors = NavigationItemColors(
             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -447,7 +356,9 @@ object HomeScreen : Screen() {
             selected = selected,
             colors = navigationItemColors,
             onClick = {
-                if (!selected) {
+                if (tab == HomeDashboardTab && hiddenDestination) {
+                    tabNavigator.current = HomeDashboardTab
+                } else if (!selected) {
                     tabNavigator.current = tab
                 } else {
                     scope.launch { tab.onReselect(navigator) }
@@ -477,6 +388,16 @@ object HomeScreen : Screen() {
         val count by produceState(initialValue = 0, tab) {
             val graph = context.appGraph
             when (tab) {
+                HomeDashboardTab -> {
+                    combine(
+                        graph.libraryPreferences.newShowUpdatesCount.changes(),
+                        graph.libraryPreferences.newUpdatesCount.changes(),
+                    ) { show, count ->
+                        if (show) count else 0
+                    }
+                        .collectLatest { value = it }
+                }
+
                 is UpdatesTab -> {
                     combine(
                         graph.libraryPreferences.newShowUpdatesCount.changes(),
@@ -499,7 +420,7 @@ object HomeScreen : Screen() {
         return {
             Badge {
                 val desc = when (tab) {
-                    is UpdatesTab -> pluralStringResource(
+                    HomeDashboardTab, is UpdatesTab -> pluralStringResource(
                         MR.plurals.notification_chapters_generic,
                         count = count,
                         count,

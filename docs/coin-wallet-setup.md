@@ -6,31 +6,27 @@
 
 إعلانات UMP/AdMob Next-Gen ومكتبة Play Billing موجودة في تطبيق Android. الإعلان البيني المعلق لا يظهر إلا عند شاشة الانتقال إلى الفصل التالي، بعد إكمال عشرة فصول عبر الإنترنت؛ لا يُحتسب الفصل المحمّل محليًا. يمكن للمستخدم فتح خيارات الخصوصية عندما تتطلبها UMP.
 
-**لم تُطبّق migration على مشروع Supabase البعيد، ولم تُنشأ أو تُضف منتجات في Play Console، ولم تُضبط لوحة AdMob.** لا توجد مفاتيح خدمة أو ملفات اعتماد Google في المستودع. محفظة العملات معطلة افتراضيًا عبر `coinWalletEnabled=false` حتى إكمال إعداد الخادم.
+**تطبيق Supabase `fqzdvcjekjgpdvomobre` يحتوي الآن جداول المحفظة وسجل العمليات مع RLS وRPCs** (ترحيل `coin_wallet_transaction_ledger`، الإصدار `20261010052156`). كان المخطط السابق يحتوي التعليقات والتصويتات فقط، ولم يكن فيه سجل معاملات أو محفظة. لم تُنشر Edge Functions، ولم تُنشأ منتجات في Play Console أو تُضبط لوحة AdMob. لا توجد مفاتيح خدمة أو ملفات اعتماد Google في المستودع. لذلك يبقى التطبيق معطّلًا للمحفظة افتراضيًا عبر `coinWalletEnabled=false` حتى إكمال إعداد الخادم وPlay/AdMob.
 
 ## 1) قاعدة Supabase
 
-بعد تثبيت Supabase CLI وتسجيل الدخول وربط نسخة المشروع الصحيحة:
+تم تطبيق المخطط على المشروع المرتبط بعد التحقق من عدم وجود جداول محفظة سابقة. تحقّق من سجل المشروع الحالي عبر Supabase CLI قبل أي دفع إضافي:
 
 ```bash
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
-supabase db push
+supabase migration list
 ```
 
-الأمر الأخير يطبّق migration الموجودة هنا:
+ملف المصدر المقابل موجود في المستودع:
 
 ```text
 supabase/migrations/20261009150000_coin_wallet.sql
 ```
 
-تتحقق من المخطط بعد الدفع عبر:
+تحقّق كذلك من وجود جداول `coin_wallets` و`coin_transactions` و`coin_download_reservations` و`ad_reward_sessions` و`coin_purchase_receipts` وفعالية RLS. لا تشغّل `db push` آليًا قبل مراجعة تطابق سجل migration المحلي مع المشروع البعيد.
 
-```bash
-supabase migration list
-```
-
-نفّذ هذه الأوامر فقط على مشروع Supabase المقصود بعد مراجعة النسخة الاحتياطية وسياسات المشروع. وظيفة `service_role` لا تُضمّن في التطبيق.
+لا تُضمّن وظيفة `service_role` في التطبيق.
 
 ## 2) Edge Functions والأسرار
 

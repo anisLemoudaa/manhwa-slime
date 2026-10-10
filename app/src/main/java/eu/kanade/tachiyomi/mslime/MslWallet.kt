@@ -3,18 +3,18 @@ package eu.kanade.tachiyomi.mslime
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,7 +34,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.BuildConfig
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +45,7 @@ import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.UUID
 
 /** Client calls only user-scoped RPCs. Granting ad or purchase coins is server-only. */
 object MslWallet {
@@ -54,8 +54,13 @@ object MslWallet {
 
     val enabled: Boolean get() = BuildConfig.COIN_WALLET_ENABLED
 
+    internal fun updateBalance(value: Int) {
+        _balance.value = value
+    }
+
     data class RewardSession(val id: String, val userId: String)
     data class DownloadReservation(val allowed: Boolean, val balance: Int, val status: String)
+    data class CoinTransaction(val id: String, val delta: Int, val kind: String, val createdAt: String, val referenceId: String? = null)
 
     fun refresh(context: Context): Int? {
         val current = runCatching {
@@ -69,6 +74,35 @@ object MslWallet {
         }.getOrNull()
         if (current != null) _balance.value = current
         return current ?: _balance.value
+    }
+
+    /** Returns this authenticated user's server ledger, or null when the service is unavailable. */
+    fun transactions(context: Context): List<CoinTransaction>? {
+        return try {
+            val token = MslSupabase.token(context) ?: return null
+            val userId = MslSupabase.uid(context).takeIf(String::isNotBlank) ?: return null
+            val query = "select=id,delta,kind,created_at,reference_id&user_id=eq.$userId&order=created_at.desc&limit=50"
+            val response = MslSupabase.call(
+                "GET",
+                "/rest/v1/coin_transactions?$query",
+                null,
+                token,
+            )
+            if (response.first !in 200..299) return null
+            val rows = JSONArray(response.second)
+            List(rows.length()) { index ->
+                val row = rows.getJSONObject(index)
+                CoinTransaction(
+                    id = row.getString("id"),
+                    delta = row.getInt("delta"),
+                    kind = row.getString("kind"),
+                    createdAt = row.getString("created_at"),
+                    referenceId = row.optString("reference_id").takeUnless { it == "null" || it.isBlank() },
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun beginReward(context: Context): RewardSession? {
@@ -168,7 +202,9 @@ object MslWallet {
                     token,
                 )
             }.getOrNull()
-            if (response != null && response.first in 200..299 && response.second.trim().equals("true", ignoreCase = true)) {
+            if (response != null && response.first in 200..299 &&
+                response.second.trim().equals("true", ignoreCase = true)
+            ) {
                 removeQueuedCommit(context, id)
             }
         }
@@ -261,21 +297,35 @@ fun MslCoinWalletHeader() {
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = MslDesignTokens.cardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+        border = BorderStroke(1.dp, MslDesignTokens.border),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable { storeVisible = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().clickable {
+                storeVisible = true
+            }.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(stringResource(MR.strings.coin_wallet_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(MR.strings.coin_wallet_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MslDesignTokens.textSecondary,
+                )
                 Text(
                     text = if (balanceLoading) "…" else balance?.let { "$it" } ?: "—",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    color = MslDesignTokens.accentBright,
                 )
             }
-            TextButton(onClick = { storeVisible = true }) { Text(stringResource(MR.strings.coin_store_button)) }
+            TextButton(
+                onClick = { storeVisible = true },
+                colors = ButtonDefaults.textButtonColors(contentColor = MslDesignTokens.accentBright),
+            ) {
+                Text(stringResource(MR.strings.coin_store_button))
+            }
         }
     }
 
@@ -302,6 +352,7 @@ private fun MslCoinStoreDialog(
     var message by remember { mutableStateOf(context.stringResource(MR.strings.coin_store_choose_method)) }
     var busy by remember { mutableStateOf(false) }
     var rewardEarned by remember { mutableStateOf(false) }
+    var vipActive by remember { mutableStateOf(MslVip.cachedActive(context)) }
     val closeDialog = {
         MslPlayBilling.clearCallbacks()
         onDismiss()
@@ -310,7 +361,8 @@ private fun MslCoinStoreDialog(
     LaunchedEffect(activity) {
         balance = withContext(Dispatchers.IO) { MslWallet.refresh(context) }
         onBalanceChanged(balance)
-        if (activity != null) {
+        vipActive = withContext(Dispatchers.IO) { MslVip.refresh(context)?.active ?: MslVip.cachedActive(context) }
+        if (activity != null && BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
             MslPlayBilling.loadProducts(
                 activity,
                 onProducts = { packs = it },
@@ -320,18 +372,53 @@ private fun MslCoinStoreDialog(
                     onBalanceChanged(updatedBalance)
                 },
             )
+        } else if (!BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
+            message = "شراء العملات عبر Google Play غير متاح حتى تفعيل التحقق الخادمي للإيصالات."
         }
     }
 
     AlertDialog(
         onDismissRequest = closeDialog,
-        title = { Text(stringResource(MR.strings.coin_store_title)) },
+        shape = MslDesignTokens.cardShape,
+        containerColor = MslDesignTokens.surface,
+        titleContentColor = MslDesignTokens.textPrimary,
+        textContentColor = MslDesignTokens.textSecondary,
+        title = {
+            Text(
+                stringResource(MR.strings.coin_store_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(balance?.let { context.stringResource(MR.strings.coin_balance_current, it) } ?: stringResource(MR.strings.coin_balance_unavailable))
-                Text(stringResource(MR.strings.coin_reward_description))
+                Card(
+                    shape = MslDesignTokens.compactCardShape,
+                    colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+                    border = BorderStroke(1.dp, MslDesignTokens.border),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text(
+                            stringResource(MR.strings.coin_wallet_title),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MslDesignTokens.textSecondary,
+                        )
+                        Text(
+                            balance?.let { context.stringResource(MR.strings.coin_balance_current, it) }
+                                ?: stringResource(MR.strings.coin_balance_unavailable),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MslDesignTokens.accentBright,
+                        )
+                    }
+                }
+                Text(
+                    if (vipActive) "عضوية VIP نشطة؛ لن تُعرض إعلانات المكافآت أثناء الاشتراك."
+                    else "أكمل إعلانًا مكافئًا واحدًا لتحصل على 15 عملة بعد تأكيد الخادم.",
+                    color = MslDesignTokens.textPrimary,
+                )
                 Button(
-                    enabled = !busy && activity != null && MslWallet.enabled,
+                    enabled = !busy && activity != null && MslWallet.enabled && !vipActive,
                     onClick = {
                         val host = activity ?: return@Button
                         scope.launch {
@@ -356,7 +443,9 @@ private fun MslCoinStoreDialog(
                                         for (attempt in 0 until 30) {
                                             delay(2000)
                                             val state = runCatching {
-                                                withContext(Dispatchers.IO) { MslWallet.rewardStatus(context, session.id) }
+                                                withContext(Dispatchers.IO) {
+                                                    MslWallet.rewardStatus(context, session.id)
+                                                }
                                             }.getOrNull()
                                             if (state == "credited") {
                                                 balance = withContext(Dispatchers.IO) { MslWallet.refresh(context) }
@@ -387,17 +476,41 @@ private fun MslCoinStoreDialog(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    shape = MslDesignTokens.compactCardShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MslDesignTokens.accent,
+                        contentColor = MslDesignTokens.textPrimary,
+                        disabledContainerColor = MslDesignTokens.surfaceHighest,
+                        disabledContentColor = MslDesignTokens.textMuted,
+                    ),
                 ) {
-                    Text(if (busy) stringResource(MR.strings.coin_reward_checking) else stringResource(MR.strings.coin_reward_watch))
+                    Text(
+                        if (busy) {
+                            stringResource(
+                                MR.strings.coin_reward_checking,
+                            )
+                        } else {
+                            stringResource(MR.strings.coin_reward_watch)
+                        },
+                    )
+                }
+                if (!vipActive) {
+                    Text(
+                        stringResource(MR.strings.coin_reward_unlimited),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MslDesignTokens.textMuted,
+                    )
                 }
                 Text(
-                    stringResource(MR.strings.coin_reward_unlimited),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stringResource(MR.strings.coin_play_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MslDesignTokens.textPrimary,
                 )
-                Text(stringResource(MR.strings.coin_play_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                if (packs.isEmpty()) {
-                    Text(stringResource(MR.strings.coin_play_products_missing))
+                if (!BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
+                    Text("شراء العملات عبر Google Play غير متاح حاليًا؛ يمكنك جمع العملات من المكافآت اليومية والإعلانات المؤكدة.", color = MslDesignTokens.textSecondary)
+                } else if (packs.isEmpty()) {
+                    Text(stringResource(MR.strings.coin_play_products_missing), color = MslDesignTokens.textSecondary)
                 } else {
                     packs.forEach { pack ->
                         OutlinedButton(
@@ -406,6 +519,12 @@ private fun MslCoinStoreDialog(
                                 activity?.let { host -> MslPlayBilling.buy(host, pack.productId) { message = it } }
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            shape = MslDesignTokens.compactCardShape,
+                            border = BorderStroke(1.dp, MslDesignTokens.accent),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MslDesignTokens.accentBright,
+                                disabledContentColor = MslDesignTokens.textMuted,
+                            ),
                         ) {
                             Text(stringResource(MR.strings.coin_pack_price, pack.coins, pack.formattedPrice))
                         }
@@ -414,13 +533,25 @@ private fun MslCoinStoreDialog(
                 Text(
                     stringResource(MR.strings.coin_virtual_notice),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MslDesignTokens.textMuted,
                 )
-                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (busy) CircularProgressIndicator()
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
+                if (busy) {
+                    CircularProgressIndicator(
+                        color = MslDesignTokens.accentBright,
+                        trackColor = MslDesignTokens.border,
+                    )
+                }
             }
         },
-    confirmButton = { TextButton(onClick = closeDialog) { Text(stringResource(MR.strings.coin_close)) } },
+        confirmButton = {
+            TextButton(
+                onClick = closeDialog,
+                colors = ButtonDefaults.textButtonColors(contentColor = MslDesignTokens.accentBright),
+            ) {
+                Text(stringResource(MR.strings.coin_close))
+            }
+        },
     )
 }
 

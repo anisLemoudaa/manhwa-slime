@@ -29,6 +29,7 @@ object MslAds {
 
     private val consentFlowStarted = AtomicBoolean(false)
     private val sdkInitialized = AtomicBoolean(false)
+    private val vipInterstitialCheckInProgress = AtomicBoolean(false)
     private var consentInformation: ConsentInformation? = null
 
     var privacyOptionsRequired by mutableStateOf(false)
@@ -111,6 +112,10 @@ object MslAds {
         onAdClosed: () -> Unit,
         onAdUnavailable: () -> Unit,
     ): Boolean {
+        if (MslVip.cachedActive(activity)) {
+            onAdUnavailable()
+            return false
+        }
         if (!BuildConfig.COIN_WALLET_ENABLED || !sdkInitialized.get()) {
             onAdUnavailable()
             return false
@@ -145,6 +150,13 @@ object MslAds {
     fun recordOnlineChapterCompleted(context: Context, chapterKey: String) {
         if (interstitialUnitId().isBlank()) return
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (MslVip.cachedActive(context)) {
+            preferences.edit()
+                .putInt("online_chapters_since_interstitial", 0)
+                .putBoolean("interstitial_pending", false)
+                .apply()
+            return
+        }
         val chapterDigest = MessageDigest.getInstance("SHA-256")
             .digest(chapterKey.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -167,10 +179,27 @@ object MslAds {
         if (!preferences.getBoolean("interstitial_pending", false)) return
         val unitId = interstitialUnitId()
         if (unitId.isBlank()) return
-        val ad = InterstitialAdPreloader.pollAd(unitId) ?: return
-        // Consume the cadence before showing, so a failed presentation cannot repeat on every swipe.
-        preferences.edit().putBoolean("interstitial_pending", false).apply()
-        ad.adEventCallback = object : InterstitialAdEventCallback {}
-        ad.show(activity)
+        if (!vipInterstitialCheckInProgress.compareAndSet(false, true)) return
+        Thread {
+            val vipActive = runCatching {
+                MslVip.refresh(activity.applicationContext)?.active ?: MslVip.cachedActive(activity.applicationContext)
+            }.getOrDefault(false)
+            activity.runOnUiThread {
+                vipInterstitialCheckInProgress.set(false)
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                if (vipActive) {
+                    preferences.edit()
+                        .putInt("online_chapters_since_interstitial", 0)
+                        .putBoolean("interstitial_pending", false)
+                        .apply()
+                    return@runOnUiThread
+                }
+                val ad = InterstitialAdPreloader.pollAd(unitId) ?: return@runOnUiThread
+                // Consume the cadence before showing, so a failed presentation cannot repeat on every swipe.
+                preferences.edit().putBoolean("interstitial_pending", false).apply()
+                ad.adEventCallback = object : InterstitialAdEventCallback {}
+                ad.show(activity)
+            }
+        }.start()
     }
 }

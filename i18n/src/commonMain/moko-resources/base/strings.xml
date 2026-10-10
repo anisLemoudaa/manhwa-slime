@@ -1161,4 +1161,14 @@
     <string name="coin_virtual_notice">Gold Coins are virtual in-app credits with no cash value; they cannot be withdrawn.</string>
     <string name="coin_privacy_options">Ad privacy options</string>
     <string name="coin_privacy_options_description">Manage your ad privacy choices.</string>
+    <string name="coin_wallet_disabled">The wallet is not enabled in this build.</string>
+    <string name="coin_transactions_title">Transaction history</string>
+    <string name="coin_transactions_loading">Loading your account transaction history…</string>
+    <string name="coin_transactions_unavailable">Could not load history from the wallet service. Check the connection and database setup.</string>
+    <string name="coin_transactions_empty">There are no transactions recorded for this account yet.</string>
+    <string name="coin_transaction_ad_reward">Ad viewing reward</string>
+    <string name="coin_transaction_purchase">Google Play coin purchase</string>
+    <string name="coin_transaction_download">Chapter download</string>
+    <string name="coin_transaction_refund">Download refund</string>
+    <string name="coin_transaction_other">Other transaction</string>
 </resources>

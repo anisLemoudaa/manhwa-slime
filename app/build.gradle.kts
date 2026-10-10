@@ -43,7 +43,8 @@ val admobInterstitialUnitId = providers.gradleProperty("admobInterstitialAdUnitI
     .orElse(providers.environmentVariable("ADMOB_INTERSTITIAL_AD_UNIT_ID"))
     .getOrElse("")
     .trim()
-val coinWalletEnabled = providers.gradleProperty("coinWalletEnabled").getOrElse("false").toBoolean()
+val coinWalletEnabled = providers.gradleProperty("coinWalletEnabled").getOrElse("true").toBoolean()
+val coinPlayPurchasesEnabled = providers.gradleProperty("coinPlayPurchasesEnabled").getOrElse("false").toBoolean()
 val interstitialChapterInterval = providers.gradleProperty("interstitialChapterInterval")
     .getOrElse("10")
     .toIntOrNull()
@@ -62,6 +63,7 @@ android {
         buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$admobRewardedUnitId\"")
         buildConfigField("String", "ADMOB_INTERSTITIAL_AD_UNIT_ID", "\"$admobInterstitialUnitId\"")
         buildConfigField("boolean", "COIN_WALLET_ENABLED", "$coinWalletEnabled")
+        buildConfigField("boolean", "COIN_PLAY_PURCHASES_ENABLED", "$coinPlayPurchasesEnabled")
         buildConfigField("int", "INTERSTITIAL_CHAPTER_INTERVAL", "$interstitialChapterInterval")
 
         versionCode = 34

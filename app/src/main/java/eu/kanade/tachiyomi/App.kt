@@ -9,7 +9,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.webkit.WebView
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
+import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -101,6 +103,8 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onCreate() {
         super<Application>.onCreate()
 
+        applyArabicDefaultLocale()
+
         // Must run before the graph is built, since injecting dependencies initializes WebView and the
         // suffix can't be set once a provider exists in the process. Secondary processes die otherwise.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -181,6 +185,17 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         initializeMigrator()
+    }
+
+    /** Use Arabic on first launch regardless of the device language, without overriding later choices. */
+    private fun applyArabicDefaultLocale() {
+        val state = getSharedPreferences("app_locale_defaults", Context.MODE_PRIVATE)
+        if (state.getBoolean("initialized", false)) return
+
+        if (AppCompatDelegate.getApplicationLocales().get(0) == null) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("ar"))
+        }
+        state.edit().putBoolean("initialized", true).apply()
     }
 
     private fun initializeMigrator() {

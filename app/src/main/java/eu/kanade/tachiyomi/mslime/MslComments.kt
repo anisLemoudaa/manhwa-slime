@@ -63,7 +63,6 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 
 data class MslComment(
     val id: String,
@@ -77,6 +76,8 @@ data class MslComment(
     val avatar: String,
     val likes: Int,
     val dislikes: Int,
+    val isVip: Boolean,
+    val isPinned: Boolean,
 )
 
 object MslRank {
@@ -153,10 +154,12 @@ object MslSupabase {
 
     fun list(key: String, sort: Int): List<MslComment>? {
         return try {
-            val q = URLEncoder.encode(key, "UTF-8").replace("+", "%20")
-            val order = if (sort == 1) "likes.desc,created_at.desc" else "created_at.desc"
-            val fields = "id,user_id,author_name,body,created_at,is_spoiler,level,rank,author_avatar,likes,dislikes"
-            val r = call("GET", "/rest/v1/comments?title_key=eq.$q&select=$fields&order=$order&limit=50", null, null)
+            val r = call(
+                "POST",
+                "/rest/v1/rpc/list_comments_with_vip",
+                JSONObject().put("p_title_key", key).put("p_sort", sort).toString(),
+                null,
+            )
             if (r.first !in 200..299) return null
             val a = JSONArray(r.second)
             List(a.length()) {
@@ -173,6 +176,8 @@ object MslSupabase {
                     avatar = if (o.isNull("author_avatar")) "" else o.optString("author_avatar", ""),
                     likes = o.optInt("likes", 0),
                     dislikes = o.optInt("dislikes", 0),
+                    isVip = o.optBoolean("is_vip", false),
+                    isPinned = o.optBoolean("is_pinned", false),
                 )
             }
         } catch (e: Exception) {
@@ -634,6 +639,21 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                                 }
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
+                                            if (c.isVip || c.isPinned) {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    if (c.isVip) {
+                                                        Surface(shape = RoundedCornerShape(50), color = Color(0xFFFFC857).copy(alpha = 0.18f)) {
+                                                            Tx("👑 VIP", 11.sp, FontWeight.Bold, Color(0xFFFFC857), 1, Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                                        }
+                                                    }
+                                                    if (c.isPinned) {
+                                                        Surface(shape = RoundedCornerShape(50), color = Color(0xFF9C6BFF).copy(alpha = 0.18f)) {
+                                                            Tx("مثبّت في الأعلى", 11.sp, FontWeight.Bold, Color(0xFFB79BFF), 1, Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
                                             if (hidden) {
                                                 Surface(
                                                     shape = RoundedCornerShape(12.dp),

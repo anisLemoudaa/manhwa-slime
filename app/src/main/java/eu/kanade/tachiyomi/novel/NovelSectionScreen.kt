@@ -10,6 +10,8 @@ import android.content.ContextWrapper
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -20,15 +22,18 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -38,8 +43,8 @@ import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.mslime.MslAds
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
+import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslWallet
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,6 +53,7 @@ import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.UUID
 
 private data class NovelUiState(
     val sources: List<NovelSourceRuntime> = emptyList(),
@@ -242,173 +248,292 @@ private fun NovelShell(
     onCloseRepo: () -> Unit,
     onLoadRepo: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("الروايات", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        "مصادر LNReader + روابط JS مباشرة",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                FilledTonalIconButton(onClick = onAddRepository) { Text("⚙") }
-            }
-
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item {
-                    AssistChip(onClick = onAddRepository, label = {
-                        Text("إضافة مصدر")
-                    })
-                }
-
-                item {
-                    FilterChip(
-                        selected = state.showFavorites,
-                        onClick = onToggleFavoriteFilter,
-                        label = {
-                            Text("⭐ المفضلة")
-                        },
-                    )
-                }
-                items(state.sources) { source ->
-                    FilterChip(
-                        selected = state.selectedSource == source.id,
-                        onClick = { onSelectSource(source.id) },
-                        label = { Text(source.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = onSearch,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(20.dp),
-                placeholder = { Text("ابحث عن رواية...") },
-            )
-            Spacer(Modifier.height(12.dp))
-
-            state.info?.let {
-                Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-            state.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-
-            when {
-                state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                state.sources.isEmpty() -> EmptyNovelSources(onAddRepository)
-                else -> {
-                    val visibleNovels =
-                        if (state.showFavorites) {
-                            state.novels.filter {
-                                state.selectedSource != null &&
-                                    "${state.selectedSource}::${it.path}" in favoriteKeys
-                            }
-                        } else {
-                            state.novels
-                        }
-
-                    if (state.showFavorites && visibleNovels.isEmpty()) {
-                        EmptyFavorites()
-                    } else if (visibleNovels.isEmpty()) {
-                        EmptyNovelResults(state.query, state.error != null)
-                    } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(145.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            items(visibleNovels) { item ->
-                                NovelCard(
-                                    item = item,
-                                    onOpen = onOpen,
-                                    isFavorite = state.selectedSource != null &&
-                                        "${state.selectedSource}::${item.path}" in favoriteKeys,
-                                    onToggleFavorite = onToggleFavorite,
-                                )
-                            }
-                        }
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MslDesignTokens.background),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MslDesignTokens.backgroundRaised)
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "الروايات",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MslDesignTokens.textPrimary,
+                        )
+                        Text(
+                            "اكتشف قراءتك القادمة",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MslDesignTokens.textSecondary,
+                        )
+                    }
+                    FilledTonalIconButton(
+                        onClick = onAddRepository,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MslDesignTokens.surfaceHighest,
+                            contentColor = MslDesignTokens.accentBright,
+                        ),
+                    ) {
+                        Text("+", fontSize = 24.sp, fontWeight = FontWeight.Light)
                     }
                 }
-            }
-        }
 
-        if (state.repoDialog) {
-            AlertDialog(
-                onDismissRequest = onCloseRepo,
-                title = { Text("إضافة مصادر الروايات") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            "اختر مستودع LNReader أو ألصق رابط plugin.js مباشر.",
-                            style = MaterialTheme.typography.bodySmall,
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = onSearch,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    singleLine = true,
+                    shape = MslDesignTokens.pillShape,
+                    placeholder = {
+                        Text("ابحث عن رواية أو مؤلف...", color = MslDesignTokens.textMuted)
+                    },
+                    leadingIcon = { Text("⌕", color = MslDesignTokens.accentBright, fontSize = 24.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MslDesignTokens.textPrimary,
+                        unfocusedTextColor = MslDesignTokens.textPrimary,
+                        focusedContainerColor = MslDesignTokens.surface,
+                        unfocusedContainerColor = MslDesignTokens.surface,
+                        focusedBorderColor = MslDesignTokens.accentBright,
+                        unfocusedBorderColor = MslDesignTokens.border,
+                        cursorColor = MslDesignTokens.accentBright,
+                    ),
+                )
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        AssistChip(
+                            onClick = onAddRepository,
+                            label = { Text("إضافة مصدر") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MslDesignTokens.accent,
+                                labelColor = MslDesignTokens.textPrimary,
+                            ),
+                            border = null,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            FilterChip(
-                                selected = state.inputMode == NovelInputMode.REPOSITORY,
-                                onClick = { onInputModeChange(NovelInputMode.REPOSITORY) },
-                                label = { Text("مستودع") },
-                            )
-                            FilterChip(
-                                selected = state.inputMode == NovelInputMode.DIRECT_URL,
-                                onClick = { onInputModeChange(NovelInputMode.DIRECT_URL) },
-                                label = { Text("رابط مباشر") },
-                            )
-                        }
-                        OutlinedTextField(
-                            value = state.repoUrl,
-                            onValueChange = onRepoUrlChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("URL") },
+                    }
+                    item {
+                        FilterChip(
+                            selected = state.showFavorites,
+                            onClick = onToggleFavoriteFilter,
+                            label = { Text("المفضلة") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MslDesignTokens.surfaceRaised,
+                                labelColor = MslDesignTokens.textSecondary,
+                                selectedContainerColor = MslDesignTokens.accent.copy(alpha = 0.28f),
+                                selectedLabelColor = MslDesignTokens.textPrimary,
+                            ),
                         )
-                        if (state.inputMode == NovelInputMode.REPOSITORY) {
-                            Button(onClick = onLoadRepo, modifier = Modifier.fillMaxWidth()) { Text("تحميل المستودع") }
-                            if (state.repoEntries.isNotEmpty()) {
-                                HorizontalDivider()
-                                Text("المصادر المتاحة: ${state.repoEntries.size}", fontWeight = FontWeight.SemiBold)
-                                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                                    items(state.repoEntries) { entry ->
-                                        ListItem(
-                                            headlineContent = { Text(entry.name) },
-                                            supportingContent = {
-                                                Text(listOfNotNull(entry.lang, entry.version).joinToString(" • "))
-                                            },
-                                            trailingContent = {
-                                                Button(onClick = { onInstall(entry) }) { Text("تثبيت") }
-                                            },
-                                        )
-                                    }
+                    }
+                    items(state.sources) { source ->
+                        FilterChip(
+                            selected = state.selectedSource == source.id,
+                            onClick = { onSelectSource(source.id) },
+                            label = {
+                                Text(source.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MslDesignTokens.surfaceRaised,
+                                labelColor = MslDesignTokens.textSecondary,
+                                selectedContainerColor = MslDesignTokens.accent.copy(alpha = 0.28f),
+                                selectedLabelColor = MslDesignTokens.textPrimary,
+                            ),
+                        )
+                    }
+                }
+
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    state.info?.let {
+                        Text(it, color = MslDesignTokens.success, style = MaterialTheme.typography.bodySmall)
+                    }
+                    state.error?.let {
+                        Text(it, color = MslDesignTokens.danger, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                when {
+                    state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator(color = MslDesignTokens.accentBright)
+                    }
+                    state.sources.isEmpty() -> EmptyNovelSources(onAddRepository)
+                    else -> {
+                        val visibleNovels =
+                            if (state.showFavorites) {
+                                state.novels.filter {
+                                    state.selectedSource != null &&
+                                        "${state.selectedSource}::${it.path}" in favoriteKeys
+                                }
+                            } else {
+                                state.novels
+                            }
+
+                        if (state.showFavorites && visibleNovels.isEmpty()) {
+                            EmptyFavorites()
+                        } else if (visibleNovels.isEmpty()) {
+                            EmptyNovelResults(state.query, state.error != null)
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(150.dp),
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                items(visibleNovels) { item ->
+                                    NovelCard(
+                                        item = item,
+                                        onOpen = onOpen,
+                                        isFavorite = state.selectedSource != null &&
+                                            "${state.selectedSource}::${item.path}" in favoriteKeys,
+                                        onToggleFavorite = onToggleFavorite,
+                                    )
                                 }
                             }
-                        } else {
-                            Button(onClick = onInstallDirect, modifier = Modifier.fillMaxWidth()) {
-                                Text("تنزيل وتثبيت المصدر")
-                            }
                         }
-                        Text(
-                            "تنبيه: المصدر يشغّل JavaScript تابعًا لجهة خارجية داخل محرك المصادر. ثبّت الروابط التي تثق بها فقط.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
-                },
-                confirmButton = { TextButton(onClick = onCloseRepo) { Text("إغلاق") } },
-            )
+                }
+            }
+
+            if (state.repoDialog) {
+                AlertDialog(
+                    onDismissRequest = onCloseRepo,
+                    shape = MslDesignTokens.cardShape,
+                    containerColor = MslDesignTokens.surface,
+                    titleContentColor = MslDesignTokens.textPrimary,
+                    textContentColor = MslDesignTokens.textSecondary,
+                    title = { Text("إضافة مصادر الروايات", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                "اختر مستودع LNReader أو ألصق رابط plugin.js مباشر.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                FilterChip(
+                                    selected = state.inputMode == NovelInputMode.REPOSITORY,
+                                    onClick = { onInputModeChange(NovelInputMode.REPOSITORY) },
+                                    label = { Text("مستودع") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MslDesignTokens.surfaceRaised,
+                                        labelColor = MslDesignTokens.textSecondary,
+                                        selectedContainerColor = MslDesignTokens.accent.copy(alpha = 0.28f),
+                                        selectedLabelColor = MslDesignTokens.textPrimary,
+                                    ),
+                                )
+                                FilterChip(
+                                    selected = state.inputMode == NovelInputMode.DIRECT_URL,
+                                    onClick = { onInputModeChange(NovelInputMode.DIRECT_URL) },
+                                    label = { Text("رابط مباشر") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MslDesignTokens.surfaceRaised,
+                                        labelColor = MslDesignTokens.textSecondary,
+                                        selectedContainerColor = MslDesignTokens.accent.copy(alpha = 0.28f),
+                                        selectedLabelColor = MslDesignTokens.textPrimary,
+                                    ),
+                                )
+                            }
+                            OutlinedTextField(
+                                value = state.repoUrl,
+                                onValueChange = onRepoUrlChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("URL") },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = MslDesignTokens.textPrimary,
+                                    unfocusedTextColor = MslDesignTokens.textPrimary,
+                                    focusedBorderColor = MslDesignTokens.accentBright,
+                                    unfocusedBorderColor = MslDesignTokens.border,
+                                    focusedLabelColor = MslDesignTokens.accentBright,
+                                    unfocusedLabelColor = MslDesignTokens.textMuted,
+                                ),
+                            )
+                            if (state.inputMode == NovelInputMode.REPOSITORY) {
+                                Button(
+                                    onClick = onLoadRepo,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MslDesignTokens.accent,
+                                        contentColor = MslDesignTokens.textPrimary,
+                                    ),
+                                ) { Text("تحميل المستودع") }
+                                if (state.repoEntries.isNotEmpty()) {
+                                    HorizontalDivider(color = MslDesignTokens.border)
+                                    Text(
+                                        "المصادر المتاحة: ${state.repoEntries.size}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MslDesignTokens.textPrimary,
+                                    )
+                                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                                        items(state.repoEntries) { entry ->
+                                            ListItem(
+                                                headlineContent = {
+                                                    Text(entry.name, color = MslDesignTokens.textPrimary)
+                                                },
+                                                supportingContent = {
+                                                    Text(
+                                                        listOfNotNull(entry.lang, entry.version).joinToString(" • "),
+                                                        color = MslDesignTokens.textMuted,
+                                                    )
+                                                },
+                                                trailingContent = {
+                                                    Button(
+                                                        onClick = { onInstall(entry) },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = MslDesignTokens.surfaceHighest,
+                                                            contentColor = MslDesignTokens.accentBright,
+                                                        ),
+                                                    ) { Text("تثبيت") }
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = onInstallDirect,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MslDesignTokens.accent,
+                                        contentColor = MslDesignTokens.textPrimary,
+                                    ),
+                                ) { Text("تنزيل وتثبيت المصدر") }
+                            }
+                            Text(
+                                "تنبيه: المصدر يشغّل JavaScript تابعًا لجهة خارجية داخل محرك المصادر. ثبّت الروابط التي تثق بها فقط.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MslDesignTokens.textMuted,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = onCloseRepo,
+                            colors = ButtonDefaults.textButtonColors(contentColor = MslDesignTokens.accentBright),
+                        ) { Text("إغلاق") }
+                    },
+                )
+            }
         }
     }
 }
@@ -416,15 +541,26 @@ private fun NovelShell(
 @Composable
 private fun EmptyNovelSources(onAdd: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("لا توجد مصادر روايات مثبتة", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "لا توجد مصادر روايات مثبتة",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MslDesignTokens.textPrimary,
+        )
         Spacer(Modifier.height(8.dp))
-        Text("أضف مستودعًا ثم ثبّت المصادر التي تريدها.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("أضف مستودعًا ثم ثبّت المصادر التي تريدها.", color = MslDesignTokens.textSecondary)
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onAdd) { Text("إضافة مستودع") }
+        Button(
+            onClick = onAdd,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MslDesignTokens.accent,
+                contentColor = MslDesignTokens.textPrimary,
+            ),
+        ) { Text("إضافة مستودع") }
     }
 }
 
@@ -437,40 +573,54 @@ private fun NovelCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MslDesignTokens.cardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+        border = BorderStroke(1.dp, MslDesignTokens.border),
     ) {
         Box {
             Column(
-                modifier = Modifier.clickable { onOpen(item) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpen(item) },
             ) {
-                AsyncImage(
-                    model = item.cover,
-                    contentDescription = item.name,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(190.dp)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 18.dp,
-                                topEnd = 18.dp,
-                            ),
-                        ),
-                )
+                        .height(206.dp)
+                        .clip(MslDesignTokens.compactCardShape),
+                ) {
+                    AsyncImage(
+                        model = item.cover,
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(MslDesignTokens.heroGradient),
+                    )
+                }
 
                 Text(
                     item.name,
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 13.dp),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Medium,
+                    color = MslDesignTokens.textPrimary,
                 )
             }
 
             FilledTonalIconButton(
                 onClick = { onToggleFavorite(item) },
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopStart)
                     .padding(8.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MslDesignTokens.background.copy(alpha = 0.82f),
+                    contentColor = MslDesignTokens.warning,
+                ),
             ) {
                 Text(
                     text = if (isFavorite) "★" else "☆",
@@ -491,14 +641,15 @@ private fun EmptyFavorites() {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            "⭐ لا توجد روايات مفضلة",
+            "لا توجد روايات مفضلة",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            color = MslDesignTokens.textPrimary,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             "أضف الروايات التي تريد الرجوع إليها لاحقًا.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MslDesignTokens.textSecondary,
         )
     }
 }
@@ -517,10 +668,15 @@ private fun EmptyNovelResults(query: String, hasError: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(message, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            message,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MslDesignTokens.textPrimary,
+        )
         if (query.isNotBlank() && !hasError) {
             Spacer(Modifier.height(8.dp))
-            Text("جرّب عنوانًا آخر أو تحقق من المصدر المحدد.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("جرّب عنوانًا آخر أو تحقق من المصدر المحدد.", color = MslDesignTokens.textSecondary)
         }
     }
 }
@@ -615,6 +771,9 @@ class NovelDetailsScreen(
                                 d.genres?.takeIf { it.isNotBlank() },
                             ).joinToString(" • ")
                             if (meta.isNotBlank()) Text(meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            eu.kanade.tachiyomi.mslime.MslSocialStats(
+                                eu.kanade.tachiyomi.mslime.MslSocial.titleKey("novel", sourceId, path),
+                            )
                             if (!d.summary.isNullOrBlank()) {
                                 Text(
                                     d.summary!!,
@@ -660,7 +819,6 @@ class NovelDetailsScreen(
                 onDismiss = { showNovelComments = false },
             )
         }
-
     }
 }
 
@@ -811,12 +969,20 @@ class NovelReaderScreen(
                                             }
                                         }.getOrNull()
                                         if (reservation == null) {
-                                            runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
-                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_balance_check_failed))
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    MslWallet.refundDownload(context, reservationId)
+                                                }
+                                            }
+                                            snackbarHostState.showSnackbar(
+                                                context.stringResource(MR.strings.coin_download_balance_check_failed),
+                                            )
                                             return@launch
                                         }
                                         if (!reservation.allowed) {
-                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_no_balance))
+                                            snackbarHostState.showSnackbar(
+                                                context.stringResource(MR.strings.coin_download_no_balance),
+                                            )
                                             return@launch
                                         }
                                         val saved = runCatching {
@@ -825,24 +991,38 @@ class NovelReaderScreen(
                                             }
                                         }
                                         if (saved.isFailure) {
-                                            runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
-                                            snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_save_failed))
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    MslWallet.refundDownload(context, reservationId)
+                                                }
+                                            }
+                                            snackbarHostState.showSnackbar(
+                                                context.stringResource(MR.strings.coin_download_save_failed),
+                                            )
                                             return@launch
                                         }
-                                        runCatching { withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) } }
+                                        runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                MslWallet.commitDownload(context, reservationId)
+                                            }
+                                        }
                                         offlineSaved = true
-                                        snackbarHostState.showSnackbar(context.stringResource(MR.strings.coin_download_saved_message))
+                                        snackbarHostState.showSnackbar(
+                                            context.stringResource(MR.strings.coin_download_saved_message),
+                                        )
                                     } finally {
                                         offlineSaving = false
                                     }
                                 }
                             },
                         ) {
-                            Text(when {
-                                offlineSaved -> stringResource(MR.strings.coin_download_saved_label)
-                                offlineSaving -> stringResource(MR.strings.coin_download_saving)
-                                else -> stringResource(MR.strings.coin_download_button)
-                            })
+                            Text(
+                                when {
+                                    offlineSaved -> stringResource(MR.strings.coin_download_saved_label)
+                                    offlineSaving -> stringResource(MR.strings.coin_download_saving)
+                                    else -> stringResource(MR.strings.coin_download_button)
+                                },
+                            )
                         }
                         TextButton(onClick = { showReaderSettings = true }) {
                             Text("Aa", fontWeight = FontWeight.Bold)
@@ -1015,76 +1195,76 @@ class NovelReaderScreen(
                 }
             }
 
-        if (showReaderSettings) {
-            AlertDialog(
-                onDismissRequest = { showReaderSettings = false },
-                title = { Text("تخصيص القراءة") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("حجم الخط: ${fontSize.toInt()}")
-                        Slider(
-                            value = fontSize,
-                            onValueChange = {
-                                fontSize = it
-                                readerPrefs.edit().putFloat("font_size", it).apply()
-                            },
-                            valueRange = 14f..32f,
-                            steps = 17,
-                        )
-                        Text("تباعد الأسطر: ${String.format(java.util.Locale.US, "%.2f", lineSpacing)}")
-                        Slider(
-                            value = lineSpacing,
-                            onValueChange = {
-                                lineSpacing = it
-                                readerPrefs.edit().putFloat("line_spacing", it).apply()
-                            },
-                            valueRange = 1.2f..3f,
-                            steps = 17,
-                        )
-                        Text("نوع الخط")
-                        listOf("Noto Naskh Arabic", "Noto Sans Arabic", "serif", "sans-serif").forEach { family ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        fontFamily = family
-                                        readerPrefs.edit().putString("font_family", family).apply()
-                                    }
-                                    .padding(vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(
-                                    selected = fontFamily == family,
-                                    onClick = {
-                                        fontFamily = family
-                                        readerPrefs.edit().putString("font_family", family).apply()
-                                    },
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(family)
+            if (showReaderSettings) {
+                AlertDialog(
+                    onDismissRequest = { showReaderSettings = false },
+                    title = { Text("تخصيص القراءة") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("حجم الخط: ${fontSize.toInt()}")
+                            Slider(
+                                value = fontSize,
+                                onValueChange = {
+                                    fontSize = it
+                                    readerPrefs.edit().putFloat("font_size", it).apply()
+                                },
+                                valueRange = 14f..32f,
+                                steps = 17,
+                            )
+                            Text("تباعد الأسطر: ${String.format(java.util.Locale.US, "%.2f", lineSpacing)}")
+                            Slider(
+                                value = lineSpacing,
+                                onValueChange = {
+                                    lineSpacing = it
+                                    readerPrefs.edit().putFloat("line_spacing", it).apply()
+                                },
+                                valueRange = 1.2f..3f,
+                                steps = 17,
+                            )
+                            Text("نوع الخط")
+                            listOf("Noto Naskh Arabic", "Noto Sans Arabic", "serif", "sans-serif").forEach { family ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            fontFamily = family
+                                            readerPrefs.edit().putString("font_family", family).apply()
+                                        }
+                                        .padding(vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = fontFamily == family,
+                                        onClick = {
+                                            fontFamily = family
+                                            readerPrefs.edit().putString("font_family", family).apply()
+                                        },
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(family)
+                                }
                             }
                         }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showReaderSettings = false }) { Text("تم") }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            fontSize = 20f
-                            lineSpacing = 2.05f
-                            fontFamily = "Noto Naskh Arabic"
-                            readerPrefs.edit()
-                                .putFloat("font_size", fontSize)
-                                .putFloat("line_spacing", lineSpacing)
-                                .putString("font_family", fontFamily)
-                                .apply()
-                        },
-                    ) { Text("إعادة الضبط") }
-                },
-            )
-        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showReaderSettings = false }) { Text("تم") }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                fontSize = 20f
+                                lineSpacing = 2.05f
+                                fontFamily = "Noto Naskh Arabic"
+                                readerPrefs.edit()
+                                    .putFloat("font_size", fontSize)
+                                    .putFloat("line_spacing", lineSpacing)
+                                    .putString("font_family", fontFamily)
+                                    .apply()
+                            },
+                        ) { Text("إعادة الضبط") }
+                    },
+                )
+            }
         }
     }
 }

@@ -938,4 +938,14 @@
     <string name="coin_virtual_notice">العملات رصيد افتراضي داخل التطبيق؛ لا تمثل أموالًا حقيقية ولا يمكن سحبها.</string>
     <string name="coin_privacy_options">خيارات خصوصية الإعلانات</string>
     <string name="coin_privacy_options_description">إدارة خيارات الخصوصية الخاصة بالإعلانات.</string>
+    <string name="coin_wallet_disabled">المحفظة غير مفعّلة في هذا الإصدار.</string>
+    <string name="coin_transactions_title">سجل المعاملات</string>
+    <string name="coin_transactions_loading">جارٍ تحميل سجل معاملات حسابك…</string>
+    <string name="coin_transactions_unavailable">تعذّر جلب السجل من خدمة المحفظة. تحقّق من الاتصال وإعداد قاعدة البيانات.</string>
+    <string name="coin_transactions_empty">لا توجد معاملات مسجّلة لهذا الحساب بعد.</string>
+    <string name="coin_transaction_ad_reward">مكافأة مشاهدة إعلان</string>
+    <string name="coin_transaction_purchase">شراء عملات عبر Google Play</string>
+    <string name="coin_transaction_download">تنزيل فصل</string>
+    <string name="coin_transaction_refund">استرداد تنزيل</string>
+    <string name="coin_transaction_other">معاملة أخرى</string>
 </resources>

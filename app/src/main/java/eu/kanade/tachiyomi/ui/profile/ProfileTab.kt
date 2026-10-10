@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,14 +21,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -35,6 +39,8 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,38 +54,49 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.launch
-import eu.kanade.tachiyomi.novel.NovelManagerHolder
-import eu.kanade.tachiyomi.novel.NovelReaderScreen
-import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import dev.zacsweers.metrox.viewmodel.metroViewModel
+import eu.kanade.presentation.history.HistoryUiModel
 import eu.kanade.presentation.more.stats.RankSection
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.ui.stats.StatsViewModel
-import java.io.File
-import androidx.compose.material3.Tab as M3Tab
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import eu.kanade.presentation.history.HistoryUiModel
-import eu.kanade.tachiyomi.ui.history.HistoryViewModel
+import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
 import eu.kanade.tachiyomi.novel.NovelHistoryStore
+import eu.kanade.tachiyomi.novel.NovelManagerHolder
+import eu.kanade.tachiyomi.novel.NovelReaderScreen
+import eu.kanade.tachiyomi.ui.history.HistoryViewModel
+import eu.kanade.tachiyomi.ui.more.MoreTab
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.stats.StatsViewModel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.rounded.AttachMoney
+import mihon.icons.materialsymbols.rounded.Person
+import mihon.icons.materialsymbols.rounded.Settings
 import tachiyomi.domain.manga.model.MangaCover
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material3.Tab as M3Tab
 
 private fun prefs(c: Context) = c.getSharedPreferences("msl_profile", Context.MODE_PRIVATE)
 
@@ -112,16 +129,51 @@ private fun joinedText(joined: Long): String {
 
 @Composable
 private fun StatCard(label: String, value: String, modifier: Modifier) {
-    Card(modifier = modifier) {
+    Card(
+        modifier = modifier,
+        shape = MslDesignTokens.compactCardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = value,
                 fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                color = MslDesignTokens.accentBright,
             )
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MslDesignTokens.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileActionCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = MslDesignTokens.compactCardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = MslDesignTokens.accentBright)
+            Column {
+                Text(title, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MslDesignTokens.textSecondary)
+            }
         }
     }
 }
@@ -188,20 +240,31 @@ private fun UnifiedHistorySection(
             .padding(horizontal = 16.dp),
     ) {
         Text(
-            text = "📖 سجل القراءة",
+            text = "سجل القراءة",
             fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
+            color = MslDesignTokens.textPrimary,
             modifier = Modifier.padding(bottom = 10.dp),
         )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = MslDesignTokens.cardShape,
+            colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
         ) {
             Column(
                 modifier = Modifier.padding(vertical = 6.dp),
             ) {
-                rows.forEach { row ->
+                rows.forEachIndexed { index, row ->
+                    if (index > 0) {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MslDesignTokens.border),
+                        )
+                    }
                     val openManga = row.mangaId?.let { mangaId ->
                         row.chapterId?.let { chapterId ->
                             { onOpenManga(mangaId, chapterId) }
@@ -230,15 +293,14 @@ private fun UnifiedHistorySection(
                                 modifier = Modifier
                                     .size(width = 52.dp, height = 72.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        MaterialTheme.colorScheme.secondaryContainer,
-                                    ),
+                                    .background(MslDesignTokens.surfaceHighest),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     text = "رواية",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
+                                    color = MslDesignTokens.accentBright,
                                 )
                             }
                         }
@@ -251,12 +313,13 @@ private fun UnifiedHistorySection(
                             Text(
                                 text = row.title,
                                 fontWeight = FontWeight.Bold,
+                                color = MslDesignTokens.textPrimary,
                                 maxLines = 2,
                             )
 
                             Text(
                                 text = row.subtitle,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MslDesignTokens.accentBlue,
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1,
                             )
@@ -264,7 +327,7 @@ private fun UnifiedHistorySection(
                             Text(
                                 text = historyDate(row.readAt),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MslDesignTokens.textMuted,
                             )
                         }
                     }
@@ -275,7 +338,6 @@ private fun UnifiedHistorySection(
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-
 
 private data class UnifiedReadingItem(
     val title: String,
@@ -444,9 +506,9 @@ data object ProfileTab : Tab {
     override val options: TabOptions
         @Composable
         get() = TabOptions(
-            index = 2u,
+            index = 4u,
             title = "الملف الشخصي",
-            icon = painterResource(R.drawable.ic_mihon),
+            icon = rememberVectorPainter(MaterialSymbols.Rounded.Person),
         )
 
     @Composable
@@ -458,6 +520,7 @@ data object ProfileTab : Tab {
     private fun ProfileContent() {
         val ctx = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
+        val tabNavigator = LocalTabNavigator.current
         val scope = rememberCoroutineScope()
         val viewModel = metroViewModel<StatsViewModel>()
         val state by viewModel.state.collectAsState()
@@ -467,9 +530,12 @@ data object ProfileTab : Tab {
             NovelHistoryStore(ctx).all()
         }
         var rev by remember { mutableIntStateOf(0) }
+        var vipStatus by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslVipStatus?>(null) }
         var tab by remember { mutableIntStateOf(0) }
         var editName by remember { mutableStateOf(false) }
-        var name by remember { mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم") }
+        var name by remember {
+            mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم")
+        }
         val joined = remember {
             val p = prefs(ctx)
             var j = p.getLong("joined", 0L)
@@ -478,6 +544,12 @@ data object ProfileTab : Tab {
                 p.edit().putLong("joined", j).apply()
             }
             j
+        }
+        LaunchedEffect(ctx) {
+            vipStatus = withContext(Dispatchers.IO) {
+                eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
+                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
+            }
         }
         val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null && saveFromUri(ctx, uri, "msl_avatar.img")) rev++
@@ -492,178 +564,306 @@ data object ProfileTab : Tab {
         val level = read / 25 + 1
         androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).apply() }
 
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(190.dp)
-                    .background(Brush.verticalGradient(listOf(Color(0xFF123A5A), Color(0xFF0F0F13))))
-                    .clickable { coverPicker.launch("image/*") },
+                    .fillMaxSize()
+                    .background(MslDesignTokens.background)
+                    .verticalScroll(rememberScrollState()),
             ) {
-                if (cover != null) {
-                    Image(
-                        bitmap = cover.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                }
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp)
-                        .offset(y = 48.dp)
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF0F0F13))
-                        .clickable { avatarPicker.launch("image/*") },
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth()
+                        .height(218.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(MslDesignTokens.surfaceHighest, MslDesignTokens.background),
+                            ),
+                        )
+                        .clickable { coverPicker.launch("image/*") },
                 ) {
-                    if (avatar != null) {
+                    if (cover != null) {
                         Image(
-                            bitmap = avatar.asImageBitmap(),
+                            bitmap = cover.asImageBitmap(),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)),
                             contentScale = ContentScale.Crop,
                         )
-                    } else {
-                        Image(
-                            painter = painterResource(R.drawable.ic_mihon),
-                            contentDescription = null,
-                            modifier = Modifier.size(56.dp),
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                            .background(MslDesignTokens.heroGradient),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp)
+                            .offset(y = 54.dp)
+                            .size(104.dp)
+                            .clip(CircleShape)
+                            .border(3.dp, MslDesignTokens.accent, CircleShape)
+                            .background(MslDesignTokens.backgroundRaised)
+                            .clickable { avatarPicker.launch("image/*") },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (avatar != null) {
+                            Image(
+                                bitmap = avatar.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            Image(
+                                painter = painterResource(R.drawable.ic_mihon),
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(66.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = name,
+                            fontSize = 24.sp,
+                            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                            fontWeight = FontWeight.Bold,
+                            color = MslDesignTokens.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { editName = true },
+                        )
+                        if (vipStatus?.active == true) {
+                            Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.18f)) {
+                                Text("VIP", modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = Color(0xFFFFC857), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                    Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.accent.copy(alpha = 0.22f)) {
+                        Text(
+                            text = "المستوى $level",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MslDesignTokens.accentBright,
                         )
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(56.dp))
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
                 Text(
-                    text = name,
-                    fontSize = 24.sp,
-                    fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { editName = true },
+                    text = joinedText(joined),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MslDesignTokens.textSecondary,
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Text(
-                        text = "المستوى $level",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ProfileActionCard(
+                        title = "المحفظة",
+                        subtitle = "الرصيد والمتجر",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                        modifier = Modifier.weight(1f),
+                        onClick = { navigator.push(MslWalletScreen()) },
+                    )
+                    ProfileActionCard(
+                        title = "الإعدادات والمزيد",
+                        subtitle = "التنزيلات والدعم",
+                        icon = MaterialSymbols.Rounded.Settings,
+                        modifier = Modifier.weight(1f),
+                        onClick = { tabNavigator.current = MoreTab },
                     )
                 }
-            }
-            Text(
-                text = joinedText(joined),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                ProfileActionCard(
+                    title = "عضوية VIP",
+                    subtitle = if (vipStatus?.active == true) "العضوية نشطة — إدارة المزايا" else "الخطط والمزايا اليومية",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },
+                )
 
-            eu.kanade.tachiyomi.mslime.MslAccountCard()
-            eu.kanade.tachiyomi.mslime.MslReaderSettingsCard()
+                Text(
+                    text = "الحساب",
+                    fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MslDesignTokens.textPrimary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                )
+                eu.kanade.tachiyomi.mslime.MslAccountCard()
+                Text(
+                    text = "إعدادات القارئ",
+                    fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MslDesignTokens.textPrimary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                )
+                eu.kanade.tachiyomi.mslime.MslReaderSettingsCard()
 
-            UnifiedHistorySection(
-                historyState = historyState,
-                novelHistory = novelHistory,
-                onOpenManga = { _, chapterId ->
-                    scope.launch {
-                        val chapter = historyViewModel.getChapterById(chapterId)
-                        if (chapter != null) {
-                            ctx.startActivity(
-                                ReaderActivity.newIntent(
-                                    ctx,
-                                    chapter.mangaId,
-                                    chapter.id,
+                UnifiedHistorySection(
+                    historyState = historyState,
+                    novelHistory = novelHistory,
+                    onOpenManga = { _, chapterId ->
+                        scope.launch {
+                            val chapter = historyViewModel.getChapterById(chapterId)
+                            if (chapter != null) {
+                                ctx.startActivity(
+                                    ReaderActivity.newIntent(
+                                        ctx,
+                                        chapter.mangaId,
+                                        chapter.id,
+                                    ),
+                                )
+                            }
+                        }
+                    },
+                    onOpenNovel = { entry ->
+                        scope.launch {
+                            val details = runCatching {
+                                NovelManagerHolder.get(ctx).details(
+                                    entry.sourceId,
+                                    entry.novelPath,
+                                )
+                            }.getOrNull() ?: return@launch
+
+                            val chapters = details.chapters.orEmpty()
+                            if (chapters.isEmpty()) return@launch
+
+                            val exactIndex = chapters.indexOfFirst {
+                                it.path == entry.chapterPath
+                            }
+
+                            val index = when {
+                                exactIndex >= 0 -> exactIndex
+                                else -> entry.chapterIndex.coerceIn(0, chapters.lastIndex)
+                            }
+
+                            navigator.push(
+                                NovelReaderScreen(
+                                    sourceId = entry.sourceId,
+                                    novelPath = entry.novelPath,
+                                    novelName = entry.novelTitle,
+                                    novelCover = details.cover ?: entry.cover,
+                                    chapters = chapters,
+                                    chapterIndex = index,
                                 ),
                             )
                         }
+                    },
+                )
+                if (s is StatsScreenState.Success) {
+                    val ms = s.overview.totalReadDuration
+                    Text(
+                        text = "إحصاءات القراءة",
+                        fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MslDesignTokens.textPrimary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        StatCard("وقت القراءة", "${ms / 3_600_000}س ${ms / 60_000 % 60}د", Modifier.weight(1f))
+                        StatCard("فصل مقروء", read.toString(), Modifier.weight(1f))
                     }
-                },
-                onOpenNovel = { entry ->
-                    scope.launch {
-                        val details = runCatching {
-                            NovelManagerHolder.get(ctx).details(
-                                entry.sourceId,
-                                entry.novelPath,
-                            )
-                        }.getOrNull() ?: return@launch
-
-                        val chapters = details.chapters.orEmpty()
-                        if (chapters.isEmpty()) return@launch
-
-                        val exactIndex = chapters.indexOfFirst {
-                            it.path == entry.chapterPath
+                    TabRow(
+                        selectedTabIndex = tab,
+                        containerColor = MslDesignTokens.background,
+                        contentColor = MslDesignTokens.accentBright,
+                    ) {
+                        M3Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("الرتبة") })
+                        M3Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("المكتبة") })
+                    }
+                    Surface(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = MslDesignTokens.cardShape,
+                        color = MslDesignTokens.surface,
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            if (tab == 0) {
+                                RankSection(s.chapters)
+                            } else {
+                                StatCard(
+                                    "عناوين المكتبة",
+                                    s.overview.libraryMangaCount.toString(),
+                                    Modifier.fillMaxWidth(),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                StatCard(
+                                    "عناوين مكتملة",
+                                    s.overview.completedMangaCount.toString(),
+                                    Modifier.fillMaxWidth(),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                StatCard(
+                                    "الفصول المحمّلة",
+                                    s.chapters.downloadCount.toString(),
+                                    Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
-
-                        val index = when {
-                            exactIndex >= 0 -> exactIndex
-                            else -> entry.chapterIndex.coerceIn(0, chapters.lastIndex)
-                        }
-
-                        navigator.push(
-                            NovelReaderScreen(
-                                sourceId = entry.sourceId,
-                                novelPath = entry.novelPath,
-                                novelName = entry.novelTitle,
-                                novelCover = details.cover ?: entry.cover,
-                                chapters = chapters,
-                                chapterIndex = index,
-                            ),
-                        )
                     }
-                },
-            )
-            if (s is StatsScreenState.Success) {
-                val ms = s.overview.totalReadDuration
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    StatCard("وقت القراءة", "${ms / 3_600_000}س ${ms / 60_000 % 60}د", Modifier.weight(1f))
-                    StatCard("فصل مقروء", read.toString(), Modifier.weight(1f))
-                }
-                TabRow(selectedTabIndex = tab) {
-                    M3Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("الرتبة") })
-                    M3Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("المكتبة") })
-                }
-                Column(modifier = Modifier.padding(16.dp)) {
-                    if (tab == 0) {
-                        RankSection(s.chapters)
-                    } else {
-                        StatCard("عناوين المكتبة", s.overview.libraryMangaCount.toString(), Modifier.fillMaxWidth())
-                        Spacer(modifier = Modifier.height(12.dp))
-                        StatCard("عناوين مكتملة", s.overview.completedMangaCount.toString(), Modifier.fillMaxWidth())
-                        Spacer(modifier = Modifier.height(12.dp))
-                        StatCard("الفصول المحمّلة", s.chapters.downloadCount.toString(), Modifier.fillMaxWidth())
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = MslDesignTokens.accentBright)
                     }
-                }
-            } else {
-                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
                 }
             }
-        }
 
-        if (editName) {
-            var tmp by remember { mutableStateOf(name) }
-            AlertDialog(
-                onDismissRequest = { editName = false },
-                title = { Text("اسمك") },
-                text = { OutlinedTextField(value = tmp, onValueChange = { tmp = it }, singleLine = true) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            name = tmp.trim().ifEmpty { name }
-                            prefs(ctx).edit().putString("name", name).apply()
-                            editName = false
-                        },
-                    ) { Text("حفظ") }
-                },
-                dismissButton = { TextButton(onClick = { editName = false }) { Text("إلغاء") } },
-            )
+            if (editName) {
+                var tmp by remember { mutableStateOf(name) }
+                AlertDialog(
+                    onDismissRequest = { editName = false },
+                    title = { Text("اسمك") },
+                    text = {
+                        OutlinedTextField(
+                            value = tmp,
+                            onValueChange = { tmp = it },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                name = tmp.trim().ifEmpty { name }
+                                prefs(ctx).edit().putString("name", name).apply()
+                                editName = false
+                            },
+                        ) { Text("حفظ") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { editName = false }) {
+                            Text("إلغاء")
+                        }
+                    },
+                )
+            }
         }
     }
 }
