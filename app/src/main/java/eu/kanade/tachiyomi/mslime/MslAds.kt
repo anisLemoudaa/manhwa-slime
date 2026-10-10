@@ -2,12 +2,14 @@ package eu.kanade.tachiyomi.mslime
 
 import android.app.Activity
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.PreloadConfiguration
+import com.google.android.libraries.ads.mobile.sdk.common.PreloadCallback
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdPreloader
@@ -32,7 +34,19 @@ object MslAds {
     private val sdkInitialized = AtomicBoolean(false)
     private val vipInterstitialCheckInProgress = AtomicBoolean(false)
     private var consentInformation: ConsentInformation? = null
-    private var adContext: Context? = null
+    private val rewardedPreloadCallback = object : PreloadCallback {
+        override fun onAdPreloaded(preloadId: String, responseInfo: com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo) {
+            Log.i("MslAds", "Rewarded ad ready: $preloadId adapter=${responseInfo.mediationAdapterClassName}")
+        }
+
+        override fun onAdsExhausted(preloadId: String) {
+            Log.w("MslAds", "Rewarded ad cache exhausted: $preloadId")
+        }
+
+        override fun onAdFailedToPreload(preloadId: String, adError: com.google.android.libraries.ads.mobile.sdk.common.LoadAdError) {
+            Log.e("MslAds", "Rewarded preload failed: id=$preloadId code=${adError.code} message=${adError.message} details=$adError")
+        }
+    }
 
     var privacyOptionsRequired by mutableStateOf(false)
         private set
@@ -77,14 +91,17 @@ object MslAds {
 
     private fun initializeAndPreload(context: Context) {
         if (!sdkInitialized.compareAndSet(false, true)) return
-        adContext = context.applicationContext
         Thread {
             try {
                 val config = InitializationConfig.Builder(appId()).build()
                 MobileAds.initialize(context, config) {
                     rewardedUnitId().takeIf(String::isNotBlank)?.let { unitId ->
                         val request = AdRequest.Builder(unitId).build()
-                        RewardedAdPreloader.start(unitId, PreloadConfiguration(request))
+                        RewardedAdPreloader.start(
+                            unitId,
+                            PreloadConfiguration(request, bufferSize = 2),
+                            rewardedPreloadCallback,
+                        )
                     }
                     interstitialUnitId().takeIf(String::isNotBlank)?.let { unitId ->
                         val request = AdRequest.Builder(unitId).build()
@@ -166,18 +183,7 @@ object MslAds {
             if (showRewarded(activity, userId, sessionId, onRewardEarned, onAdClosed, retryUnavailable)) {
                 return true
             }
-            if (attempt < 19) {
-                if (adContext != null) {
-                    runCatching {
-                        val unitId = rewardedUnitId()
-                        RewardedAdPreloader.start(
-                            unitId,
-                            PreloadConfiguration(AdRequest.Builder(unitId).build()),
-                        )
-                    }
-                }
-                delay(500)
-            }
+            if (attempt < 19) delay(500)
         }
         onAdUnavailable()
         return false
