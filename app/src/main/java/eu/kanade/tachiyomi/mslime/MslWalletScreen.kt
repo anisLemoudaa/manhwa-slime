@@ -136,6 +136,13 @@ private fun WalletTransactionRow(transaction: MslWallet.CoinTransaction) {
         "play_purchase" -> stringResource(MR.strings.coin_transaction_purchase)
         "download" -> stringResource(MR.strings.coin_transaction_download)
         "download_refund" -> stringResource(MR.strings.coin_transaction_refund)
+        "vip_purchase" -> when (transaction.referenceId) {
+            "month" -> "اشتراك VIP لمدة شهر"
+            "six_months" -> "اشتراك VIP لمدة 6 أشهر"
+            "lifetime" -> "اشتراك VIP مدى الحياة"
+            else -> "اشتراك VIP"
+        }
+        "daily_login_reward" -> "مكافأة الدخول اليومية — اليوم ${transaction.referenceId?.substringBefore(':') ?: ""}"
         else -> stringResource(MR.strings.coin_transaction_other)
     }
     val date = remember(transaction.createdAt) {

@@ -176,6 +176,7 @@ private fun HomeDashboardContent() {
             },
         )
         Spacer(Modifier.height(16.dp))
+        eu.kanade.tachiyomi.mslime.MslDailyRewardCard()
 
         val heroTitle = latestHistory?.title
             ?: firstLibraryItem?.libraryManga?.manga?.title

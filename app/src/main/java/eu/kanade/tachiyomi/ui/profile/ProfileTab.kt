@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -83,6 +84,8 @@ import eu.kanade.tachiyomi.ui.more.MoreTab
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.stats.StatsViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.AttachMoney
 import mihon.icons.materialsymbols.rounded.Person
@@ -526,6 +529,7 @@ data object ProfileTab : Tab {
             NovelHistoryStore(ctx).all()
         }
         var rev by remember { mutableIntStateOf(0) }
+        var vipStatus by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslVipStatus?>(null) }
         var tab by remember { mutableIntStateOf(0) }
         var editName by remember { mutableStateOf(false) }
         var name by remember {
@@ -539,6 +543,12 @@ data object ProfileTab : Tab {
                 p.edit().putLong("joined", j).apply()
             }
             j
+        }
+        LaunchedEffect(ctx) {
+            vipStatus = withContext(Dispatchers.IO) {
+                eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
+                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
+            }
         }
         val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null && saveFromUri(ctx, uri, "msl_avatar.img")) rev++
@@ -623,14 +633,27 @@ data object ProfileTab : Tab {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = name,
-                        fontSize = 24.sp,
-                        fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
-                        fontWeight = FontWeight.Bold,
-                        color = MslDesignTokens.textPrimary,
-                        modifier = Modifier.clickable { editName = true },
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = name,
+                            fontSize = 24.sp,
+                            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                            fontWeight = FontWeight.Bold,
+                            color = MslDesignTokens.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { editName = true },
+                        )
+                        if (vipStatus?.active == true) {
+                            Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.18f)) {
+                                Text("VIP", modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = Color(0xFFFFC857), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
                     Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.accent.copy(alpha = 0.22f)) {
                         Text(
                             text = "المستوى $level",
@@ -666,6 +689,13 @@ data object ProfileTab : Tab {
                         onClick = { tabNavigator.current = MoreTab },
                     )
                 }
+                ProfileActionCard(
+                    title = "عضوية VIP",
+                    subtitle = if (vipStatus?.active == true) "العضوية نشطة — إدارة المزايا" else "الخطط والمزايا اليومية",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },
+                )
 
                 Text(
                     text = "الحساب",

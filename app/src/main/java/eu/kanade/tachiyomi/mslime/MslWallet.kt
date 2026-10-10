@@ -54,9 +54,13 @@ object MslWallet {
 
     val enabled: Boolean get() = BuildConfig.COIN_WALLET_ENABLED
 
+    internal fun updateBalance(value: Int) {
+        _balance.value = value
+    }
+
     data class RewardSession(val id: String, val userId: String)
     data class DownloadReservation(val allowed: Boolean, val balance: Int, val status: String)
-    data class CoinTransaction(val id: String, val delta: Int, val kind: String, val createdAt: String)
+    data class CoinTransaction(val id: String, val delta: Int, val kind: String, val createdAt: String, val referenceId: String? = null)
 
     fun refresh(context: Context): Int? {
         val current = runCatching {
@@ -77,7 +81,7 @@ object MslWallet {
         return try {
             val token = MslSupabase.token(context) ?: return null
             val userId = MslSupabase.uid(context).takeIf(String::isNotBlank) ?: return null
-            val query = "select=id,delta,kind,created_at&user_id=eq.$userId&order=created_at.desc&limit=50"
+            val query = "select=id,delta,kind,created_at,reference_id&user_id=eq.$userId&order=created_at.desc&limit=50"
             val response = MslSupabase.call(
                 "GET",
                 "/rest/v1/coin_transactions?$query",
@@ -93,6 +97,7 @@ object MslWallet {
                     delta = row.getInt("delta"),
                     kind = row.getString("kind"),
                     createdAt = row.getString("created_at"),
+                    referenceId = row.optString("reference_id").takeUnless { it == "null" || it.isBlank() },
                 )
             }
         } catch (_: Exception) {
@@ -347,6 +352,7 @@ private fun MslCoinStoreDialog(
     var message by remember { mutableStateOf(context.stringResource(MR.strings.coin_store_choose_method)) }
     var busy by remember { mutableStateOf(false) }
     var rewardEarned by remember { mutableStateOf(false) }
+    var vipActive by remember { mutableStateOf(MslVip.cachedActive(context)) }
     val closeDialog = {
         MslPlayBilling.clearCallbacks()
         onDismiss()
@@ -355,7 +361,8 @@ private fun MslCoinStoreDialog(
     LaunchedEffect(activity) {
         balance = withContext(Dispatchers.IO) { MslWallet.refresh(context) }
         onBalanceChanged(balance)
-        if (activity != null) {
+        vipActive = withContext(Dispatchers.IO) { MslVip.refresh(context)?.active ?: MslVip.cachedActive(context) }
+        if (activity != null && BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
             MslPlayBilling.loadProducts(
                 activity,
                 onProducts = { packs = it },
@@ -365,6 +372,8 @@ private fun MslCoinStoreDialog(
                     onBalanceChanged(updatedBalance)
                 },
             )
+        } else if (!BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
+            message = "شراء العملات عبر Google Play غير متاح حتى تفعيل التحقق الخادمي للإيصالات."
         }
     }
 
@@ -404,11 +413,12 @@ private fun MslCoinStoreDialog(
                     }
                 }
                 Text(
-                    stringResource(MR.strings.coin_reward_description),
+                    if (vipActive) "عضوية VIP نشطة؛ لن تُعرض إعلانات المكافآت أثناء الاشتراك."
+                    else "أكمل إعلانًا مكافئًا واحدًا لتحصل على 15 عملة بعد تأكيد الخادم.",
                     color = MslDesignTokens.textPrimary,
                 )
                 Button(
-                    enabled = !busy && activity != null && MslWallet.enabled,
+                    enabled = !busy && activity != null && MslWallet.enabled && !vipActive,
                     onClick = {
                         val host = activity ?: return@Button
                         scope.launch {
@@ -484,18 +494,22 @@ private fun MslCoinStoreDialog(
                         },
                     )
                 }
-                Text(
-                    stringResource(MR.strings.coin_reward_unlimited),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MslDesignTokens.textMuted,
-                )
+                if (!vipActive) {
+                    Text(
+                        stringResource(MR.strings.coin_reward_unlimited),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MslDesignTokens.textMuted,
+                    )
+                }
                 Text(
                     stringResource(MR.strings.coin_play_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MslDesignTokens.textPrimary,
                 )
-                if (packs.isEmpty()) {
+                if (!BuildConfig.COIN_PLAY_PURCHASES_ENABLED) {
+                    Text("شراء العملات عبر Google Play غير متاح حاليًا؛ يمكنك جمع العملات من المكافآت اليومية والإعلانات المؤكدة.", color = MslDesignTokens.textSecondary)
+                } else if (packs.isEmpty()) {
                     Text(stringResource(MR.strings.coin_play_products_missing), color = MslDesignTokens.textSecondary)
                 } else {
                     packs.forEach { pack ->

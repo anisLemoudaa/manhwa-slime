@@ -771,6 +771,9 @@ class NovelDetailsScreen(
                                 d.genres?.takeIf { it.isNotBlank() },
                             ).joinToString(" • ")
                             if (meta.isNotBlank()) Text(meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            eu.kanade.tachiyomi.mslime.MslSocialStats(
+                                eu.kanade.tachiyomi.mslime.MslSocial.titleKey("novel", sourceId, path),
+                            )
                             if (!d.summary.isNullOrBlank()) {
                                 Text(
                                     d.summary!!,

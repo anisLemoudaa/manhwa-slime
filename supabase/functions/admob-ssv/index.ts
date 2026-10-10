@@ -46,8 +46,8 @@ function derEcdsaToRaw(signature: Uint8Array): Uint8Array {
   return raw;
 }
 
-async function getKeys(): Promise<Map<number, CryptoKey>> {
-  if (cachedKeys && Date.now() - cachedAt < MAX_KEY_CACHE_MS) return cachedKeys;
+async function getKeys(forceRefresh = false): Promise<Map<number, CryptoKey>> {
+  if (!forceRefresh && cachedKeys && Date.now() - cachedAt < MAX_KEY_CACHE_MS) return cachedKeys;
   const response = await fetch(KEYS_URL, { headers: { "Accept": "application/json" } });
   if (!response.ok) throw new Error(`AdMob key fetch failed (${response.status})`);
   const payload = await response.json();
@@ -55,7 +55,7 @@ async function getKeys(): Promise<Map<number, CryptoKey>> {
   for (const entry of payload.keys ?? []) {
     const keyBytes = decodeBase64Url(String(entry.base64 ?? ""));
     const key = await crypto.subtle.importKey(
-      "raw",
+      "spki",
       keyBytes,
       { name: "ECDSA", namedCurve: "P-256" },
       false,
@@ -73,14 +73,20 @@ async function verifyCallback(url: URL): Promise<URLSearchParams> {
   const rawQuery = url.search.startsWith("?") ? url.search.slice(1) : url.search;
   const signatureMarker = "&signature=";
   const signatureAt = rawQuery.lastIndexOf(signatureMarker);
-  if (signatureAt < 0 || !rawQuery.endsWith("&key_id=" + url.searchParams.get("key_id"))) {
+  const suffix = signatureAt < 0 ? "" : rawQuery.slice(signatureAt + 1);
+  const suffixParts = suffix.split("&");
+  if (signatureAt < 0 || suffixParts.length !== 2 || !suffixParts[0].startsWith("signature=") || !suffixParts[1].startsWith("key_id=")) {
     throw new Error("Missing ordered signature/key_id parameters");
   }
   const signedQuery = rawQuery.slice(0, signatureAt);
-  const signature = url.searchParams.get("signature");
-  const keyIdText = url.searchParams.get("key_id");
-  if (!signature || !keyIdText || !/^\d+$/.test(keyIdText)) throw new Error("Missing signature parameters");
-  const key = (await getKeys()).get(Number(keyIdText));
+  const suffixParams = new URLSearchParams(suffix);
+  const signature = suffixParams.get("signature");
+  const keyIdText = suffixParams.get("key_id");
+  if (!signature || !keyIdText || !/^\d+$/.test(keyIdText) || !Number.isSafeInteger(Number(keyIdText))) {
+    throw new Error("Missing signature parameters");
+  }
+  let key = (await getKeys()).get(Number(keyIdText));
+  if (!key) key = (await getKeys(true)).get(Number(keyIdText));
   if (!key) throw new Error("Unknown AdMob key id");
   const derSignature = decodeBase64Url(signature);
   const rawSignature = derEcdsaToRaw(derSignature);
@@ -91,7 +97,11 @@ async function verifyCallback(url: URL): Promise<URLSearchParams> {
     new TextEncoder().encode(signedQuery),
   );
   if (!valid) throw new Error("Invalid AdMob SSV signature");
-  return url.searchParams;
+  return new URLSearchParams(signedQuery);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 Deno.serve(async (request) => {
@@ -105,10 +115,10 @@ Deno.serve(async (request) => {
     const transactionId = params.get("transaction_id") ?? "";
     const rewardAmount = Number(params.get("reward_amount"));
     const rewardItem = params.get("reward_item") ?? "";
-    if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !/^[0-9a-f-]{36}$/i.test(userId)) {
+    if (!isUuid(sessionId) || !isUuid(userId)) {
       return new Response("Invalid reward identity", { status: 400 });
     }
-    if (rewardAmount !== EXPECTED_REWARD_AMOUNT || rewardItem !== EXPECTED_REWARD_ITEM || !transactionId) {
+    if (rewardAmount !== EXPECTED_REWARD_AMOUNT || rewardItem !== EXPECTED_REWARD_ITEM || transactionId.length < 16 || transactionId.length > 512) {
       return new Response("Unexpected reward payload", { status: 400 });
     }
 
@@ -130,11 +140,13 @@ Deno.serve(async (request) => {
     if (!grant.ok) {
       const detail = await grant.text();
       console.error("AdMob reward grant rejected", grant.status, detail.slice(0, 300));
-      return new Response("Reward not accepted", { status: 400 });
+      return new Response("Reward grant unavailable", { status: 500 });
     }
     return new Response("OK", { status: 200 });
   } catch (error) {
     console.error("AdMob SSV verification failed", error);
-    return new Response("SSV verification failed", { status: 400 });
+    const message = error instanceof Error ? error.message : "unknown";
+    const clientError = message.startsWith("Bad ") || message.startsWith("Missing ") || message.startsWith("Unknown ") || message.startsWith("Invalid ");
+    return new Response(clientError ? "Invalid SSV callback" : "SSV verification unavailable", { status: clientError ? 400 : 500 });
   }
 });
