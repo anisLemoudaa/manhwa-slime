@@ -193,7 +193,11 @@ object MslHook : Application.ActivityLifecycleCallbacks {
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
     override fun onActivityStarted(activity: Activity) {}
     override fun onActivityPaused(activity: Activity) {}
-    override fun onActivityStopped(activity: Activity) {}
+    override fun onActivityStopped(activity: Activity) {
+        if (activity.javaClass.name.endsWith("MainActivity")) {
+            MslCloudSync.syncNow(activity)
+        }
+    }
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
     override fun onActivityDestroyed(activity: Activity) {}
 }
@@ -355,7 +359,9 @@ object MslTranslate {
             .addOnSuccessListener { res ->
                 val items = res.textBlocks
                     .filter { it.boundingBox != null && it.text.isNotBlank() }
-                    .map { it.boundingBox!! to it.text.replace("\n", " ") }
+                    .map { it.boundingBox!! to normalizeOcr(it.text) }
+                .filter { it.second.isNotBlank() }
+                .sortedWith(compareBy({ it.first.top }, { it.first.left }))
                 if (items.isEmpty()) {
                     toast(activity, "لم أجد نصاً إنجليزياً في الصفحة")
                 } else {
@@ -387,31 +393,71 @@ object MslTranslate {
     }
 
     private fun mlKit(activity: Activity, bmp: Bitmap, items: List<Pair<Rect, String>>) {
+        val sourceLanguage = detectSourceLanguage(items.joinToString(" ") { it.second })
         val tr = Translation.getClient(
             TranslatorOptions.Builder()
-                .setSourceLanguage(TranslateLanguage.ENGLISH)
+                .setSourceLanguage(sourceLanguage)
                 .setTargetLanguage(TranslateLanguage.ARABIC)
                 .build(),
         )
         tr.downloadModelIfNeeded(DownloadConditions.Builder().build())
             .addOnSuccessListener {
-                val out = mutableListOf<Pair<Rect, String>>()
-                fun next(i: Int) {
-                    if (i >= items.size) {
-                        tr.close()
-                        show(activity, bmp, out)
-                        return
-                    }
-                    tr.translate(items[i].second)
-                        .addOnSuccessListener { t ->
-                            out.add(items[i].first to t)
-                            next(i + 1)
+                // Translate the whole page as one scene so names, pronouns and tone share context.
+                val marker = "\n\nMSL_TRANSLATION_BREAK_7F3A\n\n"
+                val scene = items.joinToString(marker) { it.second }
+                tr.translate(scene)
+                    .addOnSuccessListener { translated ->
+                        val chunks = translated.split("MSL_TRANSLATION_BREAK_7F3A")
+                            .map { it.trim() }
+                        if (chunks.size == items.size) {
+                            tr.close()
+                            show(activity, bmp, items.mapIndexed { i, item -> item.first to chunks[i] })
+                        } else {
+                            translateIndividually(activity, bmp, tr, items)
                         }
-                        .addOnFailureListener { next(i + 1) }
-                }
-                next(0)
+                    }
+                    .addOnFailureListener { translateIndividually(activity, bmp, tr, items) }
             }
             .addOnFailureListener { toast(activity, "تعذّر تحميل نموذج الترجمة: ${it.message}") }
+    }
+
+    private fun translateIndividually(
+        activity: Activity,
+        bmp: Bitmap,
+        tr: com.google.mlkit.nl.translate.Translator,
+        items: List<Pair<Rect, String>>,
+    ) {
+        val out = mutableListOf<Pair<Rect, String>>()
+        fun next(i: Int) {
+            if (i >= items.size) {
+                tr.close()
+                show(activity, bmp, out)
+                return
+            }
+            tr.translate(items[i].second)
+                .addOnSuccessListener { t ->
+                    out.add(items[i].first to t)
+                    next(i + 1)
+                }
+                .addOnFailureListener { next(i + 1) }
+        }
+        next(0)
+    }
+
+    private fun normalizeOcr(value: String): String {
+        return value
+            .replace('“', '"')
+            .replace('”', '"')
+            .replace('’', '\'')
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun detectSourceLanguage(text: String): String = when {
+        text.any { it in '\u3040'..'\u30ff' } -> TranslateLanguage.JAPANESE
+        text.any { it in '\uac00'..'\ud7af' } -> TranslateLanguage.KOREAN
+        text.any { it in '\u4e00'..'\u9fff' } -> TranslateLanguage.CHINESE
+        else -> TranslateLanguage.ENGLISH
     }
 
     private fun layoutFor(text: String, tp: TextPaint, size: Float, width: Int): StaticLayout {

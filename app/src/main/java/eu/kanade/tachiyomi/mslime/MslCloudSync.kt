@@ -10,6 +10,12 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import eu.kanade.tachiyomi.novel.NovelFavoriteEntry
 import eu.kanade.tachiyomi.novel.NovelFavoritesStore
+import eu.kanade.tachiyomi.novel.NovelPluginStore
+import eu.kanade.tachiyomi.novel.NovelRepositoryEntry
+import eu.kanade.tachiyomi.novel.NovelSourceManager
+import kotlinx.coroutines.runBlocking
+import mihon.app.di.appGraph
+import tachiyomi.domain.manga.model.Manga
 
 /** مزامنة بيانات الحساب التي يجب أن تبقى بعد حذف التطبيق وإعادة تثبيته. */
 object MslCloudSync {
@@ -110,6 +116,195 @@ object MslCloudSync {
         }
     }
 
+    private fun upsertSourceSetting(
+        ctx: Context,
+        uid: String,
+        token: String,
+        type: String,
+        key: String,
+        payload: JSONObject,
+    ) {
+        val body = JSONObject()
+            .put("user_id", uid)
+            .put("setting_type", type)
+            .put("setting_key", key)
+            .put("payload", payload)
+        MslSupabase.call(
+            "POST",
+            "/rest/v1/user_source_settings?on_conflict=user_id,setting_type,setting_key",
+            body.toString(),
+            token,
+            "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
+    private fun stringSet(json: JSONObject, key: String): Set<String> {
+        val values = json.optJSONArray(key) ?: return emptySet()
+        return buildSet { for (i in 0 until values.length()) add(values.optString(i)) }
+    }
+
+    private fun localMangaSourcePreferences(ctx: Context): JSONObject {
+        val p = ctx.appGraph.sourcePreferences
+        return JSONObject()
+            .put("enabled_languages", JSONArray(p.enabledLanguages.get().toList()))
+            .put("disabled_sources", JSONArray(p.disabledSources.get().toList()))
+            .put("pinned_sources", JSONArray(p.pinnedSources.get().toList()))
+            .put("extension_repositories", JSONArray(p.extensionRepos.get().toList()))
+    }
+
+    private fun applyMangaSourcePreferences(ctx: Context, payload: JSONObject) {
+        val p = ctx.appGraph.sourcePreferences
+        stringSet(payload, "enabled_languages").takeIf { it.isNotEmpty() }?.let { p.enabledLanguages.set(it) }
+        stringSet(payload, "disabled_sources").let { p.disabledSources.set(it) }
+        stringSet(payload, "pinned_sources").let { p.pinnedSources.set(it) }
+        stringSet(payload, "extension_repositories").let { p.extensionRepos.set(it) }
+    }
+
+    private fun syncSourceSettings(ctx: Context) {
+        val token = MslSupabase.token(ctx) ?: return
+        val uid = MslSupabase.uid(ctx)
+        if (uid.isEmpty()) return
+        val remoteResult = MslSupabase.call(
+            "GET",
+            "/rest/v1/user_source_settings?select=setting_type,setting_key,payload&user_id=eq.$uid&limit=20",
+            null,
+            token,
+        )
+        if (remoteResult.first !in 200..299) return
+        val rows = JSONArray(remoteResult.second)
+        var remoteMangaPrefs: JSONObject? = null
+        var remoteNovelSources: JSONObject? = null
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            when (row.optString("setting_type")) {
+                "manga_preferences" -> remoteMangaPrefs = row.optJSONObject("payload")
+                "novel_sources" -> remoteNovelSources = row.optJSONObject("payload")
+            }
+        }
+
+        if (remoteMangaPrefs != null) {
+            applyMangaSourcePreferences(ctx, remoteMangaPrefs!!)
+        } else {
+            upsertSourceSetting(ctx, uid, token, "manga_preferences", "default", localMangaSourcePreferences(ctx))
+        }
+
+        val store = NovelPluginStore(ctx)
+        if (remoteNovelSources != null) {
+            val payload = remoteNovelSources!!
+            val repositories = payload.optJSONArray("repositories") ?: JSONArray()
+            store.setRepositories(buildList { for (i in 0 until repositories.length()) add(repositories.optString(i)) })
+            val installed = payload.optJSONArray("installed") ?: JSONArray()
+            val manager = NovelSourceManager(ctx)
+            runBlocking {
+                for (i in 0 until installed.length()) {
+                    val row = installed.optJSONObject(i) ?: continue
+                    val url = row.optString("plugin_url")
+                    if (url.isBlank()) continue
+                    runCatching {
+                        manager.installFromUrl(
+                            url,
+                            NovelRepositoryEntry(
+                                id = row.optString("id", "url-${url.hashCode()}"),
+                                name = row.optString("name", "مصدر روايات"),
+                                site = row.optString("site").ifEmpty { null },
+                                lang = row.optString("lang").ifEmpty { null },
+                                version = row.optString("version").ifEmpty { null },
+                                url = url,
+                                iconUrl = row.optString("icon_url").ifEmpty { null },
+                            ),
+                            row.optString("repository_url").ifEmpty { null },
+                        )
+                    }
+                }
+            }
+        } else {
+            val payload = JSONObject().put("repositories", JSONArray(store.repositories()))
+            val installed = JSONArray()
+            store.installed().forEach { item ->
+                installed.put(
+                    JSONObject()
+                        .put("plugin_url", item.pluginUrl)
+                        .put("repository_url", item.repositoryUrl ?: JSONObject.NULL)
+                        .put("id", item.metadata.id)
+                        .put("name", item.metadata.name)
+                        .put("site", item.metadata.site ?: JSONObject.NULL)
+                        .put("lang", item.metadata.lang ?: JSONObject.NULL)
+                        .put("version", item.metadata.version ?: JSONObject.NULL)
+                        .put("icon_url", item.metadata.iconUrl ?: JSONObject.NULL),
+                )
+            }
+            payload.put("installed", installed)
+            upsertSourceSetting(ctx, uid, token, "novel_sources", "default", payload)
+        }
+    }
+
+    private fun syncMangaFavorites(ctx: Context) {
+        val token = MslSupabase.token(ctx) ?: return
+        val uid = MslSupabase.uid(ctx)
+        if (uid.isEmpty()) return
+        val local = runCatching { runBlocking { ctx.appGraph.getFavorites.await() } }.getOrDefault(emptyList())
+        val remoteResult = MslSupabase.call(
+            "GET",
+            "/rest/v1/user_favorites?select=item_key,title,cover,source_id,added_at&user_id=eq.$uid&item_type=eq.manga&limit=5000",
+            null,
+            token,
+        )
+        if (remoteResult.first !in 200..299) return
+        val rows = JSONArray(remoteResult.second)
+        if (local.isEmpty() && rows.length() > 0) {
+            val restored = buildList {
+                for (i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    val source = row.optString("source_id").toLongOrNull() ?: continue
+                    val url = row.optString("item_key")
+                    if (url.isBlank()) continue
+                    add(
+                        Manga.create().copy(
+                            source = source,
+                            url = url,
+                            title = row.optString("title", "مانهوا"),
+                            thumbnailUrl = row.optString("cover").ifEmpty { null },
+                            favoriteAt = row.optLong("added_at", System.currentTimeMillis()),
+                            initialized = false,
+                        ),
+                    )
+                }
+            }
+            if (restored.isNotEmpty()) runCatching { runBlocking { ctx.appGraph.networkToLocalManga(restored) } }
+            return
+        }
+        if (local.isEmpty()) return
+        MslSupabase.call("DELETE", "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.manga", null, token)
+        val payload = JSONArray()
+        local.forEach { item ->
+            payload.put(
+                JSONObject()
+                    .put("user_id", uid)
+                    .put("item_type", "manga")
+                    .put("item_key", item.url)
+                    .put("title", item.title)
+                    .put("cover", item.thumbnailUrl ?: JSONObject.NULL)
+                    .put("source_id", item.source.toString())
+                    .put("added_at", item.favoriteAt ?: System.currentTimeMillis()),
+            )
+        }
+        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "return=minimal")
+    }
+
+    fun syncSourcesNow(ctx: Context) {
+        Thread { runCatching { syncSourceSettings(ctx) } }.start()
+    }
+
+    fun syncNow(ctx: Context) {
+        Thread {
+            runCatching {
+                syncSourceSettings(ctx)
+                syncMangaFavorites(ctx)
+                syncNovelFavorites(ctx)
+            }
+        }.start()
+    }
+
     fun syncAfterLogin(ctx: Context) {
         Thread {
             runCatching {
@@ -128,6 +323,8 @@ object MslCloudSync {
                         p.getString("cloud_rank", "F") ?: "F",
                     )
                 }
+                syncSourceSettings(ctx)
+                syncMangaFavorites(ctx)
                 syncNovelFavorites(ctx)
             }
         }.start()
