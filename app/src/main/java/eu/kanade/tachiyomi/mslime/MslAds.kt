@@ -18,6 +18,7 @@ import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 import eu.kanade.tachiyomi.BuildConfig
+import kotlinx.coroutines.delay
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -144,6 +145,30 @@ object MslAds {
         }
         ad.show(activity) { onRewardEarned() }
         return true
+    }
+
+    /**
+     * Waits briefly for the asynchronous preloader instead of treating a still-loading ad as no-fill.
+     * The server session is created before this call, but coins are still granted only by SSV.
+     */
+    suspend fun showRewardedWhenReady(
+        activity: Activity,
+        userId: String,
+        sessionId: String,
+        onRewardEarned: () -> Unit,
+        onAdClosed: () -> Unit,
+        onAdUnavailable: () -> Unit,
+    ): Boolean {
+        repeat(20) { attempt ->
+            if (showRewarded(activity, userId, sessionId, onRewardEarned, onAdClosed) {
+                    // The ad is still loading; keep waiting until the bounded retry window ends.
+                }) {
+                return true
+            }
+            if (attempt < 19) delay(500)
+        }
+        onAdUnavailable()
+        return false
     }
 
     /** Records completed online chapters. It never triggers an ad while the user is reading a page. */

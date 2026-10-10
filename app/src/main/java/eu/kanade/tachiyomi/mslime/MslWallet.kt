@@ -436,7 +436,7 @@ private fun MslCoinStoreDialog(
                                 busy = false
                                 return@launch
                             }
-                            MslAds.showRewarded(
+                            MslAds.showRewardedWhenReady(
                                 host,
                                 session.userId,
                                 session.id,
@@ -445,7 +445,7 @@ private fun MslCoinStoreDialog(
                                     if (BuildConfig.DEBUG) {
                                         message = "تم إكمال إعلان الاختبار؛ لا تُمنح عملات في نسخة Debug."
                                         busy = false
-                                        return@showRewarded
+                                        return@showRewardedWhenReady
                                     }
                                     message = context.stringResource(MR.strings.coin_reward_checking_server)
                                     scope.launch {
