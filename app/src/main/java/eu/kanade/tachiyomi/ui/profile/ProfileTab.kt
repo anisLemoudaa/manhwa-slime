@@ -92,6 +92,7 @@ import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.AttachMoney
 import mihon.icons.materialsymbols.rounded.Person
 import mihon.icons.materialsymbols.rounded.Settings
+import mihon.icons.materialsymbols.rounded.VerifiedUser
 import tachiyomi.domain.manga.model.MangaCover
 import java.io.File
 import java.text.SimpleDateFormat
@@ -535,6 +536,8 @@ data object ProfileTab : Tab {
         var tab by remember { mutableIntStateOf(0) }
         var editName by remember { mutableStateOf(false) }
         var cloudLevel by remember { mutableIntStateOf(1) }
+        var cloudRank by remember { mutableStateOf<String?>(null) }
+        var cloudLoaded by remember { mutableStateOf(false) }
         var name by remember {
             mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم")
         }
@@ -552,8 +555,10 @@ data object ProfileTab : Tab {
                 MslCloudSync.applyProfile(ctx, remote)
                 name = remote.name
                 cloudLevel = remote.level
+                cloudRank = remote.rank
                 rev++
             }
+            cloudLoaded = true
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
                     ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
@@ -570,8 +575,10 @@ data object ProfileTab : Tab {
         val s = state
         val read = if (s is StatsScreenState.Success) s.chapters.readChapterCount else 0
         val level = maxOf(read / 25 + 1, cloudLevel)
+        val rank = cloudRank ?: eu.kanade.tachiyomi.mslime.MslRank.of(read)
         androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply() }
-        LaunchedEffect(name, rev, level, read) {
+        LaunchedEffect(name, rev, level, rank, read, cloudLoaded) {
+            if (!cloudLoaded) return@LaunchedEffect
             withContext(Dispatchers.IO) {
                 MslCloudSync.saveProfile(
                     ctx,
@@ -579,7 +586,7 @@ data object ProfileTab : Tab {
                     MslCloudSync.imageData(ctx, "msl_avatar.img"),
                     MslCloudSync.imageData(ctx, "msl_cover.img"),
                     level,
-                    eu.kanade.tachiyomi.mslime.MslRank.of(read),
+                    rank,
                 )
             }
         }
@@ -644,6 +651,24 @@ data object ProfileTab : Tab {
                                 modifier = Modifier.size(56.dp),
                             )
                         }
+                        if (vipStatus?.active == true) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 4.dp)
+                                    .border(1.dp, Color(0xFFFFE29A), RoundedCornerShape(50)),
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF6E3B08),
+                            ) {
+                                Text(
+                                    text = "✦ VIP ✦",
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp),
+                                    color = Color(0xFFFFE29A),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(66.dp))
@@ -659,6 +684,14 @@ data object ProfileTab : Tab {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (vipStatus?.active == true) {
+                            Icon(
+                                imageVector = MaterialSymbols.Rounded.VerifiedUser,
+                                contentDescription = "حساب موثق",
+                                tint = Color(0xFF4D9CFF),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                         Text(
                             text = name,
                             fontSize = 24.sp,
@@ -669,19 +702,24 @@ data object ProfileTab : Tab {
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clickable { editName = true },
                         )
-                        if (vipStatus?.active == true) {
-                            Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.18f)) {
-                                Text("VIP", modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = Color(0xFFFFC857), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
                     }
-                    Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.accent.copy(alpha = 0.22f)) {
-                        Text(
-                            text = "المستوى $level",
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MslDesignTokens.accentBright,
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.16f)) {
+                            Text(
+                                text = "الرتبة $rank",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFFFFD978),
+                            )
+                        }
+                        Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.accent.copy(alpha = 0.22f)) {
+                            Text(
+                                text = "المستوى $level",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MslDesignTokens.accentBright,
+                            )
+                        }
                     }
                 }
                 Text(
