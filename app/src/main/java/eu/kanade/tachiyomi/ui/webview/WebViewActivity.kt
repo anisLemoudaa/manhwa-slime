@@ -260,7 +260,7 @@ class WebViewActivity : BaseActivity() {
         private const val TITLE_KEY = "title_key"
         private const val AD_FREE_READER_KEY = "ad_free_reader_key"
         private const val PREPARE_DOWNLOAD_CHAPTER_ID_KEY = "prepare_download_chapter_id_key"
-        private const val DOWNLOAD_PREPARATION_TIMEOUT_MS = 180_000L
+        private const val DOWNLOAD_PREPARATION_TIMEOUT_MS = 10 * 60 * 1000L
 
         fun newIntent(
             context: Context,

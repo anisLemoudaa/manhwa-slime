@@ -281,8 +281,15 @@ internal object ProComicAdPolicy {
                 const stayedAtEnd = Date.now() - reachedBottomAt >= 1100;
                 const contentIsStable = Date.now() - contentStableAt >= 900;
                 if (stayedAtEnd && contentIsStable) {
-                    cacheRenderedChapterPages();
                     const bridge = window.MslProComicDownloadBridge;
+                    if (bridge && typeof bridge.isDownloadPreparation === 'function' &&
+                        bridge.isDownloadPreparation()) {
+                        // The background download scanner checks the end of the chapter rows,
+                        // not the much longer page containing comments and recommendations.
+                        reachedBottomAt = 0;
+                        return;
+                    }
+                    cacheRenderedChapterPages();
                     const allPages = collectRenderedChapterPages();
                     const syncedCount = window.__mslimeSyncedProComicPageCount || 0;
                     if (bridge && syncedCount < allPages.length) return;
@@ -345,29 +352,65 @@ internal object ProComicAdPolicy {
             if (downloadBridge && typeof downloadBridge.isDownloadPreparation === 'function' &&
                 downloadBridge.isDownloadPreparation() && !window.__mslimeDownloadScrollerInstalled) {
                 window.__mslimeReaderHasScrolled = true;
+                let lastPageSignature = '';
+                let pagesStableSince = Date.now();
                 const downloadScrollTimer = window.setInterval(function() {
                     if (window.__mslimeDownloadPreparationReady) {
                         window.clearInterval(downloadScrollTimer);
                         return;
                     }
+
+                    const rows = Array.from(document.querySelectorAll('[data-reader-image-row]'));
+                    if (rows.length === 0) return;
                     const viewport = window.innerHeight || 1;
-                    const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
-                    const distanceFromBottom = height - (window.scrollY + viewport);
-                    const step = Math.max(300, viewport * 0.8);
-                    if (distanceFromBottom > 80) {
-                        window.scrollBy(0, Math.min(step, distanceFromBottom));
-                    } else {
-                        const morePagesPending = Array.from(document.querySelectorAll('div')).some(function(element) {
-                            return element.children.length === 0 &&
-                                /سيتم تحميل بقية الصفحات عند المتابعة|remaining pages.*continue/i.test(element.textContent || '');
-                        });
-                        if (morePagesPending) {
-                            window.scrollBy(0, step);
-                        } else {
-                            window.__mslimeCheckProComicEnd(true);
-                        }
+                    const images = rows.flatMap(function(row) {
+                        return Array.from(row.querySelectorAll('img'));
+                    });
+                    const pageUrls = collectRenderedChapterPages();
+                    syncRenderedChapterPages();
+                    const signature = rows.length + '|' + images.map(function(image) {
+                        return (image.currentSrc || image.src || '') + ':' +
+                            (image.complete && image.naturalWidth > 0 ? 'loaded' : 'pending');
+                    }).join('|');
+                    if (signature !== lastPageSignature) {
+                        lastPageSignature = signature;
+                        pagesStableSince = Date.now();
                     }
-                }, 220);
+
+                    const lastRow = rows[rows.length - 1];
+                    const lastRowBottom = lastRow.getBoundingClientRect().bottom + window.scrollY;
+                    const viewportBottom = window.scrollY + viewport;
+                    const step = Math.max(300, viewport * 0.55);
+                    const morePagesPending = Array.from(document.querySelectorAll('div')).some(function(element) {
+                        return element.children.length === 0 &&
+                            /سيتم تحميل بقية الصفحات عند المتابعة|remaining pages.*continue/i.test(element.textContent || '');
+                    });
+
+                    // Advance gradually through the actual chapter rows. Do not race past lazy
+                    // image sentinels or use the page's footer/comments as the chapter boundary.
+                    if (viewportBottom < lastRowBottom + viewport * 0.35 || morePagesPending) {
+                        window.scrollBy(0, step);
+                        return;
+                    }
+
+                    const everyRowHasLoadedImage = rows.every(function(row) {
+                        const rowImages = Array.from(row.querySelectorAll('img'));
+                        return rowImages.length > 0 && rowImages.every(function(image) {
+                            return image.complete && image.naturalWidth > 0;
+                        });
+                    });
+                    if (!everyRowHasLoadedImage || pageUrls.length < rows.length) return;
+                    if (Date.now() - pagesStableSince < 6000) return;
+
+                    cacheRenderedChapterPages();
+                    const allPages = collectRenderedChapterPages();
+                    const syncedCount = window.__mslimeSyncedProComicPageCount || 0;
+                    if (syncedCount < allPages.length) return;
+                    if (typeof downloadBridge.chapterPagesReady === 'function' &&
+                        downloadBridge.chapterPagesReady(window.location.href)) {
+                        window.__mslimeDownloadPreparationReady = true;
+                    }
+                }, 500);
                 window.__mslimeDownloadScrollerInstalled = true;
             }
             applyReaderOnly();
