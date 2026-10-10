@@ -1,9 +1,12 @@
 // Supabase Edge Function receiving AdMob rewarded-SSV callbacks.
 // Configure this function URL on the rewarded ad unit in AdMob. Never trust the client reward callback.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const KEYS_URL = "https://www.gstatic.com/admob/reward/verifier-keys.json";
-const EXPECTED_REWARD_ITEM = "gold_coins";
+const EXPECTED_ADMOB_AD_UNIT_ID = "4941132148";
+const ADMOB_VERIFICATION_TEST_AD_UNIT_ID = "1234567890";
+const EXPECTED_ADMOB_REWARD_ITEM = "Coins";
+const WALLET_REWARD_ITEM = "gold_coins";
 const EXPECTED_REWARD_AMOUNT = 15;
 const MAX_KEY_CACHE_MS = 24 * 60 * 60 * 1000;
 
@@ -106,15 +109,23 @@ function isUuid(value: string): boolean {
 
 Deno.serve(async (request) => {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return new Response("Backend is not configured", { status: 503 });
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return new Response("Backend is not configured", { status: 503 });
   try {
     const url = new URL(request.url);
     const params = await verifyCallback(url);
+    const adUnitId = params.get("ad_unit") ?? "";
+    // AdMob's dashboard Verify URL sends a signed probe with a placeholder ad unit.
+    // It is acknowledged only after signature verification and can never credit a wallet.
+    if (adUnitId === ADMOB_VERIFICATION_TEST_AD_UNIT_ID) {
+      console.info("Verified AdMob dashboard probe; no coin grant");
+      return new Response("OK", { status: 200 });
+    }
+    if (adUnitId !== EXPECTED_ADMOB_AD_UNIT_ID) return new Response("Unexpected AdMob ad unit", { status: 400 });
+
     const sessionId = params.get("custom_data") ?? "";
     const userId = params.get("user_id") ?? "";
-    // AdMob's signed dashboard verification callback intentionally omits these optional SDK identifiers.
-    // A valid signature with no attribution is acknowledged, but can never produce a wallet credit.
-    if (!sessionId && !userId) {
+    // A signed real-unit callback without both SDK identifiers cannot be attributed or credited.
+    if (!sessionId || !userId) {
       console.info("Verified AdMob SSV callback without reward identity; no coin grant");
       return new Response("OK", { status: 200 });
     }
@@ -124,15 +135,15 @@ Deno.serve(async (request) => {
     if (!isUuid(sessionId) || !isUuid(userId)) {
       return new Response("Invalid reward identity", { status: 400 });
     }
-    if (rewardAmount !== EXPECTED_REWARD_AMOUNT || rewardItem !== EXPECTED_REWARD_ITEM || transactionId.length < 16 || transactionId.length > 512) {
+    if (rewardAmount !== EXPECTED_REWARD_AMOUNT || rewardItem !== EXPECTED_ADMOB_REWARD_ITEM || transactionId.length < 16 || transactionId.length > 512) {
       return new Response("Unexpected reward payload", { status: 400 });
     }
 
     const grant = await fetch(`${SUPABASE_URL}/rest/v1/rpc/grant_ad_reward`, {
       method: "POST",
       headers: {
-        "apikey": SERVICE_ROLE_KEY,
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -140,7 +151,7 @@ Deno.serve(async (request) => {
         p_user_id: userId,
         p_transaction_id: transactionId,
         p_reward_amount: rewardAmount,
-        p_reward_item: rewardItem,
+        p_reward_item: WALLET_REWARD_ITEM,
       }),
     });
     if (!grant.ok) {
