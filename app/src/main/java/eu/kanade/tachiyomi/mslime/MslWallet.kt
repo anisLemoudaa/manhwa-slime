@@ -56,6 +56,7 @@ object MslWallet {
 
     data class RewardSession(val id: String, val userId: String)
     data class DownloadReservation(val allowed: Boolean, val balance: Int, val status: String)
+    data class CoinTransaction(val id: String, val delta: Int, val kind: String, val createdAt: String)
 
     fun refresh(context: Context): Int? {
         val current = runCatching {
@@ -69,6 +70,34 @@ object MslWallet {
         }.getOrNull()
         if (current != null) _balance.value = current
         return current ?: _balance.value
+    }
+
+    /** Returns this authenticated user's server ledger, or null when the service is unavailable. */
+    fun transactions(context: Context): List<CoinTransaction>? {
+        return try {
+            val token = MslSupabase.token(context) ?: return null
+            val userId = MslSupabase.uid(context).takeIf(String::isNotBlank) ?: return null
+            val query = "select=id,delta,kind,created_at&user_id=eq.$userId&order=created_at.desc&limit=50"
+            val response = MslSupabase.call(
+                "GET",
+                "/rest/v1/coin_transactions?$query",
+                null,
+                token,
+            )
+            if (response.first !in 200..299) return null
+            val rows = JSONArray(response.second)
+            List(rows.length()) { index ->
+                val row = rows.getJSONObject(index)
+                CoinTransaction(
+                    id = row.getString("id"),
+                    delta = row.getInt("delta"),
+                    kind = row.getString("kind"),
+                    createdAt = row.getString("created_at"),
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun beginReward(context: Context): RewardSession? {
