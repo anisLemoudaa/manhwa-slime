@@ -8,6 +8,7 @@ import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,7 @@ import com.mikepenz.markdown.model.markdownAnnotatorConfig
 import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.source.model.SManga
@@ -106,7 +108,6 @@ import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.findChildOfType
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
-import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.TextButton
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.pluralStringResource
@@ -132,7 +133,7 @@ fun MangaInfoBox(
         // Backdrop
         val backdropGradientColors = listOf(
             Color.Transparent,
-            MaterialTheme.colorScheme.background,
+            MslDesignTokens.background,
         )
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -193,7 +194,7 @@ fun MangaActionRow(
     mslTitle: String = "",
     modifier: Modifier = Modifier,
 ) {
-    val defaultActionButtonColor = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+    val defaultActionButtonColor = MslDesignTokens.textSecondary
 
     // TODO: show something better when using custom interval
     val nextUpdateDays = remember(nextUpdate) {
@@ -208,9 +209,9 @@ fun MangaActionRow(
     LazyRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = 12.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             MangaActionButton(
@@ -220,7 +221,7 @@ fun MangaActionRow(
                     stringResource(MR.strings.add_to_library)
                 },
                 icon = if (favorite) MaterialSymbols.RoundedFilled.Favorite else MaterialSymbols.Rounded.Favorite,
-                color = if (favorite) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                color = if (favorite) MslDesignTokens.accentBright else defaultActionButtonColor,
                 onClick = onAddToLibraryClicked,
                 onLongClick = onEditCategory,
             )
@@ -237,7 +238,7 @@ fun MangaActionRow(
                     )
                 },
                 icon = MaterialSymbols.Rounded.HourglassEmpty,
-                color = if (isUserIntervalMode) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                color = if (isUserIntervalMode) MslDesignTokens.accentBlue else defaultActionButtonColor,
                 onClick = { onEditIntervalClicked?.invoke() },
             )
         }
@@ -249,7 +250,7 @@ fun MangaActionRow(
                     pluralStringResource(MR.plurals.num_trackers, count = trackingCount, trackingCount)
                 },
                 icon = if (trackingCount == 0) MaterialSymbols.Rounded.Sync else MaterialSymbols.Rounded.Done,
-                color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
+                color = if (trackingCount == 0) defaultActionButtonColor else MslDesignTokens.cyan,
                 onClick = onTrackingClicked,
             )
         }
@@ -307,9 +308,12 @@ fun ExpandableMangaDescription(
             notes = notes,
             onEditNotesClicked = onEditNotes,
             modifier = Modifier
-                .padding(top = 8.dp)
-                .padding(horizontal = 16.dp)
-                .clickableNoIndication { onExpanded(!expanded) },
+                .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                .clip(MslDesignTokens.cardShape)
+                .background(MslDesignTokens.cardGradient)
+                .border(1.dp, MslDesignTokens.border.copy(alpha = 0.72f), MslDesignTokens.cardShape)
+                .clickableNoIndication { onExpanded(!expanded) }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         )
         val tags = tagsProvider()
         if (!tags.isNullOrEmpty()) {
@@ -391,7 +395,11 @@ private fun MangaAndSourceTitlesLarge(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp),
+            .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp)
+            .clip(MslDesignTokens.cardShape)
+            .background(MslDesignTokens.cardGradient)
+            .border(1.dp, MslDesignTokens.border.copy(alpha = 0.72f), MslDesignTokens.cardShape)
+            .padding(horizontal = 16.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         MangaCover.Book(
@@ -430,7 +438,11 @@ private fun MangaAndSourceTitlesSmall(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp),
+            .padding(start = 16.dp, top = appBarPadding + 16.dp, end = 16.dp)
+            .clip(MslDesignTokens.cardShape)
+            .background(MslDesignTokens.cardGradient)
+            .border(1.dp, MslDesignTokens.border.copy(alpha = 0.72f), MslDesignTokens.cardShape)
+            .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -769,16 +781,17 @@ private fun MangaActionButton(
 ) {
     Column(
         modifier = Modifier
-            .widthIn(min = 80.dp, max = 96.dp)
+            .widthIn(min = 88.dp, max = 104.dp)
             .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow))
-            .clip(MaterialTheme.shapes.medium)
+            .clip(MslDesignTokens.compactCardShape)
             .combinedClickable(
                 role = Role.Button,
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .background(MslDesignTokens.cardGradient)
+            .border(1.dp, MslDesignTokens.border.copy(alpha = 0.72f), MslDesignTokens.compactCardShape)
+            .padding(horizontal = 8.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {

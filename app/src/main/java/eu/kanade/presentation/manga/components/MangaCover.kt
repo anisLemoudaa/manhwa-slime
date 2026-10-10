@@ -1,5 +1,7 @@
 package eu.kanade.presentation.manga.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.MaterialTheme
@@ -11,9 +13,11 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.mslime.MslDesignTokens
 
 enum class MangaCover(val ratio: Float) {
     Square(1f / 1f),
@@ -35,7 +39,9 @@ enum class MangaCover(val ratio: Float) {
             contentDescription = contentDescription,
             modifier = modifier
                 .aspectRatio(ratio)
+                .background(MslDesignTokens.surfaceRaised, shape)
                 .clip(shape)
+                .border(1.dp, MslDesignTokens.border.copy(alpha = 0.72f), shape)
                 .then(
                     if (onClick != null) {
                         Modifier.clickable(
