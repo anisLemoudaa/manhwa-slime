@@ -238,7 +238,15 @@ class ReaderActivity : BaseActivity() {
             .map { it.viewerChapters }
             .distinctUntilChanged()
             .filterNotNull()
-            .onEach(::setChapters)
+            .onEach { viewerChapters ->
+                // ProComic chapters opened from the web use WebView, so the normal viewer is
+                // intentionally not created when the manga first loads. A downloaded chapter
+                // does have local pages, however, and needs the native viewer before setChapters.
+                if (viewModel.state.value.source is ProComicSource && viewModel.state.value.viewer == null) {
+                    updateViewer()
+                }
+                setChapters(viewerChapters)
+            }
             .launchIn(lifecycleScope)
 
         viewModel.eventFlow
