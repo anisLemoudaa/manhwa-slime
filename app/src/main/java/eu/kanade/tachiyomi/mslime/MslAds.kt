@@ -36,7 +36,7 @@ object MslAds {
     private var consentInformation: ConsentInformation? = null
     private val rewardedPreloadCallback = object : PreloadCallback {
         override fun onAdPreloaded(preloadId: String, responseInfo: com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo) {
-            Log.i("MslAds", "Rewarded ad ready: $preloadId adapter=${responseInfo.mediationAdapterClassName}")
+            Log.i("MslAds", "Rewarded ad ready: $preloadId response=$responseInfo")
         }
 
         override fun onAdsExhausted(preloadId: String) {
