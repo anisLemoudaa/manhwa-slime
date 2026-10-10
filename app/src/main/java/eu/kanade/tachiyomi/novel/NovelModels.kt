@@ -31,6 +31,8 @@ data class NovelItem(
     val name: String,
     val path: String,
     val cover: String? = null,
+    val sourceId: String? = null,
+    val sourceName: String? = null,
 )
 
 @Serializable

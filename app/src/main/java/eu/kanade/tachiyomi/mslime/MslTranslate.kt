@@ -333,6 +333,22 @@ object MslTranslate {
         }, 150)
     }
 
+    /** Captures the visible reader page and translates detected text without hiding a FAB. */
+    fun run(activity: Activity) {
+        val v = activity.window.decorView
+        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+        toast(activity, "جارٍ قراءة الصفحة...")
+        v.postDelayed({
+            PixelCopy.request(activity.window, bmp, { code ->
+                if (code != PixelCopy.SUCCESS) {
+                    toast(activity, "تعذّر التقاط الشاشة")
+                } else {
+                    process(activity, bmp)
+                }
+            }, Handler(Looper.getMainLooper()))
+        }, 150)
+    }
+
     private fun process(activity: Activity, bmp: Bitmap) {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             .process(InputImage.fromBitmap(bmp, 0))

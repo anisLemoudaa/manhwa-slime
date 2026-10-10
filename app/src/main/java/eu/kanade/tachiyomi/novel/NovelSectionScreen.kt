@@ -10,6 +10,7 @@ import android.content.ContextWrapper
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.View
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,8 +48,11 @@ import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslWallet
+import eu.kanade.tachiyomi.mslime.MslTranslate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -141,7 +146,7 @@ fun NovelSectionContent() {
         state = state,
         favoriteKeys = favoriteKeys,
         onToggleFavorite = { item ->
-            val sid = state.selectedSource
+            val sid = item.sourceId ?: state.selectedSource
             if (sid != null) {
                 favoritesStore.toggle(
                     NovelFavoriteEntry(
@@ -162,21 +167,28 @@ fun NovelSectionContent() {
             state = state.copy(query = q, info = null)
             searchJob?.cancel()
 
-            val sid = state.selectedSource
             val query = q.trim()
+            val sourceSnapshot = state.sources
 
-            if (sid != null && query.isNotEmpty()) {
-                // Wait until typing pauses before making a network/plugin request.
+            if (query.isNotEmpty() && sourceSnapshot.isNotEmpty()) {
+                // Search every installed source in parallel, then merge and de-duplicate results.
                 searchJob = scope.launch {
                     delay(350)
-                    val r = runCatching { manager.search(sid, query) }
+                    val results = sourceSnapshot.map { source ->
+                        async(Dispatchers.IO) {
+                            runCatching {
+                                manager.search(source.id, query).map { item ->
+                                    item.copy(sourceId = source.id, sourceName = source.name)
+                                }
+                            }.getOrDefault(emptyList())
+                        }
+                    }.awaitAll()
+                        .flatten()
+                        .distinctBy { "${it.sourceId}:${it.path}" }
 
-                    // Do not let stale results overwrite a newer query or selected source.
-                    if (state.selectedSource == sid && state.query.trim() == query) {
-                        state = state.copy(
-                            novels = r.getOrDefault(emptyList()),
-                            error = r.exceptionOrNull()?.message,
-                        )
+                    // Do not let stale results overwrite a newer query.
+                    if (state.query.trim() == query) {
+                        state = state.copy(novels = results, error = null)
                     }
                 }
             } else if (query.isEmpty()) {
@@ -216,7 +228,7 @@ fun NovelSectionContent() {
             }
         },
         onOpen = { item ->
-            val sid = state.selectedSource
+            val sid = item.sourceId ?: state.selectedSource
             if (sid != null) navigator.push(NovelDetailsScreen(sid, item.path, item.name))
         },
         onCloseRepo = { state = state.copy(repoDialog = false, error = null) },
@@ -387,8 +399,9 @@ private fun NovelShell(
                         val visibleNovels =
                             if (state.showFavorites) {
                                 state.novels.filter {
-                                    state.selectedSource != null &&
-                                        "${state.selectedSource}::${it.path}" in favoriteKeys
+                                    val resultSource = it.sourceId ?: state.selectedSource
+                                    resultSource != null &&
+                                        "$resultSource::${it.path}" in favoriteKeys
                                 }
                             } else {
                                 state.novels
@@ -410,8 +423,9 @@ private fun NovelShell(
                                     NovelCard(
                                         item = item,
                                         onOpen = onOpen,
-                                        isFavorite = state.selectedSource != null &&
-                                            "${state.selectedSource}::${item.path}" in favoriteKeys,
+                                        isFavorite = (item.sourceId ?: state.selectedSource)?.let { resultSource ->
+                                            "$resultSource::${item.path}" in favoriteKeys
+                                        } == true,
                                         onToggleFavorite = onToggleFavorite,
                                     )
                                 }
@@ -613,12 +627,20 @@ private fun NovelCard(
 
                 Text(
                     item.name,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 13.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Medium,
                     color = MslDesignTokens.textPrimary,
                 )
+                item.sourceName?.takeIf { it.isNotBlank() }?.let { sourceName ->
+                    Text(
+                        text = "من $sourceName",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MslDesignTokens.textMuted,
+                    )
+                }
             }
 
             FilledTonalIconButton(
@@ -864,6 +886,24 @@ class NovelReaderScreen(
             mutableStateOf(readerPrefs.getString("font_family", "Noto Naskh Arabic") ?: "Noto Naskh Arabic")
         }
         var showReaderSettings by remember { mutableStateOf(false) }
+        var fullscreen by remember { mutableStateOf(false) }
+
+        DisposableEffect(fullscreen) {
+            val decor = context.findActivity()?.window?.decorView
+            decor?.systemUiVisibility = if (fullscreen) {
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            } else {
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            }
+            onDispose {
+                decor?.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            }
+        }
 
         var currentIndex by remember {
             mutableIntStateOf(
@@ -1037,6 +1077,14 @@ class NovelReaderScreen(
                         TextButton(onClick = { showReaderSettings = true }) {
                             Text("Aa", fontWeight = FontWeight.Bold)
                         }
+                        TextButton(onClick = {
+                            context.findActivity()?.let { MslTranslate.run(it) }
+                        }) {
+                            Text("ع", fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(onClick = { fullscreen = !fullscreen }) {
+                            Text(if (fullscreen) "⤢" else "⛶", fontWeight = FontWeight.Bold)
+                        }
                     },
                 )
             },
@@ -1152,12 +1200,13 @@ class NovelReaderScreen(
                                     font-family: "$fontFamily", "Noto Sans Arabic", sans-serif;
                                     font-size: ${fontSize}px;
                                     line-height: $lineSpacing;
-                                    padding: 26px 21px 40px;
+                                    padding: 26px 16px 40px 28px;
                                     margin: 0;
                                     background: $bg;
                                     color: $fg;
                                     overflow-wrap: anywhere;
-                                    text-align: start;
+                                    direction: rtl;
+                                    text-align: right;
                                 }
                                 h1, h2, h3 {
                                     line-height: 1.65;
@@ -1232,7 +1281,7 @@ class NovelReaderScreen(
                                 steps = 17,
                             )
                             Text("نوع الخط")
-                            listOf("Noto Naskh Arabic", "Noto Sans Arabic", "serif", "sans-serif").forEach { family ->
+                            listOf("Noto Naskh Arabic", "Noto Sans Arabic", "Amiri", "serif", "sans-serif").forEach { family ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
