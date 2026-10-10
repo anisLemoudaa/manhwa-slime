@@ -84,6 +84,9 @@ import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.stats.StatsViewModel
 import kotlinx.coroutines.launch
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.rounded.AttachMoney
+import mihon.icons.materialsymbols.rounded.Person
+import mihon.icons.materialsymbols.rounded.Settings
 import tachiyomi.domain.manga.model.MangaCover
 import java.io.File
 import java.text.SimpleDateFormat
@@ -651,7 +654,7 @@ data object ProfileTab : Tab {
                     ProfileActionCard(
                         title = "المحفظة",
                         subtitle = "الرصيد والمتجر",
-                        icon = MaterialSymbols.Rounded.AccountBalanceWallet,
+                    icon = MaterialSymbols.Rounded.AttachMoney,
                         modifier = Modifier.weight(1f),
                         onClick = { navigator.push(MslWalletScreen()) },
                     )

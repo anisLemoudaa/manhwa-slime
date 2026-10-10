@@ -44,6 +44,7 @@ import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.ui.library.LibraryTab
 import eu.kanade.tachiyomi.ui.library.LibraryViewModel
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.screens.EmptyScreen
 

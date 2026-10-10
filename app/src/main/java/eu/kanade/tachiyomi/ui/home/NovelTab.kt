@@ -6,6 +6,7 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.novel.NovelSectionContent
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
 
 /** Dedicated navigation destination for the existing novel catalog and reader flow. */
 data object NovelTab : Tab {
@@ -15,7 +16,7 @@ data object NovelTab : Tab {
         get() = TabOptions(
             index = 3u,
             title = "الروايات",
-            icon = rememberVectorPainter(MaterialSymbols.Rounded.AutoStories),
+            icon = rememberVectorPainter(MaterialSymbols.AutoMirroredRounded.ChromeReaderMode),
         )
 
     @Composable

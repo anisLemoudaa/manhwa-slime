@@ -70,6 +70,13 @@ import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesViewModel
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.automirroredrounded.ArrowForward
+import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
+import mihon.icons.materialsymbols.rounded.CollectionsBookmark
+import mihon.icons.materialsymbols.rounded.Explore
+import mihon.icons.materialsymbols.rounded.LocalLibrary
+import mihon.icons.materialsymbols.rounded.NewReleases
+import mihon.icons.materialsymbols.rounded.Search
 import tachiyomi.domain.category.model.Category
 
 /** Home dashboard built only from items already present in the user's library and reading history. */
@@ -80,7 +87,7 @@ data object HomeDashboardTab : Tab {
         get() = TabOptions(
             index = 0u,
             title = "الرئيسية",
-            icon = rememberVectorPainter(MaterialSymbols.Rounded.Home),
+            icon = rememberVectorPainter(MaterialSymbols.Rounded.LocalLibrary),
         )
 
     @Composable
@@ -150,7 +157,7 @@ private fun HomeDashboardContent() {
                 Icon(MaterialSymbols.Rounded.Search, contentDescription = "بحث")
             }
             IconButton(onClick = { tabNavigator.current = UpdatesTab }) {
-                Icon(MaterialSymbols.Rounded.Notifications, contentDescription = "آخر التحديثات")
+                Icon(MaterialSymbols.Rounded.NewReleases, contentDescription = "آخر التحديثات")
             }
         }
 
@@ -164,7 +171,7 @@ private fun HomeDashboardContent() {
             leadingIcon = { Icon(MaterialSymbols.Rounded.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = { navigator.push(GlobalSearchScreen(searchQuery)) }) {
-                    Icon(MaterialSymbols.Rounded.ArrowForward, contentDescription = "تنفيذ البحث")
+                    Icon(MaterialSymbols.AutoMirroredRounded.ArrowForward, contentDescription = "تنفيذ البحث")
                 }
             },
         )
@@ -204,7 +211,7 @@ private fun HomeDashboardContent() {
         ) {
             DashboardShortcut(
                 title = "المكتبة",
-                icon = MaterialSymbols.Rounded.Bookmarks,
+                icon = MaterialSymbols.Rounded.CollectionsBookmark,
                 modifier = Modifier.weight(1f),
                 onClick = { tabNavigator.current = LibraryTab },
             )
@@ -216,13 +223,13 @@ private fun HomeDashboardContent() {
             )
             DashboardShortcut(
                 title = "الروايات",
-                icon = MaterialSymbols.Rounded.AutoStories,
+                icon = MaterialSymbols.AutoMirroredRounded.ChromeReaderMode,
                 modifier = Modifier.weight(1f),
                 onClick = { tabNavigator.current = NovelTab },
             )
             DashboardShortcut(
                 title = "التحديثات",
-                icon = MaterialSymbols.Rounded.Notifications,
+                icon = MaterialSymbols.Rounded.NewReleases,
                 modifier = Modifier.weight(1f),
                 onClick = { tabNavigator.current = UpdatesTab },
             )
