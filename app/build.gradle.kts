@@ -51,7 +51,7 @@ val interstitialChapterInterval = providers.gradleProperty("interstitialChapterI
     ?.coerceAtLeast(1) ?: 10
 val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
 val productionAdmobAppId = "ca-app-pub-8274010325120724~8234433334"
-val productionRewardedAdUnitId = "ca-app-pub-8274010325120724/4941132148"
+val productionRewardedAdUnitId = "ca-app-pub-8274010325120724/5166910152"
 
 android {
     namespace = "eu.kanade.tachiyomi"
