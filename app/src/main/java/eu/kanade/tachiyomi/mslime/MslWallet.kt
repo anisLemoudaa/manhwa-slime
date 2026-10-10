@@ -424,9 +424,13 @@ private fun MslCoinStoreDialog(
                         scope.launch {
                             busy = true
                             rewardEarned = false
-                            val session = runCatching {
-                                withContext(Dispatchers.IO) { MslWallet.beginReward(context) }
-                            }.getOrNull()
+                            val session = if (BuildConfig.DEBUG) {
+                                MslWallet.RewardSession(UUID.randomUUID().toString(), "debug-user")
+                            } else {
+                                runCatching {
+                                    withContext(Dispatchers.IO) { MslWallet.beginReward(context) }
+                                }.getOrNull()
+                            }
                             if (session == null) {
                                 message = context.stringResource(MR.strings.coin_reward_start_error)
                                 busy = false
@@ -438,6 +442,11 @@ private fun MslCoinStoreDialog(
                                 session.id,
                                 onRewardEarned = {
                                     rewardEarned = true
+                                    if (BuildConfig.DEBUG) {
+                                        message = "تم إكمال إعلان الاختبار؛ لا تُمنح عملات في نسخة Debug."
+                                        busy = false
+                                        return@showRewarded
+                                    }
                                     message = context.stringResource(MR.strings.coin_reward_checking_server)
                                     scope.launch {
                                         for (attempt in 0 until 30) {

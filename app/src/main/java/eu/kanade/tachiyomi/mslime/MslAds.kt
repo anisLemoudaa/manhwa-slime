@@ -36,13 +36,13 @@ object MslAds {
         private set
 
     private fun rewardedUnitId(): String =
-        BuildConfig.ADMOB_REWARDED_AD_UNIT_ID.ifBlank { if (BuildConfig.DEBUG) TEST_REWARDED_UNIT else "" }
+        if (BuildConfig.DEBUG) TEST_REWARDED_UNIT else BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
 
     private fun interstitialUnitId(): String =
         BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID.ifBlank { if (BuildConfig.DEBUG) TEST_INTERSTITIAL_UNIT else "" }
 
     private fun appId(): String =
-        if (BuildConfig.ADMOB_APP_ID_CONFIGURED || BuildConfig.DEBUG) BuildConfig.ADMOB_APP_ID else ""
+        if (BuildConfig.DEBUG || BuildConfig.ADMOB_APP_ID_CONFIGURED) BuildConfig.ADMOB_APP_ID else ""
 
     /** Call once from the launcher activity after it has become the task root. */
     fun requestConsentAndInitialize(activity: Activity) {

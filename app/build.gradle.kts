@@ -50,6 +50,8 @@ val interstitialChapterInterval = providers.gradleProperty("interstitialChapterI
     .toIntOrNull()
     ?.coerceAtLeast(1) ?: 10
 val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
+val productionAdmobAppId = "ca-app-pub-8274010325120724~8234433334"
+val productionRewardedAdUnitId = "ca-app-pub-8274010325120724/4941132148"
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -105,6 +107,13 @@ android {
         val release = getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+
+            val releaseAppId = admobAppId.ifBlank { productionAdmobAppId }
+            val releaseRewardedUnitId = admobRewardedUnitId.ifBlank { productionRewardedAdUnitId }
+            manifestPlaceholders["ADMOB_APP_ID"] = releaseAppId
+            buildConfigField("String", "ADMOB_APP_ID", "\"$releaseAppId\"")
+            buildConfigField("boolean", "ADMOB_APP_ID_CONFIGURED", "true")
+            buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$releaseRewardedUnitId\"")
 
             signingConfig = debug.signingConfig
 

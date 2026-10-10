@@ -264,12 +264,19 @@ private fun NovelShell(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            "الروايات",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MslDesignTokens.textPrimary,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "الروايات",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MslDesignTokens.textPrimary,
+                            )
+                            Text(
+                                "(قيد التطوير)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MslDesignTokens.textMuted,
+                            )
+                        }
                         Text(
                             "اكتشف قراءتك القادمة",
                             style = MaterialTheme.typography.bodyMedium,

@@ -2,9 +2,9 @@ name: Build Manhwa Slime
 
 on:
   push:
-    branches: [ui-refresh]
+    branches: [main, ui-refresh, redesign/reference-image]
   pull_request:
-    branches: [ui-refresh]
+    branches: [main, ui-refresh, redesign/reference-image]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,9 @@ jobs:
       - name: Install Android SDK 37.2
         run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
       - uses: gradle/actions/setup-gradle@v6
-      - name: Build debug APK
-        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+      - name: Build Debug and Release APKs
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
       - uses: actions/upload-artifact@v7
         with: { name: ManhwaSlime, if-no-files-found: error, path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk }
+      - uses: actions/upload-artifact@v7
+        with: { name: ManhwaSlime-release, if-no-files-found: error, path: app/build/outputs/apk/release/app-arm64-v8a-release.apk }
