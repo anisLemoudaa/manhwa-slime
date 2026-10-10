@@ -340,6 +340,36 @@ internal object ProComicAdPolicy {
                 }, 400);
                 window.__mslimeProComicAutoNextInstalled = true;
             }
+
+            const downloadBridge = window.MslProComicDownloadBridge;
+            if (downloadBridge && typeof downloadBridge.isDownloadPreparation === 'function' &&
+                downloadBridge.isDownloadPreparation() && !window.__mslimeDownloadScrollerInstalled) {
+                window.__mslimeReaderHasScrolled = true;
+                const downloadScrollTimer = window.setInterval(function() {
+                    if (window.__mslimeDownloadPreparationReady) {
+                        window.clearInterval(downloadScrollTimer);
+                        return;
+                    }
+                    const viewport = window.innerHeight || 1;
+                    const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+                    const distanceFromBottom = height - (window.scrollY + viewport);
+                    const step = Math.max(300, viewport * 0.8);
+                    if (distanceFromBottom > 80) {
+                        window.scrollBy(0, Math.min(step, distanceFromBottom));
+                    } else {
+                        const morePagesPending = Array.from(document.querySelectorAll('div')).some(function(element) {
+                            return element.children.length === 0 &&
+                                /سيتم تحميل بقية الصفحات عند المتابعة|remaining pages.*continue/i.test(element.textContent || '');
+                        });
+                        if (morePagesPending) {
+                            window.scrollBy(0, step);
+                        } else {
+                            window.__mslimeCheckProComicEnd(true);
+                        }
+                    }
+                }, 220);
+                window.__mslimeDownloadScrollerInstalled = true;
+            }
             applyReaderOnly();
         })();
     """.trimIndent()

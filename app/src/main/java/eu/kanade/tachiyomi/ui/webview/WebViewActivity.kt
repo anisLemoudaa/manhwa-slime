@@ -35,6 +35,7 @@ import org.json.JSONArray
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.util.system.logcat
@@ -86,6 +87,7 @@ class WebViewActivity : BaseActivity() {
 
     private var assistUrl: String? = null
     private var immersiveReaderMode = false
+    @Volatile private var preparedDownloadStarted = false
     private var proComicDownloadBridge: ProComicReaderDownloadBridge? = null
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 
@@ -127,7 +129,13 @@ class WebViewActivity : BaseActivity() {
             ?.takeIf { it > 0 }
         val prepareDownloadChapterPath = runCatching { URI(url).path }.getOrNull()
         if (prepareDownloadChapterId != null) {
-            toast(MR.strings.procomic_download_scroll_hint, Toast.LENGTH_LONG)
+            lifecycleScope.launch {
+                delay(DOWNLOAD_PREPARATION_TIMEOUT_MS)
+                if (!preparedDownloadStarted && !isFinishing) {
+                    toast(MR.strings.procomic_download_prepare_failed, Toast.LENGTH_LONG)
+                    finish()
+                }
+            }
         }
 
         setComposeContent {
@@ -141,10 +149,14 @@ class WebViewActivity : BaseActivity() {
                             prepareDownloadChapterId = prepareDownloadChapterId,
                             prepareDownloadChapterPath = prepareDownloadChapterPath,
                             onChapterReady = { chapterId ->
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    downloadManager.startDownloadNow(chapterId)
-                                    withContext(Dispatchers.Main) {
-                                        toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
+                                if (!preparedDownloadStarted) {
+                                    preparedDownloadStarted = true
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        downloadManager.startDownloadNow(chapterId)
+                                        withContext(Dispatchers.Main) {
+                                            toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
+                                            finish()
+                                        }
                                     }
                                 }
                             },
@@ -169,6 +181,7 @@ class WebViewActivity : BaseActivity() {
                 initialTitle = intent.extras?.getString(TITLE_KEY),
                 url = url,
                 adFreeReader = adFreeReader,
+                downloadPreparation = prepareDownloadChapterId != null,
                 headers = headers.orEmpty(),
                 defaultUserAgentProvider = network::defaultUserAgentProvider,
                 onUrlChange = { assistUrl = it },
@@ -247,6 +260,7 @@ class WebViewActivity : BaseActivity() {
         private const val TITLE_KEY = "title_key"
         private const val AD_FREE_READER_KEY = "ad_free_reader_key"
         private const val PREPARE_DOWNLOAD_CHAPTER_ID_KEY = "prepare_download_chapter_id_key"
+        private const val DOWNLOAD_PREPARATION_TIMEOUT_MS = 180_000L
 
         fun newIntent(
             context: Context,
