@@ -74,6 +74,7 @@ import eu.kanade.presentation.more.stats.RankSection
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
@@ -533,6 +534,7 @@ data object ProfileTab : Tab {
         var vipStatus by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslVipStatus?>(null) }
         var tab by remember { mutableIntStateOf(0) }
         var editName by remember { mutableStateOf(false) }
+        var cloudLevel by remember { mutableIntStateOf(1) }
         var name by remember {
             mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم")
         }
@@ -546,6 +548,12 @@ data object ProfileTab : Tab {
             j
         }
         LaunchedEffect(ctx) {
+            withContext(Dispatchers.IO) { MslCloudSync.profile(ctx) }?.let { remote ->
+                MslCloudSync.applyProfile(ctx, remote)
+                name = remote.name
+                cloudLevel = remote.level
+                rev++
+            }
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
                     ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
@@ -561,8 +569,20 @@ data object ProfileTab : Tab {
         val cover = remember(rev) { loadBmp(ctx, "msl_cover.img") }
         val s = state
         val read = if (s is StatsScreenState.Success) s.chapters.readChapterCount else 0
-        val level = read / 25 + 1
-        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).apply() }
+        val level = maxOf(read / 25 + 1, cloudLevel)
+        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply() }
+        LaunchedEffect(name, rev, level, read) {
+            withContext(Dispatchers.IO) {
+                MslCloudSync.saveProfile(
+                    ctx,
+                    name,
+                    MslCloudSync.imageData(ctx, "msl_avatar.img"),
+                    MslCloudSync.imageData(ctx, "msl_cover.img"),
+                    level,
+                    eu.kanade.tachiyomi.mslime.MslRank.of(read),
+                )
+            }
+        }
 
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Column(

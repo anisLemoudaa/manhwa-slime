@@ -80,6 +80,7 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.mslime.MslFirstLoginDialog
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
@@ -274,6 +275,7 @@ class MainActivity : BaseActivity() {
                     if (isLaunch) CheckForUpdates()
                     ShowOnboarding()
                     ShowDonationCampaign()
+                    MslFirstLoginDialog()
                 }
             }
         }

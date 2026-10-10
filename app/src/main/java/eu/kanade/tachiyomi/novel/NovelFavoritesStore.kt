@@ -70,6 +70,11 @@ class NovelFavoritesStore(context: Context) {
         file.delete()
     }
 
+    @Synchronized
+    fun replace(entries: List<NovelFavoriteEntry>) {
+        file.writeText(json.encodeToString(entries.take(MAX_ENTRIES)))
+    }
+
     companion object {
         private const val MAX_ENTRIES = 500
     }

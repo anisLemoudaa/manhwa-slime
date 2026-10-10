@@ -32,6 +32,7 @@ object MslAds {
     private val sdkInitialized = AtomicBoolean(false)
     private val vipInterstitialCheckInProgress = AtomicBoolean(false)
     private var consentInformation: ConsentInformation? = null
+    private var adContext: Context? = null
 
     var privacyOptionsRequired by mutableStateOf(false)
         private set
@@ -76,6 +77,7 @@ object MslAds {
 
     private fun initializeAndPreload(context: Context) {
         if (!sdkInitialized.compareAndSet(false, true)) return
+        adContext = context.applicationContext
         Thread {
             try {
                 val config = InitializationConfig.Builder(appId()).build()
@@ -159,13 +161,23 @@ object MslAds {
         onAdClosed: () -> Unit,
         onAdUnavailable: () -> Unit,
     ): Boolean {
+        val retryUnavailable: () -> Unit = {}
         repeat(20) { attempt ->
-            if (showRewarded(activity, userId, sessionId, onRewardEarned, onAdClosed) {
-                    // The ad is still loading; keep waiting until the bounded retry window ends.
-                }) {
+            if (showRewarded(activity, userId, sessionId, onRewardEarned, onAdClosed, retryUnavailable)) {
                 return true
             }
-            if (attempt < 19) delay(500)
+            if (attempt < 19) {
+                if (adContext != null) {
+                    runCatching {
+                        val unitId = rewardedUnitId()
+                        RewardedAdPreloader.start(
+                            unitId,
+                            PreloadConfiguration(AdRequest.Builder(unitId).build()),
+                        )
+                    }
+                }
+                delay(500)
+            }
         }
         onAdUnavailable()
         return false

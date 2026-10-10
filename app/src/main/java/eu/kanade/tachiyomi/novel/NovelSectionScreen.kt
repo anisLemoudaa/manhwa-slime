@@ -42,6 +42,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslWallet
@@ -151,6 +152,7 @@ fun NovelSectionContent() {
                     ),
                 )
                 favoritesRevision++
+                MslCloudSync.syncNovelFavoritesNow(context)
             }
         },
         onToggleFavoriteFilter = {
@@ -736,6 +738,7 @@ class NovelDetailsScreen(
                                     ),
                                 )
                                 favoriteRevision++
+                                MslCloudSync.syncNovelFavoritesNow(context)
                             },
                         ) {
                             Text(

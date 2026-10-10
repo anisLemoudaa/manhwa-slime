@@ -66,6 +66,12 @@ object MslAuth {
                         ?: ""
                 },
             )
+            .putString(
+                "name",
+                (p?.optJSONObject("user_metadata")?.optString("full_name") ?: "").ifEmpty {
+                    p?.optJSONObject("user_metadata")?.optString("name") ?: ""
+                },
+            )
             .apply()
         return null
     }
@@ -133,6 +139,7 @@ class AuthCallbackActivity : Activity() {
     private fun handle(i: Intent?) {
         val uri = i?.data
         val err = if (uri != null) MslAuth.handleRedirect(this, uri) else "لا توجد بيانات"
+        if (err == null) MslCloudSync.syncAfterLogin(this)
         Toast.makeText(
             this,
             if (err ==
