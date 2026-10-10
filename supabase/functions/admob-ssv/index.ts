@@ -109,6 +109,8 @@ Deno.serve(async (request) => {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return new Response("Backend is not configured", { status: 503 });
   try {
     const url = new URL(request.url);
+    // AdMob's dashboard verification request is a connectivity test only; never credit it.
+    if (url.searchParams.get("admob_test") === "true") return new Response("OK", { status: 200 });
     const params = await verifyCallback(url);
     const sessionId = params.get("custom_data") ?? "";
     const userId = params.get("user_id") ?? "";
