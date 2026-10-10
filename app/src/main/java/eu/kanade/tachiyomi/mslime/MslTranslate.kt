@@ -322,53 +322,78 @@ object MslTranslate {
 
     fun run(activity: Activity, fab: View) {
         val v = activity.window.decorView
-        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+        if (v.width <= 0 || v.height <= 0) {
+            toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
+            return
+        }
+        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+            .getOrElse {
+                toast(activity, "تعذّر تجهيز صورة الصفحة")
+                return
+            }
         fab.visibility = View.INVISIBLE
         toast(activity, "جارٍ قراءة الصفحة...")
         v.postDelayed({
-            PixelCopy.request(activity.window, bmp, { code ->
+            runCatching {
+                PixelCopy.request(activity.window, bmp, { code ->
+                    fab.visibility = View.VISIBLE
+                    if (code != PixelCopy.SUCCESS) {
+                        toast(activity, "تعذّر التقاط الشاشة")
+                    } else {
+                        process(activity, bmp)
+                    }
+                }, Handler(Looper.getMainLooper()))
+            }.onFailure {
                 fab.visibility = View.VISIBLE
-                if (code != PixelCopy.SUCCESS) {
-                    toast(activity, "تعذّر التقاط الشاشة")
-                } else {
-                    process(activity, bmp)
-                }
-            }, Handler(Looper.getMainLooper()))
+                toast(activity, "تعذّر التقاط الشاشة")
+            }
         }, 150)
     }
 
     /** Captures the visible reader page and translates detected text without hiding a FAB. */
     fun run(activity: Activity) {
         val v = activity.window.decorView
-        val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+        if (v.width <= 0 || v.height <= 0) {
+            toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
+            return
+        }
+        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+            .getOrElse {
+                toast(activity, "تعذّر تجهيز صورة الصفحة")
+                return
+            }
         toast(activity, "جارٍ قراءة الصفحة...")
         v.postDelayed({
-            PixelCopy.request(activity.window, bmp, { code ->
-                if (code != PixelCopy.SUCCESS) {
-                    toast(activity, "تعذّر التقاط الشاشة")
-                } else {
-                    process(activity, bmp)
-                }
-            }, Handler(Looper.getMainLooper()))
+            runCatching {
+                PixelCopy.request(activity.window, bmp, { code ->
+                    if (code != PixelCopy.SUCCESS) {
+                        toast(activity, "تعذّر التقاط الشاشة")
+                    } else {
+                        process(activity, bmp)
+                    }
+                }, Handler(Looper.getMainLooper()))
+            }.onFailure { toast(activity, "تعذّر التقاط الشاشة") }
         }, 150)
     }
 
     private fun process(activity: Activity, bmp: Bitmap) {
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            .process(InputImage.fromBitmap(bmp, 0))
-            .addOnSuccessListener { res ->
-                val items = res.textBlocks
-                    .filter { it.boundingBox != null && it.text.isNotBlank() }
-                    .map { it.boundingBox!! to normalizeOcr(it.text) }
-                .filter { it.second.isNotBlank() }
-                .sortedWith(compareBy({ it.first.top }, { it.first.left }))
-                if (items.isEmpty()) {
-                    toast(activity, "لم أجد نصاً إنجليزياً في الصفحة")
-                } else {
-                    translateItems(activity, bmp, items)
+        runCatching {
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                .process(InputImage.fromBitmap(bmp, 0))
+                .addOnSuccessListener { res ->
+                    val items = res.textBlocks
+                        .filter { it.boundingBox != null && it.text.isNotBlank() }
+                        .map { it.boundingBox!! to normalizeOcr(it.text) }
+                        .filter { it.second.isNotBlank() }
+                        .sortedWith(compareBy({ it.first.top }, { it.first.left }))
+                    if (items.isEmpty()) {
+                        toast(activity, "لم أجد نصاً إنجليزياً في الصفحة")
+                    } else {
+                        translateItems(activity, bmp, items)
+                    }
                 }
-            }
-            .addOnFailureListener { toast(activity, "فشلت قراءة النص: ${it.message}") }
+                .addOnFailureListener { toast(activity, "فشلت قراءة النص: ${it.message}") }
+        }.onFailure { toast(activity, "فشلت قراءة الصفحة: ${it.message}") }
     }
 
     private fun translateItems(activity: Activity, bmp: Bitmap, items: List<Pair<Rect, String>>) {
@@ -468,7 +493,13 @@ object MslTranslate {
     }
 
     private fun show(activity: Activity, src: Bitmap, items: List<Pair<Rect, String>>) {
-        val bmp = src.copy(Bitmap.Config.ARGB_8888, true)
+        if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) {
+            return
+        }
+        val bmp = runCatching { src.copy(Bitmap.Config.ARGB_8888, true) }.getOrElse {
+            toast(activity, "تعذّر تجهيز نتيجة الترجمة")
+            return
+        }
         val c = Canvas(bmp)
         val bg = Paint()
         bg.color = Color.WHITE
@@ -495,10 +526,12 @@ object MslTranslate {
         iv.setImageBitmap(bmp)
         iv.setBackgroundColor(Color.BLACK)
         iv.scaleType = ImageView.ScaleType.FIT_CENTER
-        val dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        dialog.setContentView(iv)
-        iv.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-        toast(activity, "اضغط على الصورة للعودة")
+        runCatching {
+            val dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+            dialog.setContentView(iv)
+            iv.setOnClickListener { dialog.dismiss() }
+            dialog.show()
+            toast(activity, "اضغط على الصورة للعودة")
+        }.onFailure { toast(activity, "تعذّر عرض نتيجة الترجمة") }
     }
 }

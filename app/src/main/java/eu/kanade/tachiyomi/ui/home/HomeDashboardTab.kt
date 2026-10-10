@@ -60,7 +60,6 @@ import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
-import eu.kanade.tachiyomi.ui.category.LibraryCategoryBrowserScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
 import eu.kanade.tachiyomi.ui.history.HistoryViewModel
 import eu.kanade.tachiyomi.ui.library.LibraryTab
@@ -274,7 +273,7 @@ private fun HomeDashboardContent() {
         DashboardSectionHeader(
             title = "تصنيفات مكتبتك",
             actionLabel = "عرض الكل",
-            onAction = { navigator.push(LibraryCategoryBrowserScreen()) },
+            onAction = { navigator.push(CategoryScreen()) },
         )
         val categories = libraryState.displayedCategories
         if (categories.isEmpty()) {
