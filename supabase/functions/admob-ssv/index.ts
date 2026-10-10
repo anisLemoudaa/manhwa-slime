@@ -109,11 +109,15 @@ Deno.serve(async (request) => {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return new Response("Backend is not configured", { status: 503 });
   try {
     const url = new URL(request.url);
-    // AdMob's dashboard verification request is a connectivity test only; never credit it.
-    if (url.searchParams.get("admob_test") === "true") return new Response("OK", { status: 200 });
     const params = await verifyCallback(url);
     const sessionId = params.get("custom_data") ?? "";
     const userId = params.get("user_id") ?? "";
+    // AdMob's signed dashboard verification callback intentionally omits these optional SDK identifiers.
+    // A valid signature with no attribution is acknowledged, but can never produce a wallet credit.
+    if (!sessionId && !userId) {
+      console.info("Verified AdMob SSV callback without reward identity; no coin grant");
+      return new Response("OK", { status: 200 });
+    }
     const transactionId = params.get("transaction_id") ?? "";
     const rewardAmount = Number(params.get("reward_amount"));
     const rewardItem = params.get("reward_item") ?? "";
