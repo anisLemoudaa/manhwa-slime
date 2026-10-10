@@ -44,9 +44,14 @@ fun MslReaderSettingsCard() {
                     Text(text = "زر الترجمة «ع» في القارئ", fontWeight = FontWeight.Bold)
                     Text(text = "اسحبه لأي مكان، أو أخفِه من هنا", style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = on, onCheckedChange = { on = it; MslHook.setEnabled(ctx, it) })
+                Switch(checked = on, onCheckedChange = {
+                    on = it
+                    MslHook.setEnabled(ctx, it)
+                })
             }
-            TextButton(onClick = { findActivity(ctx)?.let { MslTranslate.askKey(it) } }) { Text("مفتاح الترجمة الذكية") }
+            TextButton(onClick = {
+                findActivity(ctx)?.let { MslTranslate.askKey(it) }
+            }) { Text("مفتاح الترجمة الذكية") }
             TextButton(
                 onClick = {
                     MslHook.resetPosition(ctx)

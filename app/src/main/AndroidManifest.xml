@@ -49,6 +49,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Tachiyomi">
 
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${ADMOB_APP_ID}" />
+
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true"
@@ -246,7 +250,7 @@
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
 
-    
+
         <activity
             android:name=".mslime.SlimeIntroActivity"
             android:exported="true"

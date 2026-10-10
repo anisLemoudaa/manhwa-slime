@@ -46,7 +46,13 @@ fun RankSection(chapters: StatsData.Chapters) {
     val index = readerRanks.indexOfLast { read >= it.min }.coerceAtLeast(0)
     val rank = readerRanks[index]
     val next = readerRanks.getOrNull(index + 1)
-    val nextLine = if (next != null) "باقي ${next.min - read} فصل للوصول إلى الرتبة ${next.name}" else "وصلت إلى أعلى رتبة 👑"
+    val nextLine = if (next !=
+        null
+    ) {
+        "باقي ${next.min - read} فصل للوصول إلى الرتبة ${next.name}"
+    } else {
+        "وصلت إلى أعلى رتبة 👑"
+    }
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(

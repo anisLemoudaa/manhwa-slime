@@ -29,6 +29,7 @@ import eu.kanade.presentation.manga.ChapterSettingsDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.manga.EditCoverAction
 import eu.kanade.presentation.manga.MangaScreen
+import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.manga.components.DeleteChaptersDialog
 import eu.kanade.presentation.manga.components.MangaCoverDialog
 import eu.kanade.presentation.manga.components.ScanlatorFilterDialog
@@ -39,6 +40,7 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -48,6 +50,7 @@ import eu.kanade.tachiyomi.ui.manga.track.TrackInfoDialogHomeScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
@@ -90,6 +93,7 @@ class MangaScreen(
 
         val successState = state as MangaViewModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
+        val proComicSource = successState.source as? ProComicSource
 
         LaunchedEffect(successState.manga, viewModel.source) {
             if (isHttpSource) {
@@ -112,7 +116,27 @@ class MangaScreen(
             chapterSwipeEndAction = viewModel.chapterSwipeEndAction,
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
-            onDownloadChapter = viewModel::runChapterDownloadActions.takeIf { !successState.source.isLocalOrStub() },
+            onDownloadChapter = { items: List<ChapterList.Item>, action: ChapterDownloadAction ->
+                val chapter = items.singleOrNull()?.chapter
+                if (
+                    proComicSource != null &&
+                    chapter != null &&
+                    action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)
+                ) {
+                    context.startActivity(
+                        WebViewActivity.newIntent(
+                            context = context,
+                            url = proComicSource.baseUrl + chapter.url,
+                            sourceId = proComicSource.id,
+                            title = chapter.name,
+                            adFreeReader = true,
+                            prepareDownloadChapterId = chapter.id,
+                        ),
+                    )
+                } else {
+                    viewModel.runChapterDownloadActions(items, action)
+                }
+            }.takeIf { !successState.source.isLocalOrStub() },
             onAddToLibraryClicked = {
                 viewModel.toggleFavorite()
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)

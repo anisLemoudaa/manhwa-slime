@@ -180,6 +180,7 @@ okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 photoView = { module = "com.github.chrisbanes:PhotoView", version.ref = "photoView" }
 quickJs = { module = "com.github.zhanghai.quickjs-java:quickjs-android", version.ref = "quickJs" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+novelQuickjs = { module = "io.github.dokar3:quickjs-kt", version = "1.0.5" }
 rxJava = { module = "io.reactivex:rxjava", version.ref = "rxJava" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
 shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }

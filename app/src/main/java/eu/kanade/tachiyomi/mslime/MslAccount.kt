@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.mslime
 
+import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.MR
 
 @Composable
 fun MslAccountCard() {
@@ -43,7 +46,10 @@ fun MslAccountCard() {
             if (email.isNotEmpty()) {
                 Text(text = "متصل بحساب Google", fontWeight = FontWeight.Bold)
                 Text(text = email)
-                TextButton(onClick = { MslAuth.signOut(ctx); rev++ }) { Text("تسجيل الخروج") }
+                TextButton(onClick = {
+                    MslAuth.signOut(ctx)
+                    rev++
+                }) { Text("تسجيل الخروج") }
             } else {
                 Text(text = "حسابك الحالي مجهول: تعليقاتك مرتبطة بهذا الهاتف فقط.")
                 Button(
@@ -52,6 +58,20 @@ fun MslAccountCard() {
                 ) { Text("تسجيل الدخول بحساب Google") }
                 TextButton(onClick = { MslAuth.startGoogle(ctx, false) }) { Text("لدي حساب سابق") }
             }
+            if (MslAds.privacyOptionsRequired) {
+                TextButton(onClick = { ctx.findActivity()?.let(MslAds::showPrivacyOptions) }) {
+                    Text(ctx.stringResource(MR.strings.coin_privacy_options))
+                }
+            }
         }
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return current as? Activity
 }

@@ -1,13 +1,36 @@
 name: Build Manhwa Slime
-on: [push, workflow_dispatch]
+
+on:
+  push:
+    branches: [main, ui-refresh, redesign/reference-image]
+  pull_request:
+    branches: [main, ui-refresh, redesign/reference-image]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 21 }
-      - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: .github/.java-version
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 37.2
+        run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build Debug and Release APKs
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug assembleRelease
+      - uses: actions/upload-artifact@v7
         with: { name: ManhwaSlime, if-no-files-found: error, path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk }
+      - uses: actions/upload-artifact@v7
+        with: { name: ManhwaSlime-release, if-no-files-found: error, path: app/build/outputs/apk/release/app-arm64-v8a-release.apk }

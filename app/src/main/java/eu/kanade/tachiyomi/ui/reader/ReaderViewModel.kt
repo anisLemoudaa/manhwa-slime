@@ -32,6 +32,8 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
@@ -333,6 +335,27 @@ class ReaderViewModel(
                 mutableState.update { it.copy(manga = manga, source = source) }
                 if (chapterId == -1L) chapterId = initialChapterId
 
+                if (source is ProComicSource) {
+                    val chapter = chapterList.first { it.chapter.id == chapterId }.chapter
+                    val downloaded = downloadManager.isChapterDownloaded(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.title,
+                        manga.source,
+                    )
+                    if (!downloaded) {
+                        check(chapter.url.startsWith("/ar/chapter/")) { "Invalid ProComic chapter path" }
+                        mutableState.update {
+                            it.copy(
+                                proComicReaderUrl = source.baseUrl + chapter.url,
+                                proComicReaderTitle = chapter.name,
+                            )
+                        }
+                        return@withIOContext
+                    }
+                }
+
                 loader = ChapterLoader(context, downloadManager, downloadProvider, chapterCache, manga, source)
 
                 loadChapter(loader!!, chapterList.first { chapterId == it.chapter.id })
@@ -602,6 +625,12 @@ class ReaderViewModel(
         readerChapter.chapter.read = true
         updateTrackChapterRead(readerChapter)
         deleteChapterIfNeeded(readerChapter)
+        if (readerChapter.pageLoader !is DownloadPageLoader) {
+            MslAds.recordOnlineChapterCompleted(
+                context,
+                "manga:${readerChapter.chapter.manga_id}:${readerChapter.chapter.id}",
+            )
+        }
 
         val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead.get()
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
@@ -985,6 +1014,8 @@ class ReaderViewModel(
     data class State(
         val manga: Manga? = null,
         val source: Source? = null,
+        val proComicReaderUrl: String? = null,
+        val proComicReaderTitle: String? = null,
         val initError: Throwable? = null,
         val viewerChapters: ViewerChapters? = null,
         val bookmarked: Boolean = false,

@@ -20,7 +20,7 @@ internal fun LibraryTabs(
     val currentPageIndex = pagerState.currentPage.coerceAtMost(categories.lastIndex)
     PrimaryScrollableTabRow(
         selectedTabIndex = currentPageIndex,
-        edgePadding = 0.dp,
+        edgePadding = 16.dp,
     ) {
         categories.forEachIndexed { index, category ->
             Tab(
@@ -32,7 +32,7 @@ internal fun LibraryTabs(
                         badgeCount = getItemCountForCategory(category),
                     )
                 },
-                unselectedContentColor = MaterialTheme.colorScheme.onSurface,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

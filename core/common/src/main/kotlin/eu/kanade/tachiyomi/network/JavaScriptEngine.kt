@@ -1,10 +1,11 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
-import app.cash.quickjs.QuickJs
+import com.dokar.quickjs.QuickJs
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.coroutines.Dispatchers
 import tachiyomi.core.common.util.lang.withIOContext
 
 /**
@@ -23,9 +24,9 @@ class JavaScriptEngine(context: Context) {
      * @param script JavaScript to execute.
      * @return Result of JavaScript code as a primitive type.
      */
-    suspend fun <T> evaluate(script: String): T = withIOContext {
-        QuickJs.create().use {
-            it.evaluate(script) as T
+    suspend inline fun <reified T> evaluate(script: String): T = withIOContext {
+        QuickJs.create(jobDispatcher = Dispatchers.Default).use {
+            it.evaluate<T>(script)
         }
     }
 }

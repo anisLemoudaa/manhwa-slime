@@ -6,17 +6,23 @@ import android.os.Message
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +54,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.util.system.getHtml
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.setUserAgent
+import java.io.ByteArrayInputStream
 import kotlinx.coroutines.launch
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
@@ -73,12 +80,15 @@ fun WebViewScreenContent(
     onNavigateUp: () -> Unit,
     initialTitle: String?,
     url: String,
+    adFreeReader: Boolean = false,
     defaultUserAgentProvider: () -> String,
     onShare: (String) -> Unit,
     onOpenInBrowser: (String) -> Unit,
     onClearCookies: (String) -> Unit,
     headers: Map<String, String> = emptyMap(),
     onUrlChange: (String) -> Unit = {},
+    onWebViewCreated: (WebView) -> Unit = {},
+    downloadPreparation: Boolean = false,
 ) {
     val coroutineScope = rememberCoroutineScope()
 
@@ -105,7 +115,7 @@ fun WebViewScreenContent(
         onDispose { isActive = false }
     }
 
-    val webClient = remember {
+    val webClient = remember(adFreeReader) {
         object : AccompanistWebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -117,10 +127,35 @@ fun WebViewScreenContent(
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
+                if (adFreeReader) {
+                    view.evaluateJavascript(ProComicAdPolicy.hideAdsScript, null)
+                    view.evaluateJavascript(ProComicAdPolicy.readerOnlyScript, null)
+                }
                 scope.launch {
                     val html = view.getHtml()
                     showCloudflareHelp = "window._cf_chl_opt" in html || "Ray ID is" in html
                 }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): WebResourceResponse? {
+                val requestedUrl = request?.url?.toString()
+                    ?: return super.shouldInterceptRequest(view, request)
+                if (!adFreeReader || !ProComicAdPolicy.shouldBlockResource(requestedUrl)) {
+                    return super.shouldInterceptRequest(view, request)
+                }
+
+                val isSiteAdApi = requestedUrl.contains("/api/ads", ignoreCase = true) ||
+                    requestedUrl.contains("/api/advertising", ignoreCase = true)
+                val body = if (isSiteAdApi) "{}" else "/* ad resource blocked */"
+                val mimeType = if (isSiteAdApi) "application/json" else "text/javascript"
+                return WebResourceResponse(
+                    mimeType,
+                    "utf-8",
+                    ByteArrayInputStream(body.toByteArray(Charsets.UTF_8)),
+                )
             }
 
             override fun doUpdateVisitedHistory(
@@ -141,6 +176,11 @@ fun WebViewScreenContent(
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
 
+                if (adFreeReader) {
+                    if (ProComicAdPolicy.shouldBlockResource(url)) return true
+                    if (request.isForMainFrame && !ProComicAdPolicy.isAllowedMainFrame(url)) return true
+                }
+
                 // Ignore intents urls
                 if (url.startsWith("intent://")) return true
 
@@ -157,7 +197,7 @@ fun WebViewScreenContent(
         }
     }
 
-    val webChromeClient = remember {
+    val webChromeClient = remember(adFreeReader) {
         object : AccompanistWebChromeClient() {
             override fun onCreateWindow(
                 view: WebView,
@@ -166,7 +206,7 @@ fun WebViewScreenContent(
                 resultMsg: Message,
             ): Boolean {
                 // if it wasn't initiated by a user gesture, we should ignore it like a normal browser would
-                if (isUserGesture) {
+                if (!adFreeReader && isUserGesture) {
                     windowStack.push(WebViewWindow(resultMsg, WebViewNavigator(coroutineScope)))
                     return true
                 }
@@ -222,11 +262,17 @@ fun WebViewScreenContent(
         }
     }
 
-    BackHandler(windowStack.size > 1, popState)
+    BackHandler(adFreeReader || windowStack.size > 1) {
+        when {
+            windowStack.size > 1 -> popState()
+            adFreeReader && navigator.canGoBack -> navigator.navigateBack()
+            else -> onNavigateUp()
+        }
+    }
 
     Scaffold(
         topBar = {
-            Box {
+            if (!adFreeReader) Box {
                 Column {
                     AppBar(
                         title = currentWindow.state.pageTitle ?: initialTitle,
@@ -321,54 +367,78 @@ fun WebViewScreenContent(
                 }
             }
         },
+        contentWindowInsets = if (adFreeReader) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
     ) { contentPadding ->
         // We need to key the WebView composable to the window object since simply updating the WebView composable will
         // not cause it to re-invoke the WebView factory and render the new current window's WebView. This lets us
         // completely reset the WebView composable when the current window switches.
         key(currentWindow) {
-            WebView(
-                state = currentWindow.state,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding),
-                navigator = navigator,
-                onCreated = { webView ->
-                    webView.setDefaultSettings()
+            Box(modifier = Modifier.fillMaxSize()) {
+                WebView(
+                    state = currentWindow.state,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding),
+                    navigator = navigator,
+                    onCreated = { webView ->
+                        webView.setDefaultSettings()
+                        onWebViewCreated(webView)
 
-                    // Debug mode (chrome://inspect/#devices)
-                    if (BuildConfig.DEBUG &&
-                        0 != webView.context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE
-                    ) {
-                        WebView.setWebContentsDebuggingEnabled(true)
-                    }
-
-                    webView.setUserAgent(headers["user-agent"] ?: defaultUserAgentProvider())
-                },
-                onDispose = { webView ->
-                    val window = windowStack.items.find { it.webView == webView }
-                    if (window == null) {
-                        // If we couldn't find any window on the stack that owns this WebView, it means that we can
-                        // safely dispose of it because the window containing it has been closed.
-                        webView.destroy()
-                    } else {
-                        // The composable is being disposed but the WebView object is not.
-                        // When the WebView element is recomposed, we will want the WebView to resume from its state
-                        // before it was unmounted, we won't want it to reset back to its original target.
-                        window.state.content = WebContent.NavigatorOnly
-                    }
-                },
-                client = webClient,
-                chromeClient = webChromeClient,
-                factory = { context ->
-                    currentWindow.webView
-                        ?: WebView(context).also { webView ->
-                            currentWindow.webView = webView
-                            currentWindow.popupMessage?.let {
-                                initializePopup(webView, it)
-                            }
+                        // Debug mode (chrome://inspect/#devices)
+                        if (BuildConfig.DEBUG &&
+                            0 != webView.context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE
+                        ) {
+                            WebView.setWebContentsDebuggingEnabled(true)
                         }
-                },
-            )
+
+                        webView.setUserAgent(headers["user-agent"] ?: defaultUserAgentProvider())
+                    },
+                    onDispose = { webView ->
+                        val window = windowStack.items.find { it.webView == webView }
+                        if (window == null) {
+                            // If we couldn't find any window on the stack that owns this WebView, it means that we can
+                            // safely dispose of it because the window containing it has been closed.
+                            webView.destroy()
+                        } else {
+                            // The composable is being disposed but the WebView element is not.
+                            // When the WebView element is recomposed, we will want it to resume from its state
+                            // before it was unmounted, we won't want it to reset back to its original target.
+                            window.state.content = WebContent.NavigatorOnly
+                        }
+                    },
+                    client = webClient,
+                    chromeClient = webChromeClient,
+                    factory = { context ->
+                        currentWindow.webView
+                            ?: WebView(context).also { webView ->
+                                currentWindow.webView = webView
+                                currentWindow.popupMessage?.let {
+                                    initializePopup(webView, it)
+                                }
+                            }
+                    },
+                )
+
+                if (downloadPreparation) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = stringResource(MR.strings.procomic_download_preparing),
+                                modifier = Modifier.padding(24.dp),
+                            )
+                        }
+                    }
+                }
+
+            }
         }
     }
 }

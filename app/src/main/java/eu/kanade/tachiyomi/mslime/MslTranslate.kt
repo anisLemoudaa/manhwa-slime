@@ -23,14 +23,14 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.view.Gravity
-import android.view.PixelCopy
 import android.view.MotionEvent
-import android.view.ViewConfiguration
-import android.widget.PopupMenu
+import android.view.PixelCopy
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import com.google.mlkit.common.model.DownloadConditions
@@ -51,11 +51,22 @@ class MslInit : ContentProvider() {
         (context?.applicationContext as? Application)?.registerActivityLifecycleCallbacks(MslHook)
         return true
     }
-    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?,
+    ): Cursor? = null
     override fun getType(uri: Uri): String? = null
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+    ): Int = 0
 }
 
 object MslHook : Application.ActivityLifecycleCallbacks {
@@ -376,7 +387,10 @@ object MslTranslate {
                         return
                     }
                     tr.translate(items[i].second)
-                        .addOnSuccessListener { t -> out.add(items[i].first to t); next(i + 1) }
+                        .addOnSuccessListener { t ->
+                            out.add(items[i].first to t)
+                            next(i + 1)
+                        }
                         .addOnFailureListener { next(i + 1) }
                 }
                 next(0)
