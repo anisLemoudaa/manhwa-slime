@@ -60,11 +60,13 @@ Compose Screen → ViewModel → Interactor/Domain → Repository interface
 
 ### الملفات التي تبدأ منها عند صيانة هذه الميزة
 
-- `app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt` — عرض القائمة وفلاتر اللغة.
-- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt` و`ExtensionsViewModel.kt` — ربط التبويب والحالة والتثبيت.
-- `app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt` — تجميع اللغات واحترام إعدادات اللغات مع السماح بعرض `ar` و`en` في الكتالوج.
-- `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` — حالة تسجيل المستودع الافتراضي مرة واحدة.
-- `data/src/main/java/mihon/data/extension/service/ExtensionStoreService.kt` و`NetworkExtensionStore.kt` — قراءة Protocol Buffers والتحويل.
+توجد الملفات الأربعة الأولى داخل `app/src/main/java`، والأخيرة داخل `data/src/main/java`:
+
+- `ExtensionsScreen.kt` — عرض القائمة وفلاتر اللغة.
+- `ExtensionsTab.kt` و`ExtensionsViewModel.kt` — ربط التبويب والحالة والتثبيت.
+- `GetExtensionsByType.kt` — تجميع اللغات واحترام الإعدادات مع تضمين `ar` و`en`.
+- `SourcePreferences.kt` — حالة تسجيل المستودع الافتراضي مرة واحدة.
+- `ExtensionStoreService.kt` و`NetworkExtensionStore.kt` — قراءة Protocol Buffers والتحويل.
 
 ## 5. نظام التصميم والحركة
 
