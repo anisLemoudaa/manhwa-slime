@@ -54,6 +54,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -114,21 +115,35 @@ import androidx.compose.material3.Tab as M3Tab
 
 private fun prefs(c: Context) = c.getSharedPreferences("msl_profile", Context.MODE_PRIVATE)
 
-private fun loadBmp(c: Context, name: String): Bitmap? {
+private fun loadBmp(c: Context, name: String, targetWidth: Int, targetHeight: Int): Bitmap? {
     val f = File(c.filesDir, name)
     if (!f.exists()) return null
-    val o = BitmapFactory.Options()
-    o.inSampleSize = 2
-    return BitmapFactory.decodeFile(f.absolutePath, o)
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(f.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sampleSize = 1
+    val width = targetWidth.coerceAtLeast(1)
+    val height = targetHeight.coerceAtLeast(1)
+    while (bounds.outWidth / (sampleSize * 2) >= width && bounds.outHeight / (sampleSize * 2) >= height) {
+        sampleSize *= 2
+    }
+    return BitmapFactory.decodeFile(
+        f.absolutePath,
+        BitmapFactory.Options().apply { inSampleSize = sampleSize },
+    )
 }
 
-private fun saveFromUri(c: Context, uri: Uri, name: String): Boolean = try {
-    c.contentResolver.openInputStream(uri)?.use { i ->
-        File(c.filesDir, name).outputStream().use { o -> i.copyTo(o) }
+private fun saveFromUri(c: Context, uri: Uri, name: String): Boolean {
+    return try {
+        val input = c.contentResolver.openInputStream(uri) ?: return false
+        input.use { source ->
+            File(c.filesDir, name).outputStream().use { target -> source.copyTo(target) }
+        }
+        true
+    } catch (e: Exception) {
+        false
     }
-    true
-} catch (e: Exception) {
-    false
 }
 
 private fun joinedText(joined: Long): String {
@@ -295,36 +310,38 @@ private fun UnifiedHistorySection(
     onOpenManga: (mangaId: Long, chapterId: Long) -> Unit,
     onOpenNovel: (NovelHistoryEntry) -> Unit,
 ) {
-    val mangaRows = historyState.list.orEmpty().mapNotNull { item ->
-        val history = (item as? HistoryUiModel.Item)?.item ?: return@mapNotNull null
+    val rows = remember(historyState.list, novelHistory) {
+        val mangaRows = historyState.list.orEmpty().mapNotNull { item ->
+            val history = (item as? HistoryUiModel.Item)?.item ?: return@mapNotNull null
 
-        UnifiedHistoryRow(
-            title = history.title,
-            subtitle = if (history.chapterNumber >= 0) {
-                "مانغا • الفصل ${history.chapterNumber}"
-            } else {
-                "مانغا"
-            },
-            readAt = history.readAt?.time ?: 0L,
-            mangaCover = history.coverData,
-            mangaId = history.mangaId,
-            chapterId = history.chapterId,
-        )
+            UnifiedHistoryRow(
+                title = history.title,
+                subtitle = if (history.chapterNumber >= 0) {
+                    "مانغا • الفصل ${history.chapterNumber}"
+                } else {
+                    "مانغا"
+                },
+                readAt = history.readAt?.time ?: 0L,
+                mangaCover = history.coverData,
+                mangaId = history.mangaId,
+                chapterId = history.chapterId,
+            )
+        }
+
+        val novelRows = novelHistory.map {
+            UnifiedHistoryRow(
+                title = it.novelTitle,
+                subtitle = "رواية • ${it.chapterName}",
+                readAt = it.readAt,
+                mangaCover = null,
+                novelEntry = it,
+            )
+        }
+
+        (mangaRows + novelRows)
+            .sortedByDescending { it.readAt }
+            .take(15)
     }
-
-    val novelRows = novelHistory.map {
-        UnifiedHistoryRow(
-            title = it.novelTitle,
-            subtitle = "رواية • ${it.chapterName}",
-            readAt = it.readAt,
-            mangaCover = null,
-            novelEntry = it,
-        )
-    }
-
-    val rows = (mangaRows + novelRows)
-        .sortedByDescending { it.readAt }
-        .take(15)
 
     if (rows.isEmpty()) return
 
@@ -620,9 +637,7 @@ data object ProfileTab : Tab {
         val state by viewModel.state.collectAsState()
         val historyViewModel = metroViewModel<HistoryViewModel>()
         val historyState by historyViewModel.state.collectAsState()
-        val novelHistory = remember(ctx) {
-            NovelHistoryStore(ctx).all()
-        }
+        var novelHistory by remember(ctx) { mutableStateOf<List<NovelHistoryEntry>>(emptyList()) }
         var rev by remember { mutableIntStateOf(0) }
         var vipStatus by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslVipStatus?>(null) }
         var tab by remember { mutableIntStateOf(0) }
@@ -645,9 +660,11 @@ data object ProfileTab : Tab {
             j
         }
         LaunchedEffect(ctx) {
-            val remoteProfile = withContext(Dispatchers.IO) { MslCloudSync.profile(ctx) }
+            novelHistory = withContext(Dispatchers.IO) { NovelHistoryStore(ctx).all() }
+            val remoteProfile = withContext(Dispatchers.IO) {
+                MslCloudSync.profile(ctx)?.also { MslCloudSync.applyProfile(ctx, it) }
+            }
             remoteProfile?.let { remote ->
-                MslCloudSync.applyProfile(ctx, remote)
                 name = remote.name
                 cloudLevel = remote.level
                 cloudRank = remote.rank
@@ -662,14 +679,29 @@ data object ProfileTab : Tab {
             cloudLoaded = true
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
-                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
+                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(
+                            ctx,
+                        )
+                    ) {
+                        eu.kanade.tachiyomi.mslime.MslVipStatus(active = true)
+                    } else {
+                        null
+                    }
             }
         }
         val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            if (uri != null && saveFromUri(ctx, uri, "msl_avatar.img")) rev++
+            if (uri != null) {
+                scope.launch {
+                    if (withContext(Dispatchers.IO) { saveFromUri(ctx, uri, "msl_avatar.img") }) rev++
+                }
+            }
         }
         val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            if (uri != null && saveFromUri(ctx, uri, "msl_cover.img")) rev++
+            if (uri != null) {
+                scope.launch {
+                    if (withContext(Dispatchers.IO) { saveFromUri(ctx, uri, "msl_cover.img") }) rev++
+                }
+            }
         }
         LaunchedEffect(socialRevision) {
             if (socialRevision == 0) return@LaunchedEffect
@@ -680,13 +712,26 @@ data object ProfileTab : Tab {
                 }
             }
         }
-        val avatar = remember(rev) { loadBmp(ctx, "msl_avatar.img") }
-        val cover = remember(rev) { loadBmp(ctx, "msl_cover.img") }
+        val density = ctx.resources.displayMetrics.density
+        val avatar by produceState<Bitmap?>(null, ctx, rev) {
+            value = withContext(Dispatchers.IO) {
+                loadBmp(ctx, "msl_avatar.img", (128 * density).toInt(), (128 * density).toInt())
+            }
+        }
+        val cover by produceState<Bitmap?>(null, ctx, rev) {
+            value = withContext(Dispatchers.IO) {
+                loadBmp(ctx, "msl_cover.img", ctx.resources.displayMetrics.widthPixels, (248 * density).toInt())
+            }
+        }
+        val avatarBitmap = avatar
+        val coverBitmap = cover
         val s = state
         val read = if (s is StatsScreenState.Success) s.chapters.readChapterCount else 0
         val level = maxOf(read / 25 + 1, cloudLevel)
         val rank = cloudRank ?: eu.kanade.tachiyomi.mslime.MslRank.of(read)
-        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply() }
+        androidx.compose.runtime.SideEffect {
+            prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply()
+        }
         LaunchedEffect(name, rev, level, rank, read, cloudLoaded) {
             if (!cloudLoaded) return@LaunchedEffect
             withContext(Dispatchers.IO) {
@@ -719,9 +764,9 @@ data object ProfileTab : Tab {
                         )
                         .clickable { coverPicker.launch("image/*") },
                 ) {
-                    if (cover != null) {
+                    if (coverBitmap != null) {
                         Image(
-                            bitmap = cover.asImageBitmap(),
+                            bitmap = coverBitmap.asImageBitmap(),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -755,7 +800,13 @@ data object ProfileTab : Tab {
                             .border(
                                 3.dp,
                                 Brush.sweepGradient(
-                                    listOf(MslDesignTokens.accentBright, MslDesignTokens.cyan, MslDesignTokens.accent, MslDesignTokens.warning, MslDesignTokens.accentBright),
+                                    listOf(
+                                        MslDesignTokens.accentBright,
+                                        MslDesignTokens.cyan,
+                                        MslDesignTokens.accent,
+                                        MslDesignTokens.warning,
+                                        MslDesignTokens.accentBright,
+                                    ),
                                 ),
                                 CircleShape,
                             )
@@ -763,9 +814,9 @@ data object ProfileTab : Tab {
                             .clickable { avatarPicker.launch("image/*") },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (avatar != null) {
+                        if (avatarBitmap != null) {
                             Image(
-                                bitmap = avatar.asImageBitmap(),
+                                bitmap = avatarBitmap.asImageBitmap(),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
@@ -922,7 +973,7 @@ data object ProfileTab : Tab {
                     ProfileActionCard(
                         title = "المحفظة",
                         subtitle = "الرصيد والمتجر",
-                    icon = MaterialSymbols.Rounded.AttachMoney,
+                        icon = MaterialSymbols.Rounded.AttachMoney,
                         modifier = Modifier.weight(1f),
                         onClick = { navigator.push(MslWalletScreen()) },
                     )
@@ -936,7 +987,13 @@ data object ProfileTab : Tab {
                 }
                 ProfileActionCard(
                     title = "عضوية VIP",
-                    subtitle = if (vipStatus?.active == true) "العضوية نشطة — إدارة المزايا" else "الخطط والمزايا اليومية",
+                    subtitle = if (vipStatus?.active ==
+                        true
+                    ) {
+                        "العضوية نشطة — إدارة المزايا"
+                    } else {
+                        "الخطط والمزايا اليومية"
+                    },
                     icon = MaterialSymbols.Rounded.AttachMoney,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },

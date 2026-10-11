@@ -419,31 +419,69 @@ object MslTranslate {
 
     private fun mlKit(activity: Activity, bmp: Bitmap, items: List<Pair<Rect, String>>) {
         val sourceLanguage = detectSourceLanguage(items.joinToString(" ") { it.second })
-        val tr = Translation.getClient(
-            TranslatorOptions.Builder()
-                .setSourceLanguage(sourceLanguage)
-                .setTargetLanguage(TranslateLanguage.ARABIC)
-                .build(),
-        )
-        tr.downloadModelIfNeeded(DownloadConditions.Builder().build())
+        val tr = runCatching {
+            Translation.getClient(
+                TranslatorOptions.Builder()
+                    .setSourceLanguage(sourceLanguage)
+                    .setTargetLanguage(TranslateLanguage.ARABIC)
+                    .build(),
+            )
+        }.getOrElse {
+            showTranslationUnavailable(activity, it)
+            return
+        }
+        val modelTask = runCatching {
+            tr.downloadModelIfNeeded(DownloadConditions.Builder().build())
+        }.getOrElse {
+            closeTranslator(tr)
+            showTranslationUnavailable(activity, it)
+            return
+        }
+        modelTask
             .addOnSuccessListener {
-                // Translate the whole page as one scene so names, pronouns and tone share context.
-                val marker = "\n\nMSL_TRANSLATION_BREAK_7F3A\n\n"
-                val scene = items.joinToString(marker) { it.second }
-                tr.translate(scene)
-                    .addOnSuccessListener { translated ->
-                        val chunks = translated.split("MSL_TRANSLATION_BREAK_7F3A")
-                            .map { it.trim() }
-                        if (chunks.size == items.size) {
-                            tr.close()
-                            show(activity, bmp, items.mapIndexed { i, item -> item.first to chunks[i] })
-                        } else {
+                if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) {
+                    closeTranslator(tr)
+                } else {
+                    // Translate the whole page as one scene so names, pronouns and tone share context.
+                    val marker = "\n\nMSL_TRANSLATION_BREAK_7F3A\n\n"
+                    val scene = items.joinToString(marker) { it.second }
+                    runCatching { tr.translate(scene) }
+                        .onSuccess { translationTask ->
+                            translationTask
+                                .addOnSuccessListener { translated ->
+                                    val chunks = translated.split("MSL_TRANSLATION_BREAK_7F3A")
+                                        .map { it.trim() }
+                                    if (chunks.size == items.size) {
+                                        closeTranslator(tr)
+                                        show(activity, bmp, items.mapIndexed { i, item -> item.first to chunks[i] })
+                                    } else {
+                                        translateIndividually(activity, bmp, tr, items)
+                                    }
+                                }
+                                .addOnFailureListener { translateIndividually(activity, bmp, tr, items) }
+                        }
+                        .onFailure {
                             translateIndividually(activity, bmp, tr, items)
                         }
-                    }
-                    .addOnFailureListener { translateIndividually(activity, bmp, tr, items) }
+                }
             }
-            .addOnFailureListener { toast(activity, "تعذّر تحميل نموذج الترجمة: ${it.message}") }
+            .addOnFailureListener {
+                closeTranslator(tr)
+                showTranslationUnavailable(activity, it)
+            }
+    }
+
+    private fun closeTranslator(tr: com.google.mlkit.nl.translate.Translator) {
+        runCatching { tr.close() }
+    }
+
+    private fun showTranslationUnavailable(activity: Activity, error: Throwable) {
+        android.util.Log.w("MslTranslate", "ML Kit translation unavailable", error)
+        if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
+        toast(
+            activity,
+            "تعذّرت الترجمة الآلية. تحقّق من الإنترنت وخدمات Google Play، أو أضف مفتاح ترجمة ذكيًا من زر ع.",
+        )
     }
 
     private fun translateIndividually(
@@ -455,16 +493,24 @@ object MslTranslate {
         val out = mutableListOf<Pair<Rect, String>>()
         fun next(i: Int) {
             if (i >= items.size) {
-                tr.close()
-                show(activity, bmp, out)
+                closeTranslator(tr)
+                if (out.isEmpty()) {
+                    showTranslationUnavailable(activity, IllegalStateException("No text could be translated"))
+                } else {
+                    show(activity, bmp, out)
+                }
                 return
             }
-            tr.translate(items[i].second)
-                .addOnSuccessListener { t ->
-                    out.add(items[i].first to t)
-                    next(i + 1)
+            runCatching { tr.translate(items[i].second) }
+                .onSuccess { translationTask ->
+                    translationTask
+                        .addOnSuccessListener { translated ->
+                            out.add(items[i].first to translated)
+                            next(i + 1)
+                        }
+                        .addOnFailureListener { next(i + 1) }
                 }
-                .addOnFailureListener { next(i + 1) }
+                .onFailure { next(i + 1) }
         }
         next(0)
     }
