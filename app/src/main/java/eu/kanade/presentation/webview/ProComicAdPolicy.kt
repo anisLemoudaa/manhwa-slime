@@ -112,6 +112,17 @@ internal object ProComicAdPolicy {
                 }
             };
 
+            const isProComicPageImage = function(rawUrl) {
+                try {
+                    const imageUrl = new URL(rawUrl, window.location.href);
+                    return imageUrl.protocol === 'https:' &&
+                        imageUrl.hostname.toLowerCase() === 'app.procomic.pro' &&
+                        imageUrl.pathname.includes('/chapters/');
+                } catch (error) {
+                    return false;
+                }
+            };
+
             const collectRenderedChapterPages = function() {
                 const chapterPath = window.location.pathname;
                 if (window.__mslimeCollectedProComicChapter !== chapterPath) {
@@ -121,16 +132,7 @@ internal object ProComicAdPolicy {
                 const collected = new Set(window.__mslimeCollectedProComicPageUrls || []);
                 Array.from(document.querySelectorAll('[data-reader-image-row] img'))
                     .map(function(image) { return image.currentSrc || image.src; })
-                    .filter(function(rawUrl) {
-                        try {
-                            const imageUrl = new URL(rawUrl, window.location.href);
-                            return imageUrl.protocol === 'https:' &&
-                                imageUrl.hostname.toLowerCase() === 'app.procomic.pro' &&
-                                imageUrl.pathname.includes('/chapters/');
-                        } catch (error) {
-                            return false;
-                        }
-                    })
+                    .filter(isProComicPageImage)
                     .forEach(function(pageUrl) { collected.add(pageUrl); });
                 window.__mslimeCollectedProComicPageUrls = Array.from(collected);
                 return window.__mslimeCollectedProComicPageUrls;
@@ -354,6 +356,7 @@ internal object ProComicAdPolicy {
                 window.__mslimeReaderHasScrolled = true;
                 let lastPageSignature = '';
                 let pagesStableSince = Date.now();
+                let lastScrollAt = 0;
                 const downloadScrollTimer = window.setInterval(function() {
                     if (window.__mslimeDownloadPreparationReady) {
                         window.clearInterval(downloadScrollTimer);
@@ -368,10 +371,8 @@ internal object ProComicAdPolicy {
                     });
                     const pageUrls = collectRenderedChapterPages();
                     syncRenderedChapterPages();
-                    const signature = rows.length + '|' + images.map(function(image) {
-                        return (image.currentSrc || image.src || '') + ':' +
-                            (image.complete && image.naturalWidth > 0 ? 'loaded' : 'pending');
-                    }).join('|');
+                    const signature = rows.length + '|' + pageUrls.join('|') + '|' + images
+                        .map(function(image) { return image.currentSrc || image.src || ''; }).join('|');
                     if (signature !== lastPageSignature) {
                         lastPageSignature = signature;
                         pagesStableSince = Date.now();
@@ -380,27 +381,41 @@ internal object ProComicAdPolicy {
                     const lastRow = rows[rows.length - 1];
                     const lastRowBottom = lastRow.getBoundingClientRect().bottom + window.scrollY;
                     const viewportBottom = window.scrollY + viewport;
-                    const step = Math.max(300, viewport * 0.55);
                     const morePagesPending = Array.from(document.querySelectorAll('div')).some(function(element) {
                         return element.children.length === 0 &&
                             /سيتم تحميل بقية الصفحات عند المتابعة|remaining pages.*continue/i.test(element.textContent || '');
                     });
 
-                    // Advance gradually through the actual chapter rows. Do not race past lazy
-                    // image sentinels or use the page's footer/comments as the chapter boundary.
-                    if (viewportBottom < lastRowBottom + viewport * 0.35 || morePagesPending) {
-                        window.scrollBy(0, step);
+                    // Reveal lazy rows quickly. Their URLs are enough here: Downloader fetches
+                    // each image once, so waiting for WebView to download every image first would
+                    // double the network work and make long chapters needlessly slow.
+                    if (viewportBottom < lastRowBottom + viewport * 0.25 || morePagesPending) {
+                        const visibleRows = rows.filter(function(row) {
+                            const rect = row.getBoundingClientRect();
+                            return rect.bottom >= 0 && rect.top <= viewport * 1.4;
+                        });
+                        const visibleRowsHaveUrls = visibleRows.every(function(row) {
+                            return Array.from(row.querySelectorAll('img')).some(function(image) {
+                                return isProComicPageImage(image.currentSrc || image.src);
+                            });
+                        });
+                        const minimumDelay = visibleRowsHaveUrls ? 160 : 420;
+                        if (Date.now() - lastScrollAt >= minimumDelay) {
+                            const step = Math.max(500, viewport * (visibleRowsHaveUrls ? 0.95 : 0.45));
+                            window.scrollBy(0, step);
+                            lastScrollAt = Date.now();
+                        }
                         return;
                     }
 
-                    const everyRowHasLoadedImage = rows.every(function(row) {
+                    const everyRowHasPageUrl = rows.every(function(row) {
                         const rowImages = Array.from(row.querySelectorAll('img'));
-                        return rowImages.length > 0 && rowImages.every(function(image) {
-                            return image.complete && image.naturalWidth > 0;
+                        return rowImages.length > 0 && rowImages.some(function(image) {
+                            return isProComicPageImage(image.currentSrc || image.src);
                         });
                     });
-                    if (!everyRowHasLoadedImage || pageUrls.length < rows.length) return;
-                    if (Date.now() - pagesStableSince < 6000) return;
+                    if (!everyRowHasPageUrl || pageUrls.length < rows.length) return;
+                    if (Date.now() - pagesStableSince < 650) return;
 
                     cacheRenderedChapterPages();
                     const allPages = collectRenderedChapterPages();
@@ -408,9 +423,17 @@ internal object ProComicAdPolicy {
                     if (syncedCount < allPages.length) return;
                     if (typeof downloadBridge.chapterPagesReady === 'function' &&
                         downloadBridge.chapterPagesReady(window.location.href)) {
+                        const nextUrl = typeof downloadBridge.nextDownloadChapterUrl === 'function'
+                            ? downloadBridge.nextDownloadChapterUrl(window.location.href)
+                            : null;
+                        if (nextUrl) {
+                            window.__mslimeNavigatingNext = true;
+                            window.location.assign(nextUrl);
+                            return;
+                        }
                         window.__mslimeDownloadPreparationReady = true;
                     }
-                }, 500);
+                }, 220);
                 window.__mslimeDownloadScrollerInstalled = true;
             }
             applyReaderOnly();

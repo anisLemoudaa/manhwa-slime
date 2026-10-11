@@ -177,6 +177,12 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.webview.ProComicDownloadPreparationActivity"
+            android:configChanges="uiMode|orientation|screenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Tachiyomi.ProComicPreparation" />
+
+        <activity
             android:name=".extension.util.ExtensionInstallActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />

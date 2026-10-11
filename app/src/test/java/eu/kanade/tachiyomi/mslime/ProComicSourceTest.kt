@@ -50,15 +50,15 @@ class ProComicSourceTest {
     }
 
     @Test
-    fun mergesManyIncrementalPageBatchesWithoutTruncatingTheChapter() {
+    fun mergesManyIncrementalPageBatchesForA400PageChapter() {
         val source = ProComicSource()
         val chapterUrl = "https://procomic.pro/ar/chapter/example-1-40477"
         val chapterPath = "/ar/chapter/example-1-40477"
-        val pages = (1..40).map { page ->
+        val pages = (1..400).map { page ->
             "https://app.procomic.pro/chapters/633/40477/p$page/image-desktop.avif"
         }
 
-        pages.chunked(4).forEach { batch -> source.cacheReaderPageUrls(chapterUrl, batch) }
+        pages.chunked(20).forEach { batch -> source.cacheReaderPageUrls(chapterUrl, batch) }
 
         assertEquals(pages, source.cachedReaderPageUrls(chapterPath))
         assertEquals(true, source.markReaderPageListComplete(chapterUrl))

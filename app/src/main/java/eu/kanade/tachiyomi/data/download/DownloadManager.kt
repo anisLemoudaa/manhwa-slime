@@ -136,6 +136,43 @@ class DownloadManager(
     }
 
     /**
+     * Resolves prepared chapter IDs and queues them through the normal download path.
+     * Used by ProComic's official reader after it has exposed every page URL.
+     */
+    suspend fun downloadChapterIds(chapterIds: List<Long>, startNow: Boolean = false): Boolean {
+        val ids = chapterIds.distinct()
+        if (ids.isEmpty()) return false
+
+        val chapters = ids.mapNotNull { getChapter.await(it) }
+        if (chapters.size != ids.size) return false
+        val mangaId = chapters.first().mangaId
+        if (chapters.any { it.mangaId != mangaId }) return false
+        val manga = getManga.await(mangaId) ?: return false
+
+        if (startNow) {
+            val source = sourceManager.get(manga.source) as? HttpSource ?: return false
+            val downloads = chapters
+                .sortedByDescending { it.sourceOrder }
+                .filter { chapter ->
+                    provider.findChapterDir(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.title,
+                        source,
+                    ) == null && queueState.value.none { it.chapter.id == chapter.id }
+                }
+                .map { Download(source, manga, it) }
+            addDownloadsToStartOfQueue(downloads)
+        } else {
+            downloadChapters(manga, chapters)
+            // Also resumes a pre-existing paused queue after these chapters are added.
+            startDownloads()
+        }
+        return true
+    }
+
+    /**
      * Tells the downloader to enqueue the given list of downloads at the start of the queue.
      *
      * @param downloads the list of downloads to enqueue.

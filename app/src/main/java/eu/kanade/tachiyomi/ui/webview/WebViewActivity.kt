@@ -3,8 +3,11 @@ package eu.kanade.tachiyomi.ui.webview
 import android.app.assist.AssistContent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import android.webkit.JavascriptInterface
 import androidx.activity.enableEdgeToEdge
@@ -14,6 +17,7 @@ import androidx.compose.runtime.produceState
 import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import dev.zacsweers.metro.HasMemberInjections
 import dev.zacsweers.metro.Inject
 import eu.kanade.presentation.webview.ProComicAdPolicy
 import eu.kanade.presentation.webview.WebViewScreenContent
@@ -35,6 +39,7 @@ import org.json.JSONArray
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,13 +48,19 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.screens.LoadingScreen
 
+private data class ProComicPreparationTarget(
+    val chapterId: Long,
+    val url: String,
+    val path: String,
+)
+
 private class ProComicReaderDownloadBridge(
     private val source: ProComicSource,
-    private val prepareDownloadChapterId: Long?,
-    private val prepareDownloadChapterPath: String?,
-    private val onChapterReady: (Long) -> Unit,
+    private val targets: List<ProComicPreparationTarget>,
+    private val onChapterReady: (Long, Boolean) -> Unit,
 ) {
-    private val downloadStarted = AtomicBoolean(false)
+    private var currentIndex = 0
+    private var currentChapterReady = false
 
     @JavascriptInterface
     fun cacheChapterPages(chapterUrl: String, serializedPageUrls: String) {
@@ -64,20 +75,37 @@ private class ProComicReaderDownloadBridge(
     }
 
     @JavascriptInterface
-    fun isDownloadPreparation(): Boolean = prepareDownloadChapterId != null
+    fun isDownloadPreparation(): Boolean = targets.isNotEmpty() && currentIndex < targets.size
 
     @JavascriptInterface
+    @Synchronized
     fun chapterPagesReady(chapterUrl: String): Boolean {
-        if (!source.markReaderPageListComplete(chapterUrl)) return false
-        val targetId = prepareDownloadChapterId ?: return true
+        val target = targets.getOrNull(currentIndex) ?: return false
         val currentPath = runCatching { URI(chapterUrl).path }.getOrNull()
-        if (currentPath != prepareDownloadChapterPath) return false
-        if (downloadStarted.compareAndSet(false, true)) onChapterReady(targetId)
+        if (currentPath != target.path || !source.markReaderPageListComplete(chapterUrl)) return false
+        if (!currentChapterReady) {
+            currentChapterReady = true
+            onChapterReady(target.chapterId, currentIndex == targets.lastIndex)
+        }
         return true
+    }
+
+    @JavascriptInterface
+    @Synchronized
+    fun nextDownloadChapterUrl(chapterUrl: String): String? {
+        if (!currentChapterReady) return null
+        val currentPath = runCatching { URI(chapterUrl).path }.getOrNull()
+        if (currentPath != targets.getOrNull(currentIndex)?.path) return null
+        val nextIndex = currentIndex + 1
+        val next = targets.getOrNull(nextIndex) ?: return null
+        currentIndex = nextIndex
+        currentChapterReady = false
+        return next.url
     }
 }
 
-class WebViewActivity : BaseActivity() {
+@HasMemberInjections
+open class WebViewActivity : BaseActivity() {
 
     @Inject private lateinit var sourceManager: SourceManager
 
@@ -87,7 +115,9 @@ class WebViewActivity : BaseActivity() {
 
     private var assistUrl: String? = null
     private var immersiveReaderMode = false
-    @Volatile private var preparedDownloadStarted = false
+    private var downloadPreparationMode = false
+    private val preparedDownloadStarted = AtomicBoolean(false)
+    private val preparedChapterEvents = Channel<Pair<Long, Boolean>>(Channel.UNLIMITED)
     private var proComicDownloadBridge: ProComicReaderDownloadBridge? = null
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 
@@ -97,8 +127,25 @@ class WebViewActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val adFreeReader = intent.getBooleanExtra(AD_FREE_READER_KEY, false)
-        if (adFreeReader) enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        val chapterIds = intent.getLongArrayExtra(PREPARE_DOWNLOAD_CHAPTER_IDS_KEY)
+            ?.filter { it > 0 }
+            .orEmpty()
+        val chapterUrls = intent.getStringArrayListExtra(PREPARE_DOWNLOAD_CHAPTER_URLS_KEY).orEmpty()
+        val preparationTargets = chapterIds.zip(chapterUrls).mapNotNull { (id, targetUrl) ->
+            val path = runCatching { URI(targetUrl).path }.getOrNull()
+            if (id > 0 && ProComicAdPolicy.isAllowedMainFrame(targetUrl) && path?.startsWith("/ar/chapter/") == true) {
+                ProComicPreparationTarget(id, targetUrl, path)
+            } else {
+                null
+            }
+        }
+        downloadPreparationMode = preparationTargets.isNotEmpty() && preparationTargets.size == chapterIds.size &&
+            chapterUrls.size == chapterIds.size
+        if (adFreeReader && !downloadPreparationMode) enableEdgeToEdge()
+        if (downloadPreparationMode) {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(
                 OVERRIDE_TRANSITION_OPEN,
                 R.anim.shared_axis_x_push_enter,
@@ -110,7 +157,12 @@ class WebViewActivity : BaseActivity() {
         }
         super.onCreate(savedInstanceState)
         appGraph.inject(this)
-        immersiveReaderMode = adFreeReader
+        immersiveReaderMode = adFreeReader && !downloadPreparationMode
+        if (downloadPreparationMode) {
+            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window.decorView.setBackgroundColor(Color.TRANSPARENT)
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        }
 
         if (!WebViewUtil.supportsWebView(this)) {
             toast(MR.strings.information_webview_required, Toast.LENGTH_LONG)
@@ -123,17 +175,51 @@ class WebViewActivity : BaseActivity() {
             finish()
             return
         }
-        if (adFreeReader) applyImmersiveReaderMode()
+        if (intent.hasExtra(PREPARE_DOWNLOAD_CHAPTER_IDS_KEY) &&
+            (!downloadPreparationMode || runCatching { URI(url).path }.getOrNull() != preparationTargets.firstOrNull()?.path)
+        ) {
+            finish()
+            return
+        }
+        if (immersiveReaderMode) applyImmersiveReaderMode()
         assistUrl = url
-        val prepareDownloadChapterId = intent.extras?.getLong(PREPARE_DOWNLOAD_CHAPTER_ID_KEY)
-            ?.takeIf { it > 0 }
-        val prepareDownloadChapterPath = runCatching { URI(url).path }.getOrNull()
-        if (prepareDownloadChapterId != null) {
+        val prepareStartNow = intent.getBooleanExtra(PREPARE_START_NOW_KEY, false)
+        if (downloadPreparationMode) {
+            val timeoutMs = (DOWNLOAD_PREPARATION_TIMEOUT_BASE_MS +
+                (preparationTargets.size - 1) * DOWNLOAD_PREPARATION_TIMEOUT_PER_CHAPTER_MS)
+                .coerceAtMost(DOWNLOAD_PREPARATION_TIMEOUT_MAX_MS)
             lifecycleScope.launch {
-                delay(DOWNLOAD_PREPARATION_TIMEOUT_MS)
-                if (!preparedDownloadStarted && !isFinishing) {
+                delay(timeoutMs)
+                if (!preparedDownloadStarted.get() && !isFinishing) {
                     toast(MR.strings.procomic_download_prepare_failed, Toast.LENGTH_LONG)
                     finish()
+                }
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                var firstChapter = true
+                for ((chapterId, isLastChapter) in preparedChapterEvents) {
+                    val queued = runCatching {
+                        downloadManager.downloadChapterIds(
+                            listOf(chapterId),
+                            startNow = prepareStartNow && firstChapter,
+                        )
+                    }.getOrDefault(false)
+                    if (!queued) {
+                        preparedDownloadStarted.set(true)
+                        withContext(Dispatchers.Main) {
+                            toast(MR.strings.procomic_download_prepare_failed, Toast.LENGTH_LONG)
+                            finish()
+                        }
+                        return@launch
+                    }
+                    firstChapter = false
+                    if (isLastChapter && preparedDownloadStarted.compareAndSet(false, true)) {
+                        withContext(Dispatchers.Main) {
+                            toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
+                            finish()
+                        }
+                        return@launch
+                    }
                 }
             }
         }
@@ -146,19 +232,9 @@ class WebViewActivity : BaseActivity() {
                     proComicDownloadBridge = (source as? ProComicSource)?.let {
                         ProComicReaderDownloadBridge(
                             source = it,
-                            prepareDownloadChapterId = prepareDownloadChapterId,
-                            prepareDownloadChapterPath = prepareDownloadChapterPath,
-                            onChapterReady = { chapterId ->
-                                if (!preparedDownloadStarted) {
-                                    preparedDownloadStarted = true
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        downloadManager.startDownloadNow(chapterId)
-                                        withContext(Dispatchers.Main) {
-                                            toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
-                                            finish()
-                                        }
-                                    }
-                                }
+                            targets = if (downloadPreparationMode) preparationTargets else emptyList(),
+                            onChapterReady = { chapterId, isLastChapter ->
+                                preparedChapterEvents.trySend(chapterId to isLastChapter)
                             },
                         )
                     }
@@ -172,7 +248,7 @@ class WebViewActivity : BaseActivity() {
             }
 
             if (headers == null) {
-                LoadingScreen()
+                if (!downloadPreparationMode) LoadingScreen()
                 return@setComposeContent
             }
 
@@ -181,7 +257,7 @@ class WebViewActivity : BaseActivity() {
                 initialTitle = intent.extras?.getString(TITLE_KEY),
                 url = url,
                 adFreeReader = adFreeReader,
-                downloadPreparation = prepareDownloadChapterId != null,
+                downloadPreparation = downloadPreparationMode,
                 headers = headers.orEmpty(),
                 defaultUserAgentProvider = network::defaultUserAgentProvider,
                 onUrlChange = { assistUrl = it },
@@ -225,6 +301,11 @@ class WebViewActivity : BaseActivity() {
 
     override fun finish() {
         super.finish()
+        if (downloadPreparationMode) {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(
                 OVERRIDE_TRANSITION_CLOSE,
@@ -259,8 +340,12 @@ class WebViewActivity : BaseActivity() {
         private const val SOURCE_KEY = "source_key"
         private const val TITLE_KEY = "title_key"
         private const val AD_FREE_READER_KEY = "ad_free_reader_key"
-        private const val PREPARE_DOWNLOAD_CHAPTER_ID_KEY = "prepare_download_chapter_id_key"
-        private const val DOWNLOAD_PREPARATION_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val PREPARE_DOWNLOAD_CHAPTER_IDS_KEY = "prepare_download_chapter_ids_key"
+        private const val PREPARE_DOWNLOAD_CHAPTER_URLS_KEY = "prepare_download_chapter_urls_key"
+        private const val PREPARE_START_NOW_KEY = "prepare_start_now_key"
+        private const val DOWNLOAD_PREPARATION_TIMEOUT_BASE_MS = 10 * 60 * 1000L
+        private const val DOWNLOAD_PREPARATION_TIMEOUT_PER_CHAPTER_MS = 2 * 60 * 1000L
+        private const val DOWNLOAD_PREPARATION_TIMEOUT_MAX_MS = 12 * 60 * 60 * 1000L
 
         fun newIntent(
             context: Context,
@@ -269,17 +354,34 @@ class WebViewActivity : BaseActivity() {
             title: String? = null,
             adFreeReader: Boolean = false,
             prepareDownloadChapterId: Long? = null,
+            prepareDownloadChapterIds: LongArray? = null,
+            prepareDownloadChapterUrls: ArrayList<String>? = null,
+            prepareStartNow: Boolean = false,
         ): Intent {
-            return Intent(context, WebViewActivity::class.java).apply {
+            val ids = prepareDownloadChapterIds ?: prepareDownloadChapterId?.let { longArrayOf(it) }
+            val urls = prepareDownloadChapterUrls
+                ?: if (prepareDownloadChapterId != null) arrayListOf(url) else null
+            val isPreparation = adFreeReader && ids != null && urls != null
+            return Intent(
+                context,
+                if (isPreparation) ProComicDownloadPreparationActivity::class.java else WebViewActivity::class.java,
+            ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra(URL_KEY, url)
                 putExtra(SOURCE_KEY, sourceId)
                 putExtra(TITLE_KEY, title)
                 putExtra(AD_FREE_READER_KEY, adFreeReader)
-                if (prepareDownloadChapterId != null) {
-                    putExtra(PREPARE_DOWNLOAD_CHAPTER_ID_KEY, prepareDownloadChapterId)
+                if (ids != null && urls != null) {
+                    putExtra(PREPARE_DOWNLOAD_CHAPTER_IDS_KEY, ids)
+                    putStringArrayListExtra(PREPARE_DOWNLOAD_CHAPTER_URLS_KEY, urls)
+                    putExtra(PREPARE_START_NOW_KEY, prepareStartNow)
                 }
             }
         }
     }
+}
+
+class ProComicDownloadPreparationActivity : WebViewActivity() {
+    override val appThemeResource: Int
+        get() = R.style.Theme_Tachiyomi_ProComicPreparation
 }

@@ -92,7 +92,8 @@ class ProComicSource : HttpSource() {
     private val json = Json { ignoreUnknownKeys = true }
     private data class CachedReaderPageList(val savedAt: Long, val urls: List<String>, val complete: Boolean)
     private val readerPageLists = ConcurrentHashMap<String, CachedReaderPageList>()
-    private val readerPageListTtlMs = 30 * 60 * 1000L
+    private val readerPageListTtlMs = 24 * 60 * 60 * 1000L
+    private val maxCachedReaderChapters = 250
 
     internal fun cacheReaderPageUrls(chapterUrl: String, imageUrls: List<String>) {
         val chapter = runCatching { URI(chapterUrl) }.getOrNull() ?: return
@@ -129,6 +130,13 @@ class ProComicSource : HttpSource() {
         val mergedUrls = orderProComicPageUrls(previousUrls + orderedUrls).take(2_000)
         val wasComplete = readerPageLists[chapterPath]?.complete == true
         readerPageLists[chapterPath] = CachedReaderPageList(now, mergedUrls, wasComplete)
+        val excessEntries = readerPageLists.size - maxCachedReaderChapters
+        if (excessEntries > 0) {
+            readerPageLists.entries
+                .sortedBy { it.value.savedAt }
+                .take(excessEntries)
+                .forEach { readerPageLists.remove(it.key, it.value) }
+        }
     }
 
     internal fun markReaderPageListComplete(chapterUrl: String): Boolean {

@@ -41,6 +41,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.mslime.ProComicSource
+import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -117,22 +118,33 @@ class MangaScreen(
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
             onDownloadChapter = { items: List<ChapterList.Item>, action: ChapterDownloadAction ->
-                val chapter = items.singleOrNull()?.chapter
-                if (
-                    proComicSource != null &&
-                    chapter != null &&
-                    action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)
-                ) {
-                    context.startActivity(
-                        WebViewActivity.newIntent(
-                            context = context,
-                            url = proComicSource.baseUrl + chapter.url,
-                            sourceId = proComicSource.id,
-                            title = chapter.name,
-                            adFreeReader = true,
-                            prepareDownloadChapterId = chapter.id,
-                        ),
-                    )
+                if (proComicSource != null && action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)) {
+                    val chapters = items
+                        .filter { it.downloadState !in setOf(Download.State.DOWNLOADED, Download.State.QUEUE, Download.State.DOWNLOADING) }
+                        .map { it.chapter }
+                        .distinctBy { it.id }
+                        .sortedByDescending { it.sourceOrder }
+                    if (chapters.isNotEmpty()) {
+                        val chapterUrls = ArrayList(chapters.map { chapter ->
+                            if (chapter.url.startsWith("https://", ignoreCase = true)) {
+                                chapter.url
+                            } else {
+                                "${proComicSource.baseUrl.trimEnd('/')}/${chapter.url.trimStart('/')}"
+                            }
+                        })
+                        context.startActivity(
+                            WebViewActivity.newIntent(
+                                context = context,
+                                url = chapterUrls.first(),
+                                sourceId = proComicSource.id,
+                                title = chapters.first().name,
+                                adFreeReader = true,
+                                prepareDownloadChapterIds = chapters.map { it.id }.toLongArray(),
+                                prepareDownloadChapterUrls = chapterUrls,
+                                prepareStartNow = action == ChapterDownloadAction.START_NOW,
+                            ),
+                        )
+                    }
                 } else {
                     viewModel.runChapterDownloadActions(items, action)
                 }

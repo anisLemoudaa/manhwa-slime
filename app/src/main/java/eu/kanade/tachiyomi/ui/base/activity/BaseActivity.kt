@@ -15,13 +15,15 @@ open class BaseActivity :
     SecureActivityDelegate by SecureActivityDelegateImpl(),
     ThemingDelegate by ThemingDelegateImpl() {
 
+    protected open val appThemeResource: Int? = null
+
     override fun attachBaseContext(newBase: Context) {
         val uiPreferences = newBase.appGraph.uiPreferences
         super.attachBaseContext(newBase.prepareTabletUiContext(uiPreferences))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        applyAppTheme(this)
+        appThemeResource?.let(::setTheme) ?: applyAppTheme(this)
         super.onCreate(savedInstanceState)
     }
 }

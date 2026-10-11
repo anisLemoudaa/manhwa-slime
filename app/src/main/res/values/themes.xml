@@ -88,6 +88,15 @@
     <!--== Default Theme ==-->
     <style name="Theme.Tachiyomi" parent="Base.Theme.Tachiyomi" />
 
+    <!-- Transparent window used while ProComic chapters are prepared in the background. -->
+    <style name="Theme.Tachiyomi.ProComicPreparation" parent="Theme.Tachiyomi">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimAmount">0</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
     <!-- Monet theme only support S+ -->
     <style name="Theme.Tachiyomi.Monet" />
 

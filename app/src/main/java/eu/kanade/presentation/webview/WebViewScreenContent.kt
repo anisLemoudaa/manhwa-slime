@@ -21,8 +21,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.vectorResource
@@ -271,6 +271,7 @@ fun WebViewScreenContent(
     }
 
     Scaffold(
+        containerColor = if (downloadPreparation) Color.Transparent else MaterialTheme.colorScheme.background,
         topBar = {
             if (!adFreeReader) Box {
                 Column {
@@ -378,7 +379,8 @@ fun WebViewScreenContent(
                     state = currentWindow.state,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(contentPadding),
+                        .padding(contentPadding)
+                        .alpha(if (downloadPreparation) 0f else 1f),
                     navigator = navigator,
                     onCreated = { webView ->
                         webView.setDefaultSettings()
@@ -418,25 +420,6 @@ fun WebViewScreenContent(
                             }
                     },
                 )
-
-                if (downloadPreparation) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background,
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = stringResource(MR.strings.procomic_download_preparing),
-                                modifier = Modifier.padding(24.dp),
-                            )
-                        }
-                    }
-                }
 
             }
         }

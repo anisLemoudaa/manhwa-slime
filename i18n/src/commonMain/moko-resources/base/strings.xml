@@ -804,10 +804,10 @@
     <string name="sort_by_number">By chapter number</string>
     <string name="sort_by_upload_date">By upload date</string>
     <string name="manga_download">Download</string>
-    <string name="procomic_download_scroll_hint">Use the single-chapter download action. ProComic pages must be prepared automatically before a complete offline download can start.</string>
+    <string name="procomic_download_scroll_hint">Use the chapter download action. ProComic pages must be prepared automatically before a complete offline download can start.</string>
     <string name="procomic_download_preparing">Preparing all chapter pages automatically. Large chapters can take several minutes.</string>
     <string name="procomic_download_prepare_failed">Could not prepare all chapter pages. Check your connection and try again.</string>
-    <string name="procomic_download_started">All available chapter pages are prepared. Download started.</string>
+    <string name="procomic_download_started">ProComic pages are prepared and the download queue has started.</string>
     <string name="download_unread">Unread</string>
     <string name="download_bookmarked">Bookmarked</string>
     <string name="custom_cover">Custom cover</string>
