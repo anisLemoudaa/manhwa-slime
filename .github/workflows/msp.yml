@@ -97,7 +97,7 @@ jobs:
           "$apksigner" verify --print-certs app/build/outputs/apk/release/app-universal-release.apk
       - uses: actions/upload-artifact@v7
         with:
-          name: ManhwaSlime-release-${{ github.ref_name }}
+          name: ManhwaSlime-release-${{ github.run_number }}
           if-no-files-found: error
           path: |
             app/build/outputs/apk/release/app-universal-release.apk
