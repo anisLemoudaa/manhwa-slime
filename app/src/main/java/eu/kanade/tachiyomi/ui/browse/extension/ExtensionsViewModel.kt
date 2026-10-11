@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.extension.interactor.AddExtensionStore
+import mihon.domain.extension.interactor.GetExtensionStores
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import kotlin.time.Duration.Companion.seconds
@@ -48,6 +50,8 @@ class ExtensionsViewModel(
     basePreferences: BasePreferences,
     private val extensionManager: ExtensionManager,
     private val getExtensions: GetExtensionsByType,
+    private val getExtensionStores: GetExtensionStores,
+    private val addExtensionStore: AddExtensionStore,
     private val context: Context,
 ) : ViewModel() {
 
@@ -56,6 +60,9 @@ class ExtensionsViewModel(
     // Public so BrowseTab's search bar can observe it without subscribing to the whole state.
     val searchQuery: StateFlow<String?>
         field = MutableStateFlow(null)
+
+    private val selectedLanguage = MutableStateFlow(ExtensionLanguageFilter.ALL)
+    val languageFilter: StateFlow<ExtensionLanguageFilter> = selectedLanguage
 
     // Public so the tab badge can observe it without subscribing to the whole state.
     val updatesCount = preferences.extensionUpdatesCount.changes()
@@ -73,8 +80,9 @@ class ExtensionsViewModel(
             .debounce(0.25.seconds)
             .map { searchQueryPredicate(it ?: "") },
         currentDownloads,
-        getExtensions.subscribe(),
-    ) { predicate, downloads, (_updates, _loaded, _available, _notLoaded) ->
+        selectedLanguage,
+        getExtensions.subscribe(additionalLanguages = setOf("ar", "en")),
+    ) { predicate, downloads, languageFilter, (_updates, _loaded, _available, _notLoaded) ->
         buildMap {
             val updates = _updates.filter(predicate).map(extensionMapper(downloads))
             if (updates.isNotEmpty()) {
@@ -93,6 +101,7 @@ class ExtensionsViewModel(
 
             val languagesWithExtensions = _available
                 .filter(predicate)
+                .filter { languageFilter.includes(it.lang) }
                 .groupBy { it.lang }
                 .toSortedMap(LocaleHelper.comparator)
                 .map { (lang, exts) ->
@@ -126,8 +135,7 @@ class ExtensionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), State())
 
     init {
-
-        viewModelScope.launchIO { findAvailableExtensions() }
+        findAvailableExtensions()
     }
 
     fun searchQueryPredicate(query: String): (Extension) -> Boolean {
@@ -162,6 +170,10 @@ class ExtensionsViewModel(
 
     fun search(query: String?) {
         searchQuery.update { query }
+    }
+
+    fun setLanguageFilter(filter: ExtensionLanguageFilter) {
+        selectedLanguage.update { filter }
     }
 
     fun updateAllExtensions() {
@@ -213,13 +225,24 @@ class ExtensionsViewModel(
     fun findAvailableExtensions() {
         viewModelScope.launchIO {
             isRefreshing.update { true }
+            try {
+                ensureKeiyoushiRepository()
+                extensionManager.findAvailableExtensions()
 
-            extensionManager.findAvailableExtensions()
+                // Fake slower refresh so it doesn't seem like it's not doing anything
+                delay(1.seconds)
+            } finally {
+                isRefreshing.update { false }
+            }
+        }
+    }
 
-            // Fake slower refresh so it doesn't seem like it's not doing anything
-            delay(1.seconds)
+    private suspend fun ensureKeiyoushiRepository() {
+        if (preferences.keiyoushiRepoAutoAdded.get()) return
 
-            isRefreshing.update { false }
+        val alreadyAdded = getExtensionStores.get().any { it.indexUrl == KEIYOUSHI_INDEX_URL }
+        if (alreadyAdded || addExtensionStore(KEIYOUSHI_INDEX_URL).isSuccess) {
+            preferences.keiyoushiRepoAutoAdded.set(true)
         }
     }
 
@@ -242,6 +265,22 @@ class ExtensionsViewModel(
 
 typealias ItemGroups = Map<ExtensionUiModel.Header, List<ExtensionUiModel.Item>>
 
+enum class ExtensionLanguageFilter(val label: String) {
+    ALL("الكل"),
+    ARABIC("المصادر العربية"),
+    ENGLISH("المصادر الإنجليزية"),
+    ;
+
+    fun includes(language: String): Boolean {
+        val primaryLanguage = language.substringBefore('-').substringBefore('_').lowercase()
+        return when (this) {
+            ALL -> true
+            ARABIC -> primaryLanguage == "ar"
+            ENGLISH -> primaryLanguage == "en"
+        }
+    }
+}
+
 object ExtensionUiModel {
     sealed interface Header {
         data class Resource(val textRes: StringResource) : Header
@@ -253,3 +292,5 @@ object ExtensionUiModel {
         val installStep: InstallStep,
     )
 }
+
+private const val KEIYOUSHI_INDEX_URL = "https://github.com/keiyoushi/extensions/raw/repo/index.pb"
