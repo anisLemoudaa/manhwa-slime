@@ -117,7 +117,12 @@ class MslShopScreen : Screen() {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 150.dp),
                     modifier = Modifier.fillMaxSize().padding(padding),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 24.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 14.dp,
+                        end = 14.dp,
+                        top = 8.dp,
+                        bottom = 24.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -133,8 +138,19 @@ class MslShopScreen : Screen() {
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("رصيدك الحالي", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.labelMedium)
-                                        Text(balance?.let { String.format(Locale.getDefault(), "%,d", it) } ?: "—", color = MslDesignTokens.textPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "رصيدك الحالي",
+                                            color = MslDesignTokens.textSecondary,
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                        Text(
+                                            balance?.let {
+                                                String.format(Locale.getDefault(), "%,d", it)
+                                            } ?: "—",
+                                            color = MslDesignTokens.textPrimary,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                        )
                                     }
                                     Text("●", color = Color(0xFFFFC857), style = MaterialTheme.typography.headlineSmall)
                                     OutlinedButton(
@@ -144,18 +160,38 @@ class MslShopScreen : Screen() {
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("الكل", "تطوير المستوى", "إطارات الملف الشخصي", "الجرعات", "أخرى").forEach { category ->
+                                listOf(
+                                    "الكل",
+                                    "تطوير المستوى",
+                                    "إطارات الملف الشخصي",
+                                    "الجرعات",
+                                    "أخرى",
+                                ).forEach { category ->
                                     val selected = selectedCategory == category
                                     Surface(
-                                        modifier = Modifier.clip(MslDesignTokens.pillShape).clickableNoIndication { selectedCategory = category },
+                                        modifier = Modifier.clip(MslDesignTokens.pillShape).clickableNoIndication {
+                                            selectedCategory =
+                                                category
+                                        },
                                         color = if (selected) MslDesignTokens.accent else MslDesignTokens.surface,
                                         shape = MslDesignTokens.pillShape,
                                     ) {
-                                        Text(category, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp), color = MslDesignTokens.textPrimary, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        Text(
+                                            category,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                            color = MslDesignTokens.textPrimary,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            maxLines = 1,
+                                        )
                                     }
                                 }
                             }
-                            Text("إطارات الملف الشخصي", color = MslDesignTokens.textPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                "إطارات الملف الشخصي",
+                                color = MslDesignTokens.textPrimary,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                     when {
@@ -165,13 +201,25 @@ class MslShopScreen : Screen() {
                             }
                         }
                         error -> item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                                Text("تعذر تحميل المتجر. تحقق من الاتصال وحاول مرة أخرى.", color = MslDesignTokens.textSecondary, textAlign = TextAlign.Center)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            ) {
+                                Text(
+                                    "تعذر تحميل المتجر. تحقق من الاتصال وحاول مرة أخرى.",
+                                    color = MslDesignTokens.textSecondary,
+                                    textAlign = TextAlign.Center,
+                                )
                                 TextButton(onClick = { scope.launch { reload() } }) { Text("إعادة المحاولة") }
                             }
                         }
                         visibleItems.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text("لا توجد عناصر متاحة حالياً.", modifier = Modifier.fillMaxWidth().padding(28.dp), textAlign = TextAlign.Center, color = MslDesignTokens.textSecondary)
+                            Text(
+                                "لا توجد عناصر متاحة حالياً.",
+                                modifier = Modifier.fillMaxWidth().padding(28.dp),
+                                textAlign = TextAlign.Center,
+                                color = MslDesignTokens.textSecondary,
+                            )
                         }
                         else -> items(visibleItems, key = { it.id }) { item ->
                             ShopFrameCard(
@@ -187,7 +235,9 @@ class MslShopScreen : Screen() {
                                         if (ok) {
                                             reload()
                                             snackbars.showSnackbar("تم تجهيز الإطار.")
-                                        } else snackbars.showSnackbar("تعذر تجهيز الإطار. حاول مرة أخرى.")
+                                        } else {
+                                            snackbars.showSnackbar("تعذر تجهيز الإطار. حاول مرة أخرى.")
+                                        }
                                     }
                                 },
                                 onRemove = {
@@ -198,7 +248,9 @@ class MslShopScreen : Screen() {
                                         if (ok) {
                                             reload()
                                             snackbars.showSnackbar("تمت إزالة الإطار.")
-                                        } else snackbars.showSnackbar("حدث خطأ، حاول مرة أخرى.")
+                                        } else {
+                                            snackbars.showSnackbar("حدث خطأ، حاول مرة أخرى.")
+                                        }
                                     }
                                 },
                             )
@@ -215,8 +267,16 @@ class MslShopScreen : Screen() {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                Icon(MaterialSymbols.Rounded.Info, contentDescription = null, tint = MslDesignTokens.accentBright)
-                                Text("يمكنك تغيير إطار صورتك الشخصية من صفحة ملفك الشخصي بعد الشراء.", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall)
+                                Icon(
+                                    MaterialSymbols.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = MslDesignTokens.accentBright,
+                                )
+                                Text(
+                                    "يمكنك تغيير إطار صورتك الشخصية من صفحة ملفك الشخصي بعد الشراء.",
+                                    color = MslDesignTokens.textSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                         }
                     }
@@ -248,7 +308,8 @@ class MslShopScreen : Screen() {
                                 pendingPurchase = null
                                 when {
                                     result.ok -> {
-                                        balance = result.balance ?: withContext(Dispatchers.IO) { MslWallet.refresh(context) }
+                                        balance =
+                                            result.balance ?: withContext(Dispatchers.IO) { MslWallet.refresh(context) }
                                         reload()
                                         snackbars.showSnackbar("تم شراء الإطار بنجاح.")
                                     }
@@ -260,7 +321,9 @@ class MslShopScreen : Screen() {
                                         reload()
                                         snackbars.showSnackbar("هذا الإطار مملوك مسبقاً.")
                                     }
-                                    result.reason == "unavailable" -> snackbars.showSnackbar("هذا العنصر غير متاح حالياً.")
+                                    result.reason == "unavailable" -> snackbars.showSnackbar(
+                                        "هذا العنصر غير متاح حالياً.",
+                                    )
                                     else -> snackbars.showSnackbar("حدث خطأ، حاول مرة أخرى.")
                                 }
                             }
@@ -268,7 +331,9 @@ class MslShopScreen : Screen() {
                         colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
                     ) { Text(if (busyItem == item.id) "جارٍ الشراء…" else "تأكيد الشراء") }
                 },
-                dismissButton = { TextButton(onClick = { pendingPurchase = null }, enabled = busyItem == null) { Text("إلغاء") } },
+                dismissButton = {
+                    TextButton(onClick = { pendingPurchase = null }, enabled = busyItem == null) { Text("إلغاء") }
+                },
             )
         }
     }
@@ -276,7 +341,10 @@ class MslShopScreen : Screen() {
 
 @Composable
 private fun CompositionLocalProviderRtl(content: @Composable () -> Unit) {
-    androidx.compose.runtime.CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, content = content)
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Rtl,
+        content = content,
+    )
 }
 
 @Composable
@@ -300,21 +368,69 @@ private fun ShopFrameCard(
         ) {
             Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.CenterStart) {
                 item.badge?.let { Badge(it, item.rarity) }
-                if (item.equipped) Badge("مجهز", "equipped", Modifier.align(Alignment.CenterEnd))
-                else if (item.owned) Badge("مملوك", "owned", Modifier.align(Alignment.CenterEnd))
+                if (item.equipped) {
+                    Badge("مجهز", "equipped", Modifier.align(Alignment.CenterEnd))
+                } else if (item.owned) {
+                    Badge("مملوك", "owned", Modifier.align(Alignment.CenterEnd))
+                }
             }
             FramePreview(item, Modifier.fillMaxWidth().height(142.dp))
-            Text(item.name, color = MslDesignTokens.textPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2, minLines = 1)
-            Text(item.description, color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, maxLines = 2, minLines = 2)
+            Text(
+                item.name,
+                color = MslDesignTokens.textPrimary,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                minLines = 1,
+            )
+            Text(
+                item.description,
+                color = MslDesignTokens.textSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                minLines = 2,
+            )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("●", color = Color(0xFFFFC857), style = MaterialTheme.typography.titleMedium)
-                Text(String.format(Locale.getDefault(), "%,d", item.price), color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
+                Text(
+                    String.format(Locale.getDefault(), "%,d", item.price),
+                    color = MslDesignTokens.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
             }
             when {
-                item.equipped -> OutlinedButton(onClick = onRemove, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "…" else "إزالة الإطار") }
-                item.owned -> Button(onClick = onEquip, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text(if (busy) "…" else "تجهيز") }
-                balance != null && balance < item.price -> Button(onClick = onBuy, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("عملات غير كافية") }
-                else -> Button(onClick = onBuy, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text(if (busy) "جارٍ الشراء…" else "🛒  شراء") }
+                item.equipped -> OutlinedButton(
+                    onClick = onRemove,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (busy) "…" else "إزالة الإطار")
+                }
+                item.owned -> Button(
+                    onClick = onEquip,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
+                ) {
+                    Text(if (busy) "…" else "تجهيز")
+                }
+                balance != null && balance < item.price -> Button(
+                    onClick = onBuy,
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("عملات غير كافية")
+                }
+                else -> Button(
+                    onClick = onBuy,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
+                ) {
+                    Text(if (busy) "جارٍ الشراء…" else "🛒  شراء")
+                }
             }
         }
     }
@@ -326,7 +442,10 @@ private fun FramePreview(item: MslShop.Item, modifier: Modifier = Modifier) {
     val resourceId = remember(item.assetRef) {
         item.assetRef?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
     }
-    Box(modifier = modifier.clip(RoundedCornerShape(14.dp)).background(MslDesignTokens.backgroundRaised), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)).background(MslDesignTokens.backgroundRaised),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
             modifier = Modifier.size(62.dp).clip(CircleShape).background(MslDesignTokens.surfaceHighest),
             contentAlignment = Alignment.Center,
@@ -354,7 +473,13 @@ private fun Badge(text: String, rarity: String?, modifier: Modifier = Modifier) 
         else -> Color(0xFF596D91)
     }
     Surface(modifier = modifier, shape = MslDesignTokens.pillShape, color = color) {
-        Text(text, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

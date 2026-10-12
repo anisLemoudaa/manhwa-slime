@@ -79,9 +79,11 @@ object MslAdmin {
 
     fun reports(context: android.content.Context): List<Report>? = runCatching {
         val token = MslSupabase.token(context) ?: return null
+        val path = "/rest/v1/reports?select=id,comment_id,reason,description,status,created_at" +
+            "&status=in.(open,reviewing)&order=created_at.desc&limit=50"
         val response = MslSupabase.call(
             "GET",
-            "/rest/v1/reports?select=id,comment_id,reason,description,status,created_at&status=in.(open,reviewing)&order=created_at.desc&limit=50",
+            path,
             null,
             token,
         )
@@ -100,18 +102,28 @@ object MslAdmin {
         }
     }.getOrNull()
 
-    fun moderateComment(context: android.content.Context, commentId: String, action: String, reason: String): Boolean = runCatching {
+    fun moderateComment(
+        context: android.content.Context,
+        commentId: String,
+        action: String,
+        reason: String,
+    ): Boolean = runCatching {
         val token = MslSupabase.token(context) ?: return false
-        val response = MslSupabase.call(
-            "POST",
-            "/rest/v1/rpc/moderate_comment",
-            JSONObject().put("p_comment_id", commentId).put("p_action", action).put("p_reason", reason).toString(),
-            token,
-        )
+        val body = JSONObject()
+            .put("p_comment_id", commentId)
+            .put("p_action", action)
+            .put("p_reason", reason)
+            .toString()
+        val response = MslSupabase.call("POST", "/rest/v1/rpc/moderate_comment", body, token)
         response.first in 200..299 && response.second.trim().removeSurrounding("\"").toBoolean()
     }.getOrDefault(false)
 
-    fun resolveReport(context: android.content.Context, reportId: String, status: String, note: String): Boolean = runCatching {
+    fun resolveReport(
+        context: android.content.Context,
+        reportId: String,
+        status: String,
+        note: String,
+    ): Boolean = runCatching {
         val token = MslSupabase.token(context) ?: return false
         val response = MslSupabase.call(
             "POST",
@@ -164,33 +176,83 @@ class MslAdminScreen : Screen() {
             modifier = Modifier.fillMaxSize().background(MslDesignTokens.background).padding(horizontal = 16.dp),
         ) {
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { navigator.pop() }) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = MslDesignTokens.textPrimary) }
+                IconButton(onClick = { navigator.pop() }) {
+                    Text("‹", style = MaterialTheme.typography.headlineMedium, color = MslDesignTokens.textPrimary)
+                }
                 Column {
-                    Text("لوحة الإدارة", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
-                    Text("الدور: ${role ?: "جارٍ التحقق"}", style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
+                    Text(
+                        "لوحة الإدارة",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MslDesignTokens.textPrimary,
+                    )
+                    Text(
+                        "الدور: ${role ?: "جارٍ التحقق"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MslDesignTokens.textSecondary,
+                    )
                 }
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = { refresh++ }, enabled = !loading) { Text("تحديث") }
             }
             when {
-                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                role == null || role == "user" -> Text("لا تملك صلاحية الوصول إلى لوحة الإدارة.", color = MslDesignTokens.textSecondary)
-                !canViewReports -> Text("لا توجد أقسام مفعلة لهذا الدور حالياً.", color = MslDesignTokens.textSecondary)
+                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                role == null || role == "user" -> Text(
+                    "لا تملك صلاحية الوصول إلى لوحة الإدارة.",
+                    color = MslDesignTokens.textSecondary,
+                )
+                !canViewReports -> Text(
+                    "لا توجد أقسام مفعلة لهذا الدور حالياً.",
+                    color = MslDesignTokens.textSecondary,
+                )
                 error -> Column {
-                    Text("تعذّر تحميل البلاغات. تحقق من الاتصال والصلاحية.", color = MslDesignTokens.textSecondary)
+                    Text(
+                        "تعذّر تحميل البلاغات. تحقق من الاتصال والصلاحية.",
+                        color = MslDesignTokens.textSecondary,
+                    )
                     Button(onClick = { refresh++ }) { Text("إعادة المحاولة") }
                 }
-                reports.isNullOrEmpty() -> Text("لا توجد بلاغات مفتوحة حالياً.", color = MslDesignTokens.textSecondary)
-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                    item { Text("البلاغات المفتوحة", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
+                reports.isNullOrEmpty() -> Text(
+                    "لا توجد بلاغات مفتوحة حالياً.",
+                    color = MslDesignTokens.textSecondary,
+                )
+                else -> LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item {
+                        Text(
+                            "البلاغات المفتوحة",
+                            color = MslDesignTokens.textPrimary,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                     items(reports.orEmpty(), key = { it.id }) { report ->
                         var reason by remember(report.id) { mutableStateOf("") }
-                        Surface(shape = RoundedCornerShape(16.dp), color = MslDesignTokens.surface, modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MslDesignTokens.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("السبب: ${report.reason}", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
-                                if (report.description.isNotBlank()) Text(report.description, color = MslDesignTokens.textSecondary)
-                                Text("الحالة: ${report.status}", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "السبب: ${report.reason}",
+                                    color = MslDesignTokens.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                if (report.description.isNotBlank()) {
+                                    Text(report.description, color = MslDesignTokens.textSecondary)
+                                }
+                                Text(
+                                    "الحالة: ${report.status}",
+                                    color = MslDesignTokens.textMuted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                                 if (canModerate) {
+                                    val hideLabel = if (busyId == report.id) "جارٍ التنفيذ…" else "إخفاء التعليق"
                                     OutlinedTextField(
                                         value = reason,
                                         onValueChange = { reason = it.take(500) },
@@ -205,14 +267,25 @@ class MslAdminScreen : Screen() {
                                             busyId = report.id
                                             scope.launch {
                                                 val ok = withContext(Dispatchers.IO) {
-                                                    MslAdmin.moderateComment(context, report.commentId, "hide", reason.trim())
+                                                    MslAdmin.moderateComment(
+                                                        context,
+                                                        report.commentId,
+                                                        "hide",
+                                                        reason.trim(),
+                                                    )
                                                 }
                                                 busyId = null
-                                                notice = if (ok) "تم إخفاء التعليق مع تسجيل السبب." else "تعذّر تنفيذ الإجراء؛ تحقق من صلاحيتك."
+                                                notice = if (ok) {
+                                                    "تم إخفاء التعليق مع تسجيل السبب."
+                                                } else {
+                                                    "تعذّر الإخفاء؛ تحقق من الصلاحية."
+                                                }
                                                 if (ok) refresh++
-                                            },
+                                            }
                                         },
-                                    ) { Text(if (busyId == report.id) "جارٍ التنفيذ…" else "إخفاء التعليق") }
+                                    ) {
+                                        Text(hideLabel)
+                                    }
                                 }
                                 if (canResolve) {
                                     OutlinedButton(
@@ -221,12 +294,21 @@ class MslAdminScreen : Screen() {
                                             busyId = report.id
                                             scope.launch {
                                                 val ok = withContext(Dispatchers.IO) {
-                                                    MslAdmin.resolveReport(context, report.id, "dismissed", "تمت مراجعة البلاغ.")
+                                                    MslAdmin.resolveReport(
+                                                        context,
+                                                        report.id,
+                                                        "dismissed",
+                                                        "تمت مراجعة البلاغ.",
+                                                    )
                                                 }
                                                 busyId = null
-                                                notice = if (ok) "تم إغلاق البلاغ." else "تعذّر تحديث البلاغ؛ تحقق من صلاحيتك."
+                                                notice = if (ok) {
+                                                    "تم إغلاق البلاغ."
+                                                } else {
+                                                    "تعذّر تحديث البلاغ؛ تحقق من صلاحيتك."
+                                                }
                                                 if (ok) refresh++
-                                            },
+                                            }
                                         },
                                     ) { Text("تجاهل البلاغ") }
                                 }

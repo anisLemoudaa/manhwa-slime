@@ -667,7 +667,14 @@ data object ProfileTab : Tab {
             adminRole = withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslAdmin.role(ctx) }
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
-                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
+                    ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(
+                            ctx,
+                        )
+                    ) {
+                        eu.kanade.tachiyomi.mslime.MslVipStatus(active = true)
+                    } else {
+                        null
+                    }
             }
         }
         val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -691,7 +698,9 @@ data object ProfileTab : Tab {
         val read = if (s is StatsScreenState.Success) s.chapters.readChapterCount else 0
         val level = maxOf(read / 25 + 1, cloudLevel)
         val rank = cloudRank ?: eu.kanade.tachiyomi.mslime.MslRank.of(read)
-        androidx.compose.runtime.SideEffect { prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply() }
+        androidx.compose.runtime.SideEffect {
+            prefs(ctx).edit().putInt("read", read).putInt("cloud_level", level).apply()
+        }
         LaunchedEffect(name, rev, level, rank, read, cloudLoaded) {
             if (!cloudLoaded) return@LaunchedEffect
             withContext(Dispatchers.IO) {
@@ -760,7 +769,13 @@ data object ProfileTab : Tab {
                             .border(
                                 3.dp,
                                 Brush.sweepGradient(
-                                    listOf(MslDesignTokens.accentBright, MslDesignTokens.cyan, MslDesignTokens.accent, MslDesignTokens.warning, MslDesignTokens.accentBright),
+                                    listOf(
+                                        MslDesignTokens.accentBright,
+                                        MslDesignTokens.cyan,
+                                        MslDesignTokens.accent,
+                                        MslDesignTokens.warning,
+                                        MslDesignTokens.accentBright,
+                                    ),
                                 ),
                                 CircleShape,
                             )
@@ -946,7 +961,7 @@ data object ProfileTab : Tab {
                     ProfileActionCard(
                         title = "المتجر",
                         subtitle = "إطارات وعناصر الملف الشخصي",
-                    icon = MaterialSymbols.Rounded.AttachMoney,
+                        icon = MaterialSymbols.Rounded.AttachMoney,
                         modifier = Modifier.weight(1f),
                         onClick = { navigator.push(MslShopScreen()) },
                     )
@@ -967,7 +982,13 @@ data object ProfileTab : Tab {
                 )
                 ProfileActionCard(
                     title = "عضوية VIP",
-                    subtitle = if (vipStatus?.active == true) "العضوية نشطة — إدارة المزايا" else "الخطط والمزايا اليومية",
+                    subtitle = if (vipStatus?.active ==
+                        true
+                    ) {
+                        "العضوية نشطة — إدارة المزايا"
+                    } else {
+                        "الخطط والمزايا اليومية"
+                    },
                     icon = MaterialSymbols.Rounded.AttachMoney,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },
