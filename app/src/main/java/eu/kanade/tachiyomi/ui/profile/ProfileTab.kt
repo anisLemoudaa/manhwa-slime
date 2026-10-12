@@ -631,6 +631,7 @@ data object ProfileTab : Tab {
         var cloudLevel by remember { mutableIntStateOf(1) }
         var cloudRank by remember { mutableStateOf<String?>(null) }
         var cloudLoaded by remember { mutableStateOf(false) }
+        var adminRole by remember { mutableStateOf<String?>(null) }
         val equippedFrameId by eu.kanade.tachiyomi.mslime.MslShop.equippedFrameState.collectAsState()
         var socialProfile by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslFollowGraph.Profile?>(null) }
         val socialRevision by eu.kanade.tachiyomi.mslime.MslFollowGraph.revision.collectAsState()
@@ -663,6 +664,7 @@ data object ProfileTab : Tab {
             }
             cloudLoaded = true
             withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslShop.equippedFrame(ctx) }
+            adminRole = withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslAdmin.role(ctx) }
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
                     ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
@@ -970,6 +972,15 @@ data object ProfileTab : Tab {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },
                 )
+                if (adminRole != null && adminRole != "user") {
+                    ProfileActionCard(
+                        title = "لوحة الإدارة",
+                        subtitle = "مراجعة البلاغات حسب صلاحيتك",
+                        icon = MaterialSymbols.Rounded.VerifiedUser,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslAdminScreen()) },
+                    )
+                }
 
                 Text(
                     text = "الحساب",
