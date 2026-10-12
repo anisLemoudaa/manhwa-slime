@@ -252,7 +252,11 @@ class MslAdminScreen : Screen() {
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 if (canModerate) {
-                                    val hideLabel = if (busyId == report.id) "جارٍ التنفيذ…" else "إخفاء التعليق"
+                                    val hideLabel = if (busyId == report.id) {
+                                        "جارٍ التنفيذ…"
+                                    } else {
+                                        "إخفاء التعليق"
+                                    }
                                     OutlinedTextField(
                                         value = reason,
                                         onValueChange = { reason = it.take(500) },
