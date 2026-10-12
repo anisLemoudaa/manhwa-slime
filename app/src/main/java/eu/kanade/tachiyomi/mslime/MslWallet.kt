@@ -279,13 +279,13 @@ object MslWallet {
 }
 
 @Composable
-fun MslCoinWalletHeader() {
+fun MslCoinWalletHeader(openStoreInitially: Boolean = false) {
     if (!MslWallet.enabled) return
     val context = LocalContext.current
     val walletBalance by MslWallet.balance.collectAsState()
     var balance by remember { mutableStateOf<Int?>(null) }
     var balanceLoading by remember { mutableStateOf(true) }
-    var storeVisible by remember { mutableStateOf(false) }
+    var storeVisible by remember(openStoreInitially) { mutableStateOf(openStoreInitially) }
 
     LaunchedEffect(walletBalance) { balance = walletBalance }
 

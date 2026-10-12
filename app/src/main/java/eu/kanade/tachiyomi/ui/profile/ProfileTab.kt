@@ -76,6 +76,7 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslShopScreen
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
 import eu.kanade.tachiyomi.novel.NovelHistoryStore
@@ -538,6 +539,7 @@ data object ProfileTab : Tab {
         var cloudLevel by remember { mutableIntStateOf(1) }
         var cloudRank by remember { mutableStateOf<String?>(null) }
         var cloudLoaded by remember { mutableStateOf(false) }
+        val equippedFrameId by eu.kanade.tachiyomi.mslime.MslShop.equippedFrameState.collectAsState()
         var name by remember {
             mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم")
         }
@@ -559,6 +561,7 @@ data object ProfileTab : Tab {
                 rev++
             }
             cloudLoaded = true
+            equippedFrameId = withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslShop.equippedFrame(ctx) }
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
                     ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(ctx)) eu.kanade.tachiyomi.mslime.MslVipStatus(active = true) else null
@@ -627,28 +630,44 @@ data object ProfileTab : Tab {
                     )
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp)
-                            .offset(y = 54.dp)
-                            .size(104.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, MslDesignTokens.accent, CircleShape)
-                            .background(MslDesignTokens.backgroundRaised)
-                            .clickable { avatarPicker.launch("image/*") },
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp)
+                        .offset(y = 54.dp)
+                        .size(104.dp)
+                        .clickable { avatarPicker.launch("image/*") },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (avatar != null) {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                                .clip(CircleShape)
+                                .border(3.dp, MslDesignTokens.accent, CircleShape)
+                                .background(MslDesignTokens.backgroundRaised),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (avatar != null) {
+                                Image(
+                                    bitmap = avatar.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            } else {
+                                Image(
+                                    painter = painterResource(R.drawable.ic_mihon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(56.dp),
+                                )
+                            }
+                        }
+                        val frameResource = remember(equippedFrameId) {
+                            equippedFrameId?.let { ctx.resources.getIdentifier(it, "drawable", ctx.packageName) } ?: 0
+                        }
+                        if (frameResource != 0) {
                             Image(
-                                bitmap = avatar.asImageBitmap(),
-                                contentDescription = null,
+                                painter = painterResource(frameResource),
+                                contentDescription = "إطار الصورة الشخصية",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Image(
-                                painter = painterResource(R.drawable.ic_mihon),
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp),
+                                contentScale = ContentScale.Fit,
                             )
                         }
                         if (vipStatus?.active == true) {
@@ -734,11 +753,11 @@ data object ProfileTab : Tab {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     ProfileActionCard(
-                        title = "المحفظة",
-                        subtitle = "الرصيد والمتجر",
+                        title = "المتجر",
+                        subtitle = "إطارات وعناصر الملف الشخصي",
                     icon = MaterialSymbols.Rounded.AttachMoney,
                         modifier = Modifier.weight(1f),
-                        onClick = { navigator.push(MslWalletScreen()) },
+                        onClick = { navigator.push(MslShopScreen()) },
                     )
                     ProfileActionCard(
                         title = "الإعدادات والمزيد",
@@ -748,6 +767,13 @@ data object ProfileTab : Tab {
                         onClick = { tabNavigator.current = MoreTab },
                     )
                 }
+                ProfileActionCard(
+                    title = "المحفظة",
+                    subtitle = "رصيد العملات وسجل المعاملات",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(MslWalletScreen()) },
+                )
                 ProfileActionCard(
                     title = "عضوية VIP",
                     subtitle = if (vipStatus?.active == true) "العضوية نشطة — إدارة المزايا" else "الخطط والمزايا اليومية",
