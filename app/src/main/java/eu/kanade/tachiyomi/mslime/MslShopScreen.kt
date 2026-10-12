@@ -115,7 +115,7 @@ class MslShopScreen : Screen() {
                 },
             ) { padding ->
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 164.dp),
+                    columns = GridCells.Adaptive(minSize = 150.dp),
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 24.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
