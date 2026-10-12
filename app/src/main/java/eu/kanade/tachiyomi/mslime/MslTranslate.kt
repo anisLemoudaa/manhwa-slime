@@ -31,6 +31,8 @@ import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
@@ -38,6 +40,10 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 /** يُشغَّل تلقائياً عند بدء التطبيق ليضيف زر الترجمة في القارئ. */
@@ -217,14 +223,38 @@ object MslFont {
 object MslTranslate {
     private fun toast(a: Activity, m: String) = Toast.makeText(a, m, Toast.LENGTH_SHORT).show()
 
+    private fun captureTarget(activity: Activity, preferred: View? = null): View {
+        val viewerId = activity.resources.getIdentifier("viewer_container", "id", activity.packageName)
+        val viewer = if (viewerId != 0) activity.findViewById<View>(viewerId) else null
+        return (preferred ?: viewer)?.takeIf { it.width > 0 && it.height > 0 } ?: activity.window.decorView
+    }
+
+    private fun requestCapture(
+        activity: Activity,
+        target: View,
+        destination: Bitmap,
+        callback: (Int) -> Unit,
+    ) {
+        val location = IntArray(2)
+        target.getLocationInWindow(location)
+        val sourceRect = Rect(location[0], location[1], location[0] + target.width, location[1] + target.height)
+        PixelCopy.request(
+            activity.window,
+            sourceRect,
+            destination,
+            PixelCopy.OnPixelCopyFinishedListener { result -> callback(result) },
+            Handler(Looper.getMainLooper()),
+        )
+    }
+
     fun run(activity: Activity, fab: View) {
         if (!fab.isEnabled) return
-        val v = activity.window.decorView
-        if (v.width <= 0 || v.height <= 0) {
+        val target = captureTarget(activity)
+        if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
         }
-        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+        val bmp = runCatching { Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888) }
             .getOrElse {
                 toast(activity, "تعذّر تجهيز صورة الصفحة")
                 return
@@ -238,93 +268,114 @@ object MslTranslate {
         fab.alpha = 0.35f
         fab.visibility = View.INVISIBLE
         toast(activity, "جارٍ قراءة الصفحة...")
-        v.postDelayed({
+        target.postDelayed({
             runCatching {
-                PixelCopy.request(activity.window, bmp, { code ->
+                requestCapture(activity, target, bmp) { code ->
                     if (code != PixelCopy.SUCCESS) {
                         restoreFab()
-                        toast(activity, "تعذّر التقاط الشاشة")
+                        toast(activity, "تعذّر التقاط الصفحة")
                     } else {
                         fab.visibility = View.VISIBLE
                         process(activity, bmp, restoreFab)
                     }
-                }, Handler(Looper.getMainLooper()))
+                }
             }.onFailure {
                 restoreFab()
-                toast(activity, "تعذّر التقاط الشاشة")
+                toast(activity, "تعذّر التقاط الصفحة")
             }
         }, 150)
     }
 
-    /** Captures the visible reader page and translates detected text without hiding a FAB. */
-    fun run(activity: Activity) {
-        val v = activity.window.decorView
-        if (v.width <= 0 || v.height <= 0) {
+    fun run(activity: Activity) = runForView(activity, null)
+
+    fun runForView(activity: Activity, pageView: View?) {
+        val target = captureTarget(activity, pageView)
+        if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
         }
-        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+        val bmp = runCatching { Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888) }
             .getOrElse {
                 toast(activity, "تعذّر تجهيز صورة الصفحة")
                 return
             }
         toast(activity, "جارٍ قراءة الصفحة...")
-        v.postDelayed({
+        target.postDelayed({
             runCatching {
-                PixelCopy.request(activity.window, bmp, { code ->
-                    if (code != PixelCopy.SUCCESS) {
-                        toast(activity, "تعذّر التقاط الشاشة")
-                    } else {
-                        process(activity, bmp)
-                    }
-                }, Handler(Looper.getMainLooper()))
-            }.onFailure { toast(activity, "تعذّر التقاط الشاشة") }
+                requestCapture(activity, target, bmp) { code ->
+                    if (code != PixelCopy.SUCCESS) toast(activity, "تعذّر التقاط الصفحة")
+                    else process(activity, bmp)
+                }
+            }.onFailure { toast(activity, "تعذّر التقاط الصفحة") }
         }, 150)
     }
 
     private fun process(activity: Activity, bmp: Bitmap, onComplete: () -> Unit = {}) {
         val finish = { activity.runOnUiThread { onComplete() } }
-        val recognizer = runCatching {
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        }.getOrElse {
-            showOcrUnavailable(activity, it)
-            finish()
-            return
-        }
         val image = runCatching { InputImage.fromBitmap(bmp, 0) }.getOrElse {
-            closeRecognizer(recognizer)
             showOcrUnavailable(activity, it)
             finish()
             return
         }
-        val task = runCatching { recognizer.process(image) }.getOrElse {
-            closeRecognizer(recognizer)
-            showOcrUnavailable(activity, it)
+
+        // The default recognizer only reads Latin script. Manga/manhwa commonly
+        // contains Japanese, Korean, or Chinese text, so run the bundled models
+        // and select the result with the strongest script-aware score.
+        val clients = listOfNotNull(
+            runCatching { "ja" to TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "ko" to TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "zh" to TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "latin" to TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }.getOrNull(),
+        )
+        val tasks = clients.mapNotNull { (script, recognizer) ->
+            runCatching { script to recognizer.process(image) }
+                .onFailure { closeRecognizer(recognizer) }
+                .getOrNull()
+        }
+        if (tasks.isEmpty()) {
+            clients.forEach { closeRecognizer(it.second) }
+            showOcrUnavailable(activity, IllegalStateException("No ML Kit text recognizer could be started"))
             finish()
             return
         }
-        task.addOnCompleteListener { result ->
-            closeRecognizer(recognizer)
+
+        Tasks.whenAllComplete(tasks.map { it.second }).addOnCompleteListener {
+            clients.forEach { closeRecognizer(it.second) }
             if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) {
                 finish()
                 return@addOnCompleteListener
             }
-            if (!result.isSuccessful) {
-                showOcrUnavailable(activity, result.exception ?: IllegalStateException("OCR failed"))
-                finish()
-                return@addOnCompleteListener
+            val candidates = tasks.mapNotNull { (script, task) ->
+                if (!task.isSuccessful) return@mapNotNull null
+                val items = task.result.textBlocks
+                    .filter { it.boundingBox != null && it.text.isNotBlank() }
+                    .map { it.boundingBox!! to normalizeOcr(it.text) }
+                    .filter { it.second.isNotBlank() }
+                    .sortedWith(compareBy({ it.first.top }, { it.first.left }))
+                if (items.isEmpty()) return@mapNotNull null
+                val text = items.joinToString(" ") { it.second }
+                val scriptChars = when (script) {
+                    "ja" -> text.count { it in '\u3040'..'\u30ff' || it in '\u4e00'..'\u9fff' }
+                    "ko" -> text.count { it in '\uac00'..'\ud7af' }
+                    "zh" -> text.count { it in '\u4e00'..'\u9fff' }
+                    else -> text.count(Char::isLetter)
+                }
+                Triple(script, items, text.length + scriptChars * 5)
             }
-            val items = result.result.textBlocks
-                .filter { it.boundingBox != null && it.text.isNotBlank() }
-                .map { it.boundingBox!! to normalizeOcr(it.text) }
-                .filter { it.second.isNotBlank() }
-                .sortedWith(compareBy({ it.first.top }, { it.first.left }))
-            if (items.isEmpty()) {
-                toast(activity, "لم أجد نصًا واضحًا في الصفحة. جرّب تكبيرها أو تحسين وضوحها.")
+            val best = candidates.maxByOrNull { it.third }
+            if (best == null) {
+                val failure = tasks.firstOrNull { !it.second.isSuccessful }?.second?.exception
+                if (failure != null) showOcrUnavailable(activity, failure)
+                else toast(activity, "لم أجد نصًا واضحًا في الصفحة. جرّب تكبيرها أو تحسين وضوحها.")
                 finish()
             } else {
-                translateItems(activity, bmp, items, finish)
+                android.util.Log.d("MslTranslate", "OCR selected ${best.first} recognizer with ${best.second.size} text blocks")
+                translateItems(activity, bmp, best.second, finish)
             }
+        }.addOnFailureListener { error ->
+            clients.forEach { closeRecognizer(it.second) }
+            showOcrUnavailable(activity, error)
+            finish()
         }
     }
 
@@ -335,7 +386,7 @@ object MslTranslate {
     private fun showOcrUnavailable(activity: Activity, error: Throwable) {
         android.util.Log.w("MslTranslate", "ML Kit text recognition failed", error)
         if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
-        toast(activity, "تعذّرت قراءة نص الصفحة. تأكد من تحديث خدمات Google Play ثم أعد المحاولة.")
+        toast(activity, "تعذّر التعرّف على نص الصفحة. جرّب تكبيرها أو صفحة أوضح؛ لا يتطلب OCR الحالي تحديث خدمات Google Play.")
     }
 
     private fun translateItems(
@@ -420,7 +471,7 @@ object MslTranslate {
         if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
         toast(
             activity,
-            "تعذّرت الترجمة الآلية. تأكد من اتصال الإنترنت وخدمات Google Play، ثم أعد المحاولة.",
+            "تعذّرت الترجمة الآلية. تحقق من اتصال الإنترنت لتنزيل نموذج اللغة ثم أعد المحاولة.",
         )
     }
 
@@ -477,6 +528,8 @@ object MslTranslate {
         tp.textSize = size
         return StaticLayout.Builder.obtain(text, 0, text.length, tp, width.coerceAtLeast(10))
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setTextDirection(android.text.TextDirectionHeuristics.RTL)
+            .setIncludePad(false)
             .build()
     }
 
@@ -497,16 +550,20 @@ object MslTranslate {
         for ((box, text) in items) {
             if (text.isBlank()) continue
             val r = Rect(box)
-            r.inset(-8, -8)
+            val inset = (box.width() / 24).coerceIn(3, 8)
+            r.inset(-inset, -inset)
+            r.intersect(0, 0, bmp.width, bmp.height)
+            if (r.width() < 12 || r.height() < 12) continue
             c.drawRoundRect(r.left.toFloat(), r.top.toFloat(), r.right.toFloat(), r.bottom.toFloat(), 18f, 18f, bg)
-            var size = 44f
-            var layout = layoutFor(text, tp, size, r.width() - 12)
-            while (layout.height > r.height() && size > 12f) {
-                size -= 2f
-                layout = layoutFor(text, tp, size, r.width() - 12)
+            var size = minOf(44f, r.height() * 0.72f)
+            var layout = layoutFor(text, tp, size, r.width() - 8)
+            while ((layout.height > r.height() - 4 || layout.lineCount > 4) && size > 8f) {
+                size -= 1f
+                layout = layoutFor(text, tp, size, r.width() - 8)
             }
             c.save()
-            c.translate(r.left + 6f, r.top + (r.height() - layout.height).coerceAtLeast(0) / 2f)
+            c.clipRect(r.left + 2, r.top + 2, r.right - 2, r.bottom - 2)
+            c.translate(r.left + 4f, r.top + (r.height() - layout.height).coerceAtLeast(0) / 2f)
             layout.draw(c)
             c.restore()
         }

@@ -285,13 +285,20 @@ fun MslCoinWalletHeader() {
     val walletBalance by MslWallet.balance.collectAsState()
     var balance by remember { mutableStateOf<Int?>(null) }
     var balanceLoading by remember { mutableStateOf(true) }
+    var welcomeBonusReceived by remember { mutableStateOf(false) }
     var storeVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(walletBalance) { balance = walletBalance }
 
     LaunchedEffect(context) {
         balanceLoading = true
-        balance = withContext(Dispatchers.IO) { MslWallet.refresh(context) }
+        val walletState = withContext(Dispatchers.IO) {
+            val refreshedBalance = MslWallet.refresh(context)
+            val hasWelcomeBonus = MslWallet.transactions(context)?.any { it.kind == "welcome_bonus" && it.delta == 500 } == true
+            refreshedBalance to hasWelcomeBonus
+        }
+        balance = walletState.first
+        welcomeBonusReceived = walletState.second
         balanceLoading = false
     }
 
@@ -319,6 +326,13 @@ fun MslCoinWalletHeader() {
                     fontWeight = FontWeight.Bold,
                     color = MslDesignTokens.accentBright,
                 )
+                if (welcomeBonusReceived) {
+                    Text(
+                        "🎁 وصلت هدية التسجيل: 500 عملة — تكفي شهرًا من VIP.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MslDesignTokens.warning,
+                    )
+                }
             }
             TextButton(
                 onClick = { storeVisible = true },

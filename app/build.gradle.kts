@@ -85,8 +85,8 @@ android {
         buildConfigField("boolean", "COIN_PLAY_PURCHASES_ENABLED", "$coinPlayPurchasesEnabled")
         buildConfigField("int", "INTERSTITIAL_CHAPTER_INTERVAL", "$interstitialChapterInterval")
 
-        versionCode = 35
-        versionName = "v1.0.0"
+        versionCode = 36
+        versionName = "v1.0.1"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
@@ -272,6 +272,9 @@ baselineProfile {
 
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
     implementation("com.google.mlkit:translate:17.0.3")
     implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.5.0")
     implementation("com.google.ads.mediation:facebook:6.22.0.1")
