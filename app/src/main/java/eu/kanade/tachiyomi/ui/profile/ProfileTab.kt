@@ -710,7 +710,6 @@ data object ProfileTab : Tab {
                     MslCloudSync.imageData(ctx, "msl_avatar.img"),
                     MslCloudSync.imageData(ctx, "msl_cover.img"),
                     level,
-                    rank,
                 )
             }
         }

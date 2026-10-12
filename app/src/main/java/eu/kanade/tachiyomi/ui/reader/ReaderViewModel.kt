@@ -32,11 +32,12 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.model.Download
-import eu.kanade.tachiyomi.mslime.MslAds
-import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
+import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.MslRank
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -622,7 +623,17 @@ class ReaderViewModel(
     }
 
     private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
+        val newlyCompleted = !readerChapter.chapter.read
         readerChapter.chapter.read = true
+        if (newlyCompleted && !incognitoMode) {
+            val chapterId = readerChapter.chapter.id
+            if (chapterId != null) {
+                val chapterKey = "manga:${readerChapter.chapter.manga_id}:$chapterId"
+                viewModelScope.launchIO {
+                    MslRank.awardCompletedChapter(context, chapterKey)
+                }
+            }
+        }
         updateTrackChapterRead(readerChapter)
         deleteChapterIfNeeded(readerChapter)
         if (readerChapter.pageLoader !is DownloadPageLoader) {

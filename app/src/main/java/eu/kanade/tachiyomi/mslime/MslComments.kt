@@ -91,6 +91,50 @@ object MslRank {
     private val mins = listOf(0, 50, 150, 350, 700, 1200, 2000, 3500, 5500)
     fun of(read: Int): String = names[mins.indexOfLast { read >= it }.coerceAtLeast(0)]
     fun level(read: Int): Int = read / 25 + 1
+    fun nextRankThreshold(rankXp: Int): Int? = mins.firstOrNull { it > rankXp }
+
+    private fun pendingRewards(context: Context) =
+        context.getSharedPreferences(
+            "msl_pending_rank_rewards_${MslSupabase.uid(context).ifBlank { "anonymous" }}",
+            Context.MODE_PRIVATE,
+        )
+
+    private fun queueChapterReward(context: Context, chapterKey: String) {
+        val prefs = pendingRewards(context)
+        val pending = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toMutableSet()
+        pending += chapterKey
+        prefs.edit().putStringSet("chapter_keys", pending).apply()
+    }
+
+    private fun postChapterReward(context: Context, chapterKey: String): Boolean = runCatching {
+        val token = MslSupabase.token(context) ?: return false
+        val body = JSONObject().put("p_chapter_key", chapterKey).toString()
+        val response = MslSupabase.call("POST", "/rest/v1/rpc/award_rank_xp_for_chapter", body, token)
+        if (response.first !in 200..299) return false
+        val result = JSONObject(response.second)
+        result.optBoolean("ok") || result.optBoolean("already_rewarded")
+    }.getOrDefault(false)
+
+    fun awardCompletedChapter(context: Context, chapterKey: String): Boolean {
+        val awarded = postChapterReward(context, chapterKey)
+        if (!awarded) {
+            queueChapterReward(context, chapterKey)
+        } else {
+            syncPendingChapterRewards(context)
+        }
+        return awarded
+    }
+
+    fun syncPendingChapterRewards(context: Context) {
+        val prefs = pendingRewards(context)
+        val pending = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toSet()
+        for (chapterKey in pending) {
+            if (!postChapterReward(context, chapterKey)) break
+            val current = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toMutableSet()
+            current.remove(chapterKey)
+            prefs.edit().putStringSet("chapter_keys", current).apply()
+        }
+    }
 }
 
 object MslSupabase {
@@ -584,6 +628,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                 val read = prof.getInt("read", 0)
                                 scope.launch {
                                     val err = withContext(Dispatchers.IO) {
+                                        val serverRank = MslCloudSync.profile(ctx)?.rank ?: MslRank.of(read)
                                         MslSupabase.post(
                                             ctx,
                                             key,
@@ -591,7 +636,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                             body,
                                             spoiler,
                                             MslRank.level(read),
-                                            MslRank.of(read),
+                                            serverRank,
                                             myPicture,
                                             parentId = replyTo?.id,
                                         )

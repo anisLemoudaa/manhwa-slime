@@ -78,27 +78,36 @@ class MslShopScreen : Screen() {
         val snackbars = remember { SnackbarHostState() }
         var items by remember { mutableStateOf<List<MslShop.Item>?>(null) }
         var balance by remember { mutableStateOf<Int?>(null) }
+        var rankState by remember { mutableStateOf<MslShop.RankState?>(null) }
         var loading by remember { mutableStateOf(true) }
         var error by remember { mutableStateOf(false) }
         var selectedCategory by remember { mutableStateOf("الكل") }
         var pendingPurchase by remember { mutableStateOf<MslShop.Item?>(null) }
+        var pendingUse by remember { mutableStateOf<MslShop.Item?>(null) }
+        var pendingUseRequestId by remember { mutableStateOf<String?>(null) }
         var busyItem by remember { mutableStateOf<String?>(null) }
 
         suspend fun reload() {
             loading = true
             error = false
             val result = withContext(Dispatchers.IO) {
-                MslWallet.refresh(context) to MslShop.catalog(context)
+                Triple(MslWallet.refresh(context), MslShop.catalog(context), MslShop.rankState(context))
             }
             balance = result.first
             items = result.second
+            rankState = result.third
             error = result.second == null
             loading = false
         }
         LaunchedEffect(context) { reload() }
 
         val visibleItems = items.orEmpty().filter { item ->
-            item.type == "profile_frame" && (selectedCategory == "الكل" || selectedCategory == "إطارات الملف الشخصي")
+            when (item.type) {
+                "profile_frame" -> selectedCategory == "الكل" || selectedCategory == "إطارات الملف الشخصي"
+                "potion" -> selectedCategory == "الكل" || selectedCategory == "الجرعات"
+                "xp" -> selectedCategory == "الكل" || selectedCategory == "تطوير المستوى"
+                else -> selectedCategory == "الكل" || selectedCategory == "أخرى"
+            }
         }
         CompositionLocalProviderRtl {
             Scaffold(
@@ -187,11 +196,22 @@ class MslShopScreen : Screen() {
                                 }
                             }
                             Text(
-                                "إطارات الملف الشخصي",
+                                if (selectedCategory == "الكل") "عناصر المتجر" else selectedCategory,
                                 color = MslDesignTokens.textPrimary,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                             )
+                            rankState?.let { state ->
+                                Text(
+                                    "خبرة الرتبة: ${state.xp} RP  •  الرتبة الحالية: ${state.rank}" +
+                                        (
+                                            MslRank.nextRankThreshold(state.xp)?.let { "  •  الهدف التالي: $it RP" }
+                                                ?: "  •  أعلى رتبة"
+                                            ),
+                                    color = MslDesignTokens.textSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                     }
                     when {
@@ -222,38 +242,53 @@ class MslShopScreen : Screen() {
                             )
                         }
                         else -> items(visibleItems, key = { it.id }) { item ->
-                            ShopFrameCard(
-                                item = item,
-                                balance = balance,
-                                busy = busyItem == item.id,
-                                onBuy = { pendingPurchase = item },
-                                onEquip = {
-                                    busyItem = item.id
-                                    scope.launch {
-                                        val ok = withContext(Dispatchers.IO) { MslShop.equip(context, item.id) }
-                                        busyItem = null
-                                        if (ok) {
-                                            reload()
-                                            snackbars.showSnackbar("تم تجهيز الإطار.")
-                                        } else {
-                                            snackbars.showSnackbar("تعذر تجهيز الإطار. حاول مرة أخرى.")
+                            if (item.type != "profile_frame") {
+                                ShopPotionCard(
+                                    item = item,
+                                    balance = balance,
+                                    busy = busyItem == item.id,
+                                    onBuy = { pendingPurchase = item },
+                                    onUse = {
+                                        pendingUse = item
+                                        pendingUseRequestId = item.inventoryId?.let {
+                                            MslShop.useRequestId(context, it)
                                         }
-                                    }
-                                },
-                                onRemove = {
-                                    busyItem = item.id
-                                    scope.launch {
-                                        val ok = withContext(Dispatchers.IO) { MslShop.equip(context, null) }
-                                        busyItem = null
-                                        if (ok) {
-                                            reload()
-                                            snackbars.showSnackbar("تمت إزالة الإطار.")
-                                        } else {
-                                            snackbars.showSnackbar("حدث خطأ، حاول مرة أخرى.")
+                                    },
+                                )
+                            } else {
+                                ShopFrameCard(
+                                    item = item,
+                                    balance = balance,
+                                    busy = busyItem == item.id,
+                                    onBuy = { pendingPurchase = item },
+                                    onEquip = {
+                                        busyItem = item.id
+                                        scope.launch {
+                                            val ok = withContext(Dispatchers.IO) { MslShop.equip(context, item.id) }
+                                            busyItem = null
+                                            if (ok) {
+                                                reload()
+                                                snackbars.showSnackbar("تم تجهيز الإطار.")
+                                            } else {
+                                                snackbars.showSnackbar("تعذر تجهيز الإطار. حاول مرة أخرى.")
+                                            }
                                         }
-                                    }
-                                },
-                            )
+                                    },
+                                    onRemove = {
+                                        busyItem = item.id
+                                        scope.launch {
+                                            val ok = withContext(Dispatchers.IO) { MslShop.equip(context, null) }
+                                            busyItem = null
+                                            if (ok) {
+                                                reload()
+                                                snackbars.showSnackbar("تمت إزالة الإطار.")
+                                            } else {
+                                                snackbars.showSnackbar("حدث خطأ، حاول مرة أخرى.")
+                                            }
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -273,7 +308,11 @@ class MslShopScreen : Screen() {
                                     tint = MslDesignTokens.accentBright,
                                 )
                                 Text(
-                                    "يمكنك تغيير إطار صورتك الشخصية من صفحة ملفك الشخصي بعد الشراء.",
+                                    if (selectedCategory == "الجرعات") {
+                                        "تُضاف الجرعات إلى مخزونك عند الشراء، ولا يطبّق أثرها إلا بعد تأكيد استخدامها."
+                                    } else {
+                                        "يمكنك تغيير إطار صورتك الشخصية من صفحة ملفك الشخصي بعد الشراء."
+                                    },
                                     color = MslDesignTokens.textSecondary,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -291,8 +330,15 @@ class MslShopScreen : Screen() {
                 title = { Text("تأكيد الشراء") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FramePreview(item, Modifier.fillMaxWidth().height(150.dp))
+                        if (item.type == "profile_frame") {
+                            FramePreview(item, Modifier.fillMaxWidth().height(150.dp))
+                        } else {
+                            Text("جرعة خبرة رتبة", color = MslDesignTokens.accentBright)
+                        }
                         Text("هل تريد شراء «${item.name}» مقابل ${item.price} عملة؟")
+                        if (item.effectType == "rank_xp") {
+                            Text("ستضيف الجرعة ${item.effectValue} RP عند استخدامها، ولا تُستهلك الآن.")
+                        }
                         Text("رصيدك الحالي: ${balance?.let { String.format(Locale.getDefault(), "%,d", it) } ?: "—"}")
                         Text("الرصيد بعد الشراء: ${String.format(Locale.getDefault(), "%,d", after)}")
                     }
@@ -311,7 +357,13 @@ class MslShopScreen : Screen() {
                                         balance =
                                             result.balance ?: withContext(Dispatchers.IO) { MslWallet.refresh(context) }
                                         reload()
-                                        snackbars.showSnackbar("تم شراء الإطار بنجاح.")
+                                        snackbars.showSnackbar(
+                                            if (item.type == "profile_frame") {
+                                                "تم شراء الإطار بنجاح."
+                                            } else {
+                                                "تمت إضافة الجرعة إلى مخزونك."
+                                            },
+                                        )
                                     }
                                     result.reason == "insufficient_funds" -> {
                                         balance = result.balance
@@ -333,6 +385,73 @@ class MslShopScreen : Screen() {
                 },
                 dismissButton = {
                     TextButton(onClick = { pendingPurchase = null }, enabled = busyItem == null) { Text("إلغاء") }
+                },
+            )
+        }
+
+        pendingUse?.let { item ->
+            AlertDialog(
+                onDismissRequest = { if (busyItem == null) pendingUse = null },
+                title = { Text("تأكيد استخدام الجرعة") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(item.name, fontWeight = FontWeight.Bold)
+                        Text("ستضيف ${item.effectValue} نقطة خبرة للرتبة (RP) إلى رصيدك الحالي.")
+                        Text("الرصيد الحالي: ${rankState?.xp ?: 0} RP")
+                        Text("لن تُعيَّن الرتبة مباشرة؛ يحسبها الخادم من مجموع RP والعتبات.")
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        enabled = busyItem == null && item.inventoryId != null,
+                        onClick = {
+                            val inventoryId = item.inventoryId ?: return@Button
+                            val previousRank = rankState?.rank
+                            busyItem = item.id
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    MslShop.useRankPotion(
+                                        context,
+                                        inventoryId,
+                                        pendingUseRequestId ?: MslShop.useRequestId(context, inventoryId),
+                                    )
+                                }
+                                busyItem = null
+                                if (result.ok) {
+                                    MslShop.clearUseRequestId(context, inventoryId)
+                                    pendingUse = null
+                                    pendingUseRequestId = null
+                                    reload()
+                                    snackbars.showSnackbar(
+                                        if (result.rank != null && result.rank != previousRank) {
+                                            "وصل رصيد RP إلى ${result.rankXp}؛ الرتبة الآن ${result.rank}."
+                                        } else {
+                                            "أضيفت ${result.rankXp ?: item.effectValue} نقطة RP."
+                                        },
+                                    )
+                                } else {
+                                    snackbars.showSnackbar(
+                                        if (result.reason == "not_owned") {
+                                            "هذه الجرعة غير موجودة في مخزونك."
+                                        } else {
+                                            "تعذر استخدام الجرعة؛ لم تخصم أي نقاط."
+                                        },
+                                    )
+                                    reload()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
+                    ) { Text(if (busyItem == item.id) "جارٍ الاستخدام…" else "تأكيد الاستخدام") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            pendingUse = null
+                            pendingUseRequestId = null
+                        },
+                        enabled = busyItem == null,
+                    ) { Text("إلغاء") }
                 },
             )
         }
@@ -431,6 +550,90 @@ private fun ShopFrameCard(
                 ) {
                     Text(if (busy) "جارٍ الشراء…" else "🛒  شراء")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShopPotionCard(
+    item: MslShop.Item,
+    balance: Int?,
+    busy: Boolean,
+    onBuy: () -> Unit,
+    onUse: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface.copy(alpha = 0.96f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MslDesignTokens.border.copy(alpha = 0.75f)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.CenterStart) {
+                item.badge?.let { Badge(it, item.rarity) }
+                if (item.quantity > 0) {
+                    Badge("المخزون ${item.quantity}", "owned", Modifier.align(Alignment.CenterEnd))
+                }
+            }
+            Box(
+                Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(14.dp))
+                    .background(MslDesignTokens.backgroundRaised),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("RP", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.headlineLarge)
+            }
+            Text(
+                item.name,
+                color = MslDesignTokens.textPrimary,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+            )
+            Text(
+                "+${item.effectValue} RP عند الاستخدام",
+                color = MslDesignTokens.accentBright,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                item.description,
+                color = MslDesignTokens.textSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                minLines = 2,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("●", color = Color(0xFFFFC857), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    String.format(Locale.getDefault(), "%,d", item.price),
+                    color = MslDesignTokens.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            when {
+                item.quantity > 0 -> OutlinedButton(
+                    onClick = onUse,
+                    enabled = !busy && item.inventoryId != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (busy) "جارٍ الاستخدام…" else "استخدام (${item.quantity})") }
+                balance != null && balance < item.price -> Button(
+                    onClick = onBuy,
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("عملات غير كافية") }
+                else -> Button(
+                    onClick = onBuy,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
+                ) { Text(if (busy) "جارٍ الشراء…" else "شراء") }
             }
         }
     }
