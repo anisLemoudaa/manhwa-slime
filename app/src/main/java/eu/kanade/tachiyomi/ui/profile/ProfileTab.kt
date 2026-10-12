@@ -4,8 +4,16 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +40,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -51,14 +60,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -86,8 +98,8 @@ import eu.kanade.tachiyomi.ui.history.HistoryViewModel
 import eu.kanade.tachiyomi.ui.more.MoreTab
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.stats.StatsViewModel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.AttachMoney
@@ -166,6 +178,7 @@ private fun ProfileActionCard(
         modifier = modifier.clickable(onClick = onClick),
         shape = MslDesignTokens.compactCardShape,
         colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+        border = BorderStroke(1.dp, MslDesignTokens.border.copy(alpha = 0.8f)),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -178,6 +191,85 @@ private fun ProfileActionCard(
                 Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MslDesignTokens.textSecondary)
             }
         }
+    }
+}
+
+@Composable
+private fun ProfileStatTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = MslDesignTokens.compactCardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.48f)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = accent, maxLines = 1)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MslDesignTokens.textSecondary,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnimatedProfileName(name: String, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val motionEnabled = remember(context) {
+        runCatching {
+            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        }.getOrDefault(false)
+    }
+    if (motionEnabled) {
+        val transition = rememberInfiniteTransition(label = "profileNameShimmer")
+        val shift by transition.animateFloat(
+            initialValue = -180f,
+            targetValue = 520f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 7200, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "profileNameGradientOffset",
+        )
+        Text(
+            text = name,
+            style = TextStyle(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        MslDesignTokens.accentBlue,
+                        MslDesignTokens.accentBright,
+                        MslDesignTokens.cyan,
+                        MslDesignTokens.accentBright,
+                    ),
+                    start = Offset(shift, 0f),
+                    end = Offset(shift + 420f, 0f),
+                ),
+                fontSize = 24.sp,
+                fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+                fontWeight = FontWeight.Bold,
+                shadow = Shadow(MslDesignTokens.accent.copy(alpha = 0.45f), Offset.Zero, 14f),
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable(onClick = onClick),
+        )
+    } else {
+        Text(
+            text = name,
+            fontSize = 24.sp,
+            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
+            fontWeight = FontWeight.Bold,
+            color = MslDesignTokens.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable(onClick = onClick),
+        )
     }
 }
 
@@ -540,6 +632,8 @@ data object ProfileTab : Tab {
         var cloudRank by remember { mutableStateOf<String?>(null) }
         var cloudLoaded by remember { mutableStateOf(false) }
         val equippedFrameId by eu.kanade.tachiyomi.mslime.MslShop.equippedFrameState.collectAsState()
+        var socialProfile by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslFollowGraph.Profile?>(null) }
+        val socialRevision by eu.kanade.tachiyomi.mslime.MslFollowGraph.revision.collectAsState()
         var name by remember {
             mutableStateOf(prefs(ctx).getString("name", "قارئ السلايم") ?: "قارئ السلايم")
         }
@@ -553,12 +647,19 @@ data object ProfileTab : Tab {
             j
         }
         LaunchedEffect(ctx) {
-            withContext(Dispatchers.IO) { MslCloudSync.profile(ctx) }?.let { remote ->
+            val remoteProfile = withContext(Dispatchers.IO) { MslCloudSync.profile(ctx) }
+            remoteProfile?.let { remote ->
                 MslCloudSync.applyProfile(ctx, remote)
                 name = remote.name
                 cloudLevel = remote.level
                 cloudRank = remote.rank
                 rev++
+            }
+            val userId = eu.kanade.tachiyomi.mslime.MslSupabase.uid(ctx)
+            if (userId.isNotBlank()) {
+                socialProfile = withContext(Dispatchers.IO) {
+                    eu.kanade.tachiyomi.mslime.MslFollowGraph.profile(ctx, userId)
+                }
             }
             cloudLoaded = true
             withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslShop.equippedFrame(ctx) }
@@ -572,6 +673,15 @@ data object ProfileTab : Tab {
         }
         val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null && saveFromUri(ctx, uri, "msl_cover.img")) rev++
+        }
+        LaunchedEffect(socialRevision) {
+            if (socialRevision == 0) return@LaunchedEffect
+            val userId = eu.kanade.tachiyomi.mslime.MslSupabase.uid(ctx)
+            if (userId.isNotBlank()) {
+                socialProfile = withContext(Dispatchers.IO) {
+                    eu.kanade.tachiyomi.mslime.MslFollowGraph.profile(ctx, userId)
+                }
+            }
         }
         val avatar = remember(rev) { loadBmp(ctx, "msl_avatar.img") }
         val cover = remember(rev) { loadBmp(ctx, "msl_cover.img") }
@@ -604,7 +714,7 @@ data object ProfileTab : Tab {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(218.dp)
+                        .height(248.dp)
                         .background(
                             Brush.verticalGradient(
                                 listOf(MslDesignTokens.surfaceHighest, MslDesignTokens.background),
@@ -628,13 +738,32 @@ data object ProfileTab : Tab {
                             .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                             .background(MslDesignTokens.heroGradient),
                     )
+                    IconButton(
+                        onClick = { tabNavigator.current = MoreTab },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                    ) {
+                        Icon(
+                            imageVector = MaterialSymbols.Rounded.Settings,
+                            contentDescription = "الإعدادات",
+                            tint = MslDesignTokens.textPrimary,
+                        )
+                    }
                     Box(
                         modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp)
-                        .offset(y = 54.dp)
-                        .size(104.dp)
-                        .clickable { avatarPicker.launch("image/*") },
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp)
+                            .offset(y = 54.dp)
+                            .size(118.dp)
+                            .clip(CircleShape)
+                            .border(
+                                3.dp,
+                                Brush.sweepGradient(
+                                    listOf(MslDesignTokens.accentBright, MslDesignTokens.cyan, MslDesignTokens.accent, MslDesignTokens.warning, MslDesignTokens.accentBright),
+                                ),
+                                CircleShape,
+                            )
+                            .background(MslDesignTokens.backgroundRaised)
+                            .clickable { avatarPicker.launch("image/*") },
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
@@ -690,7 +819,7 @@ data object ProfileTab : Tab {
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(66.dp))
+                Spacer(modifier = Modifier.height(76.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -711,16 +840,7 @@ data object ProfileTab : Tab {
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                        Text(
-                            text = name,
-                            fontSize = 24.sp,
-                            fontFamily = eu.kanade.tachiyomi.mslime.MslDisplayFont,
-                            fontWeight = FontWeight.Bold,
-                            color = MslDesignTokens.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { editName = true },
-                        )
+                        AnimatedProfileName(name = name, onClick = { editName = true })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.16f)) {
@@ -747,6 +867,75 @@ data object ProfileTab : Tab {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MslDesignTokens.textSecondary,
                 )
+
+                val socialUserId = eu.kanade.tachiyomi.mslime.MslSupabase.uid(ctx)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ProfileStatTile(
+                        "المتابعون",
+                        socialProfile?.followerCount?.toString() ?: "—",
+                        MslDesignTokens.accentBright,
+                        Modifier.weight(1f).clickable {
+                            if (socialUserId.isNotBlank()) {
+                                navigator.push(
+                                    eu.kanade.tachiyomi.mslime.MslSocialListScreen(
+                                        socialUserId,
+                                        eu.kanade.tachiyomi.mslime.MslFollowGraph.ListKind.FOLLOWERS,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                    ProfileStatTile(
+                        "المتابَعون",
+                        socialProfile?.followingCount?.toString() ?: "—",
+                        MslDesignTokens.cyan,
+                        Modifier.weight(1f).clickable {
+                            if (socialUserId.isNotBlank()) {
+                                navigator.push(
+                                    eu.kanade.tachiyomi.mslime.MslSocialListScreen(
+                                        socialUserId,
+                                        eu.kanade.tachiyomi.mslime.MslFollowGraph.ListKind.FOLLOWING,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                }
+
+                if (s is StatsScreenState.Success) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ProfileStatTile(
+                            "الفصول",
+                            read.toString(),
+                            MslDesignTokens.accentBright,
+                            Modifier.weight(1f),
+                        )
+                        ProfileStatTile(
+                            "المكتبة",
+                            s.overview.libraryMangaCount.toString(),
+                            MslDesignTokens.cyan,
+                            Modifier.weight(1f),
+                        )
+                        ProfileStatTile(
+                            "ساعات قراءة",
+                            "${s.overview.totalReadDuration / 3_600_000}س",
+                            MslDesignTokens.warning,
+                            Modifier.weight(1f),
+                        )
+                        ProfileStatTile(
+                            "المستوى",
+                            level.toString(),
+                            Color(0xFFFF83D5),
+                            Modifier.weight(1f),
+                        )
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),

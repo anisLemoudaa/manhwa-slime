@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,6 +68,7 @@ import java.net.URL
 
 data class MslComment(
     val id: String,
+    val parentId: String?,
     val userId: String,
     val name: String,
     val body: String,
@@ -156,7 +159,7 @@ object MslSupabase {
         return try {
             val r = call(
                 "POST",
-                "/rest/v1/rpc/list_comments_with_vip",
+                "/rest/v1/rpc/list_comments_with_replies",
                 JSONObject().put("p_title_key", key).put("p_sort", sort).toString(),
                 null,
             )
@@ -166,6 +169,7 @@ object MslSupabase {
                 val o = a.getJSONObject(it)
                 MslComment(
                     id = o.getString("id"),
+                    parentId = if (o.isNull("parent_id")) null else o.optString("parent_id").takeIf { it.isNotBlank() },
                     userId = o.getString("user_id"),
                     name = o.getString("author_name"),
                     body = o.getString("body"),
@@ -220,6 +224,7 @@ object MslSupabase {
         level: Int,
         rank: String,
         avatar: String,
+        parentId: String? = null,
     ): String? {
         return try {
             val tok = token(ctx) ?: return "تعذّر إنشاء الجلسة المجهولة (فعّل Anonymous sign-ins)"
@@ -231,6 +236,7 @@ object MslSupabase {
                 .put("level", level)
                 .put("rank", rank)
             if (avatar.startsWith("https://lh3.googleusercontent.com/")) j.put("author_avatar", avatar)
+            if (parentId != null) j.put("parent_id", parentId)
             val r = call("POST", "/rest/v1/comments", j.toString(), tok, "return=minimal")
             when {
                 r.first in 200..299 -> null
@@ -411,6 +417,7 @@ private fun CommentMenu(mine: Boolean, onAction: () -> Unit) {
 @Composable
 fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val navigator = LocalNavigator.currentOrThrow
     val key = remember(title) { MslSupabase.titleKey(title) }
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<MslComment>?>(null) }
@@ -420,6 +427,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
     var sort by remember { mutableIntStateOf(0) }
     var text by remember { mutableStateOf("") }
+    var replyTo by remember { mutableStateOf<MslComment?>(null) }
     var spoiler by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
 
@@ -506,6 +514,23 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                replyTo?.let { target ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Tx("الرد على ${target.name}", 13.sp, FontWeight.Bold, MslDesignTokens.accentBright, 1)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Tx(
+                            "إلغاء",
+                            13.sp,
+                            FontWeight.Normal,
+                            MaterialTheme.colorScheme.error,
+                            1,
+                            Modifier.clickable { replyTo = null },
+                        )
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     MslAvatar(myPicture, myName, 40.dp, true)
                     Spacer(modifier = Modifier.width(10.dp))
@@ -557,11 +582,13 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                             MslRank.level(read),
                                             MslRank.of(read),
                                             myPicture,
+                                            parentId = replyTo?.id,
                                         )
                                     }
                                     if (err == null) {
                                         text = ""
                                         spoiler = false
+                                        replyTo = null
                                         msg = ""
                                         refresh++
                                     } else {
@@ -585,9 +612,23 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                 val mine = c.userId == me
                                 val my = votes[c.id] ?: 0
                                 val hidden = c.spoiler && !revealed.contains(c.id)
-                                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = if (c.parentId == null) 0.dp else 36.dp,
+                                            top = 10.dp,
+                                            bottom = 10.dp,
+                                        ),
+                                ) {
                                     Row(verticalAlignment = Alignment.Top) {
-                                        MslAvatar(c.avatar, c.name, 44.dp, mine)
+                                        Box(
+                                            modifier = Modifier.clickable {
+                                                navigator.push(MslSocialProfileScreen(c.userId))
+                                            },
+                                        ) {
+                                            MslAvatar(c.avatar, c.name, 44.dp, mine)
+                                        }
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -597,7 +638,9 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                                     FontWeight.Bold,
                                                     Color.Unspecified,
                                                     1,
-                                                    Modifier.weight(1f, fill = false),
+                                                    Modifier.weight(1f, fill = false).clickable {
+                                                        navigator.push(MslSocialProfileScreen(c.userId))
+                                                    },
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Surface(
@@ -711,6 +754,17 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                                         vote(c, -1)
                                                     }.padding(top = 6.dp, bottom = 6.dp),
                                                 )
+                                                if (c.parentId == null) {
+                                                    Tx(
+                                                        "رد",
+                                                        13.sp,
+                                                        FontWeight.Bold,
+                                                        MslDesignTokens.accentBright,
+                                                        1,
+                                                        Modifier.clickable { replyTo = c }
+                                                            .padding(start = 18.dp, top = 6.dp, bottom = 6.dp),
+                                                    )
+                                                }
                                             }
                                         }
                                     }
