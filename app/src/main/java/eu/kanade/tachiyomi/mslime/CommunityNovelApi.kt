@@ -49,6 +49,12 @@ object CommunityNovelApi {
         val clauses = mutableListOf("status=eq.published")
         if (query.isNotBlank()) clauses += "title=ilike.*${query.trim().replace("*", "")}*"
         if (!category.isNullOrBlank()) clauses += "primary_category=eq.$category"
+        if (filter == "liked") {
+            val likedRows = get(ctx, "/rest/v1/community_novel_likes?select=novel_id&user_id=eq.${uid(ctx)}&limit=100")
+            val ids = likedRows?.let { rows -> List(rows.length()) { i -> rows.getJSONObject(i).optString("novel_id") }.filter(String::isNotBlank) } ?: emptyList()
+            if (ids.isEmpty()) return emptyList()
+            clauses += "id=in.(${ids.joinToString(",")})"
+        }
         val order = when (filter) {
             "popular" -> "view_count.desc,updated_at.desc"
             "liked" -> "updated_at.desc"
