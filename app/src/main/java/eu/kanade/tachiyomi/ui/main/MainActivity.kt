@@ -194,6 +194,7 @@ class MainActivity : BaseActivity() {
                     statusBarStyle = if (statusBarBackgroundColor.luminance() > 0.5) lightStyle else darkStyle,
                     navigationBarStyle = if (isSystemInDarkTheme) darkStyle else lightStyle,
                 )
+                this@MainActivity.applyImmersiveNavigationBar()
             }
 
             Navigator(

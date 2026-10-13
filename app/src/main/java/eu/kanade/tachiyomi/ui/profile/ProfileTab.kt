@@ -60,11 +60,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +76,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -88,7 +93,6 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
-import eu.kanade.tachiyomi.mslime.MslShop
 import eu.kanade.tachiyomi.mslime.MslShopScreen
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
@@ -615,6 +619,19 @@ private fun UnifiedReadingHistorySection(
     }
 }
 
+private val ProfileBackgroundColor = Color(0xFF010512)
+
+/** Per-asset outer-frame/avatar ratios; 1.7 is the fallback for an unlisted frame. */
+private fun profileFrameRatio(frameId: String?): Float = when (frameId) {
+    "frame_ice" -> 1.70f
+    "frame_galaxy" -> 1.74f
+    "frame_samurai" -> 1.78f
+    "frame_king" -> 1.82f
+    "frame_fire" -> 1.85f
+    "frame_dark" -> 1.90f
+    else -> 1.70f
+}
+
 data object ProfileTab : Tab {
 
     override val options: TabOptions
@@ -727,7 +744,7 @@ data object ProfileTab : Tab {
         }
         val cover by produceState<Bitmap?>(null, ctx, rev) {
             value = withContext(Dispatchers.IO) {
-                loadBmp(ctx, "msl_cover.img", ctx.resources.displayMetrics.widthPixels, (248 * density).toInt())
+                loadBmp(ctx, "msl_cover.img", ctx.resources.displayMetrics.widthPixels, (280 * density).toInt())
             }
         }
         val avatarBitmap = avatar
@@ -759,16 +776,23 @@ data object ProfileTab : Tab {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MslDesignTokens.background)
+                    .background(ProfileBackgroundColor)
                     .verticalScroll(rememberScrollState(), overscrollEffect = null),
             ) {
+                val avatarSize = 88.dp
+                val frameResource = remember(equippedFrameId) {
+                    equippedFrameId?.let {
+                        ctx.resources.getIdentifier(it, "drawable", ctx.packageName)
+                    } ?: 0
+                }
+                val frameSize = avatarSize * if (frameResource != 0) profileFrameRatio(equippedFrameId) else 1f
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(248.dp)
+                        .height(280.dp)
                         .background(
                             Brush.verticalGradient(
-                                listOf(MslDesignTokens.surfaceHighest, MslDesignTokens.background),
+                                listOf(MslDesignTokens.surfaceHighest, ProfileBackgroundColor),
                             ),
                         )
                         .clickable { coverPicker.launch("image/*") },
@@ -787,7 +811,15 @@ data object ProfileTab : Tab {
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                            .background(MslDesignTokens.heroGradient),
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color.Transparent,
+                                        ProfileBackgroundColor.copy(alpha = 0.16f),
+                                        ProfileBackgroundColor,
+                                    ),
+                                ),
+                            ),
                     )
                     IconButton(
                         onClick = { tabNavigator.current = MoreTab },
@@ -799,42 +831,19 @@ data object ProfileTab : Tab {
                             tint = MslDesignTokens.textPrimary,
                         )
                     }
-                    val frameResource = remember(equippedFrameId) {
-                        equippedFrameId?.let {
-                            ctx.resources.getIdentifier(it, "drawable", ctx.packageName)
-                        } ?: 0
-                    }
-                    val avatarFraction =
-                        if (frameResource != 0) MslShop.frameAvatarFraction(equippedFrameId) else 1f
-                    val avatarContainerSize = if (frameResource != 0) 144.dp else 118.dp
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp)
-                            .offset(y = 54.dp)
-                            .size(avatarContainerSize)
-                            .border(
-                                3.dp,
-                                Brush.sweepGradient(
-                                    listOf(
-                                        MslDesignTokens.accentBright,
-                                        MslDesignTokens.cyan,
-                                        MslDesignTokens.accent,
-                                        MslDesignTokens.warning,
-                                        MslDesignTokens.accentBright,
-                                    ),
-                                ),
-                                CircleShape,
-                            )
-                            .background(MslDesignTokens.backgroundRaised, CircleShape)
-                            .clickable { avatarPicker.launch("image/*") },
+                            .align(Alignment.BottomCenter)
+                            .offset(y = frameSize / 2)
+                            .size(frameSize),
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize(avatarFraction)
+                                .size(avatarSize)
                                 .clip(CircleShape)
-                                .background(MslDesignTokens.backgroundRaised, CircleShape),
+                                .background(MslDesignTokens.backgroundRaised, CircleShape)
+                                .clickable { avatarPicker.launch("image/*") },
                             contentAlignment = Alignment.Center,
                         ) {
                             if (avatarBitmap != null) {
@@ -848,7 +857,7 @@ data object ProfileTab : Tab {
                                 Image(
                                     painter = painterResource(R.drawable.ic_mihon),
                                     contentDescription = null,
-                                    modifier = Modifier.size(if (frameResource != 0) 30.dp else 56.dp),
+                                    modifier = Modifier.size(56.dp),
                                 )
                             }
                         }
@@ -856,7 +865,17 @@ data object ProfileTab : Tab {
                             Image(
                                 painter = painterResource(frameResource),
                                 contentDescription = "إطار الصورة الشخصية",
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .size(frameSize)
+                                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawCircle(
+                                            color = Color.Transparent,
+                                            radius = avatarSize.toPx() / 2f + 1.dp.toPx(),
+                                            blendMode = BlendMode.Clear,
+                                        )
+                                    },
                                 contentScale = ContentScale.Fit,
                             )
                         }
@@ -880,18 +899,16 @@ data object ProfileTab : Tab {
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(76.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                Spacer(modifier = Modifier.height(frameSize / 2 + 8.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.Center,
                     ) {
                         if (vipStatus?.active == true) {
                             Icon(
@@ -903,15 +920,10 @@ data object ProfileTab : Tab {
                         }
                         AnimatedProfileName(name = name, onClick = { editName = true })
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.16f)) {
-                            Text(
-                                text = "الرتبة $rank",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = Color(0xFFFFD978),
-                            )
-                        }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.accent.copy(alpha = 0.22f)) {
                             Text(
                                 text = "المستوى $level",
@@ -920,14 +932,24 @@ data object ProfileTab : Tab {
                                 color = MslDesignTokens.accentBright,
                             )
                         }
+                        Surface(shape = MslDesignTokens.pillShape, color = Color(0xFFFFC857).copy(alpha = 0.16f)) {
+                            Text(
+                                text = "الرتبة $rank",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFFFFD978),
+                            )
+                        }
                     }
+                    Text(
+                        text = joinedText(joined),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MslDesignTokens.textSecondary,
+                        textAlign = TextAlign.Center,
+                    )
                 }
-                Text(
-                    text = joinedText(joined),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MslDesignTokens.textSecondary,
-                )
+                Spacer(modifier = Modifier.height(8.dp))
 
                 val socialUserId = eu.kanade.tachiyomi.mslime.MslSupabase.uid(ctx)
                 Row(
