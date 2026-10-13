@@ -1019,6 +1019,13 @@ data object ProfileTab : Tab {
                         onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslPrivacySettingsScreen()) },
                     )
                 }
+                ProfileActionCard(
+                    title = "مركز المساعدة",
+                    subtitle = "الأسئلة الشائعة والتواصل مع الدعم",
+                    icon = MaterialSymbols.Rounded.Person,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslHelpScreen()) },
+                )
 
                 Text(
                     text = "الحساب",

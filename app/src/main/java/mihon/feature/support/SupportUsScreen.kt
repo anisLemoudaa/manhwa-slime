@@ -17,17 +17,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.presentation.components.AppBar
+import eu.kanade.tachiyomi.presentation.components.AppBar
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.util.system.copyToClipboard
+import eu.kanade.tachiyomi.util.system.toast
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.OpenInNew
+import mihon.icons.materialsymbols.rounded.AttachMoney
 import mihon.icons.simpleicons.Discord
 import mihon.icons.simpleicons.OpenCollective
 import mihon.icons.simpleicons.Patreon
@@ -43,6 +47,7 @@ class SupportUsScreen : Screen() {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val uriHandler = LocalUriHandler.current
+        val context = LocalContext.current
 
         Scaffold(
             topBar = {
@@ -85,6 +90,32 @@ class SupportUsScreen : Screen() {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                 )
+
+                Card {
+                    TextPreferenceWidget(
+                        title = "PayPal",
+                        subtitle = "anislemoudaa2741@gmail.com · اضغط لنسخ البريد",
+                        icon = MaterialSymbols.Rounded.AttachMoney,
+                        onPreferenceClick = {
+                            context.copyToClipboard("PayPal email", "anislemoudaa2741@gmail.com")
+                            context.toast("تم النسخ.")
+                        },
+                    )
+                }
+                Card {
+                    TextPreferenceWidget(
+                        title = "Binance",
+                        subtitle = "سيتم إضافة عنوان Binance قريباً.",
+                        icon = MaterialSymbols.Rounded.AttachMoney,
+                    )
+                }
+                Card {
+                    TextPreferenceWidget(
+                        title = "Bybit",
+                        subtitle = "سيتم إضافة عنوان Bybit قريباً.",
+                        icon = MaterialSymbols.Rounded.AttachMoney,
+                    )
+                }
 
                 SupportItem(
                     icon = SimpleIcons.Patreon,
