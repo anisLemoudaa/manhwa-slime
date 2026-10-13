@@ -2,6 +2,7 @@
 package eu.kanade.tachiyomi.mslime
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,17 +14,27 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private val PdfBg = Color(0xFF030611)
+private val PdfSurface = Color(0xFF11132F)
+private val PdfSurface2 = Color(0xFF191A40)
+private val PdfPurple = Color(0xFF8538F2)
+private val PdfPurpleSoft = Color(0xFFBD75F7)
+private val PdfMuted = Color(0xFF9290AB)
+private val PdfLine = Color(0xFF292650)
 private enum class CommunityPage { HOME, DETAILS, READER, EDIT_NOVEL, EDIT_CHAPTER }
 
 @Composable
@@ -37,96 +48,91 @@ fun CommunityNovelsScreen() {
     var mine by remember { mutableStateOf(emptyList<CommunityNovelApi.Novel>()) }
     var filter by remember { mutableStateOf("latest") }
     var query by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
 
-    fun reload() { scope.launch { novels = withContext(Dispatchers.IO) { CommunityNovelApi.list(context, filter, query) }; mine = withContext(Dispatchers.IO) { CommunityNovelApi.mine(context) } } }
-    LaunchedEffect(filter, query) { reload() }
-
-    when (page) {
-        CommunityPage.HOME -> CommunityHome(
-            novels = novels,
-            mine = mine,
-            filter = filter,
-            query = query,
-            onQuery = { query = it },
-            onFilter = { filter = it },
-            onOpen = { selected = it; page = CommunityPage.DETAILS },
-            onCreate = { selected = null; page = CommunityPage.EDIT_NOVEL },
-            onEdit = { selected = it; page = CommunityPage.EDIT_NOVEL },
-        )
-        CommunityPage.DETAILS -> selected?.let { novel ->
-            CommunityDetails(
-                novel = novel,
-                onBack = { page = CommunityPage.HOME },
-                onRead = { chapter -> selectedChapter = chapter; page = CommunityPage.READER },
-                onEdit = { page = CommunityPage.EDIT_NOVEL },
-                onNewChapter = { selectedChapter = null; page = CommunityPage.EDIT_CHAPTER },
-                onRefresh = { reload() },
-            )
-        } ?: run { page = CommunityPage.HOME }
-        CommunityPage.READER -> selected?.let { novel ->
-            CommunityReader(novel, selectedChapter, onBack = { page = CommunityPage.DETAILS })
-        } ?: run { page = CommunityPage.HOME }
-        CommunityPage.EDIT_NOVEL -> CommunityNovelEditor(
-            initial = selected,
-            onBack = { page = if (selected == null) CommunityPage.HOME else CommunityPage.DETAILS },
-            onSaved = { id -> scope.launch { selected = withContext(Dispatchers.IO) { CommunityNovelApi.details(context, id) }; reload(); page = CommunityPage.DETAILS } },
-        )
-        CommunityPage.EDIT_CHAPTER -> selected?.let { novel ->
-            CommunityChapterEditor(novel, selectedChapter, onBack = { page = CommunityPage.DETAILS }, onSaved = { reload(); page = CommunityPage.DETAILS })
-        } ?: run { page = CommunityPage.HOME }
-    }
-    error?.let { message -> LaunchedEffect(message) { error = null } }
-}
-
-@Composable private fun CommunityShell(title: String, onBack: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
-    CompositionLocalProvider(LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Rtl) {
-        Column(Modifier.fillMaxSize().background(MslDesignTokens.background).padding(horizontal = 14.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onBack != null) Text("‹", color = MslDesignTokens.textPrimary, fontSize = 32.sp, modifier = Modifier.clickable { onBack() }.padding(end = 12.dp))
-                Text(title, color = MslDesignTokens.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-            }
-            content()
+    fun reload() {
+        scope.launch {
+            novels = withContext(Dispatchers.IO) { CommunityNovelApi.list(context, filter, query) }
+            mine = withContext(Dispatchers.IO) { CommunityNovelApi.mine(context) }
         }
     }
+    LaunchedEffect(filter, query) { reload() }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        when (page) {
+            CommunityPage.HOME -> CommunityHome(novels, mine, filter, query, { query = it }, { filter = it }, { selected = it; page = CommunityPage.DETAILS }, { selected = null; page = CommunityPage.EDIT_NOVEL }, { selected = it; page = CommunityPage.EDIT_NOVEL })
+            CommunityPage.DETAILS -> selected?.let { novel ->
+                CommunityDetails(novel, { page = CommunityPage.HOME }, { ch -> selectedChapter = ch; page = CommunityPage.READER }, { page = CommunityPage.EDIT_NOVEL }, { selectedChapter = null; page = CommunityPage.EDIT_CHAPTER }, { reload() })
+            } ?: run { page = CommunityPage.HOME }
+            CommunityPage.READER -> selected?.let { CommunityReader(it, selectedChapter, { page = CommunityPage.DETAILS }) } ?: run { page = CommunityPage.HOME }
+            CommunityPage.EDIT_NOVEL -> CommunityNovelEditor(selected, { page = if (selected == null) CommunityPage.HOME else CommunityPage.DETAILS }) { id -> scope.launch { selected = withContext(Dispatchers.IO) { CommunityNovelApi.details(context, id) }; reload(); page = CommunityPage.DETAILS } }
+            CommunityPage.EDIT_CHAPTER -> selected?.let { CommunityChapterEditor(it, selectedChapter, { page = CommunityPage.DETAILS }) { reload(); page = CommunityPage.DETAILS } } ?: run { page = CommunityPage.HOME }
+        }
+    }
+}
+
+@Composable private fun PdfPage(title: String, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxSize().background(PdfBg).padding(horizontal = 12.dp)) {
+        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (back != null) Text("‹", color = Color.White, fontSize = 30.sp, modifier = Modifier.clickable { back() }.padding(horizontal = 6.dp))
+            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = if (back == null) TextAlign.End else TextAlign.Center)
+            Text("⌕", color = Color.White, fontSize = 25.sp, modifier = Modifier.padding(horizontal = 6.dp))
+            Text("♧", color = PdfPurpleSoft, fontSize = 24.sp)
+        }
+        HorizontalDivider(color = PdfLine, thickness = 1.dp)
+        Column(Modifier.fillMaxSize().padding(top = 10.dp), content = content)
+    }
+}
+
+@Composable private fun PdfButton(text: String, onClick: () -> Unit, primary: Boolean = false, modifier: Modifier = Modifier, compact: Boolean = false) {
+    val colors = if (primary) ButtonDefaults.buttonColors(containerColor = PdfPurple, contentColor = Color.White) else ButtonDefaults.outlinedButtonColors(contentColor = PdfPurpleSoft)
+    val border = if (primary) null else BorderStroke(1.dp, PdfPurpleSoft.copy(alpha = .7f))
+    if (primary) Button(onClick, modifier.height(if (compact) 34.dp else 42.dp), shape = RoundedCornerShape(11.dp), colors = colors, contentPadding = PaddingValues(horizontal = 14.dp)) { Text(text, fontSize = if (compact) 11.sp else 14.sp, fontWeight = FontWeight.Bold) }
+    else OutlinedButton(onClick, modifier.height(if (compact) 32.dp else 40.dp), shape = RoundedCornerShape(11.dp), border = border, colors = colors, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(text, fontSize = if (compact) 11.sp else 13.sp) }
 }
 
 @Composable private fun CommunityHome(novels: List<CommunityNovelApi.Novel>, mine: List<CommunityNovelApi.Novel>, filter: String, query: String, onQuery: (String) -> Unit, onFilter: (String) -> Unit, onOpen: (CommunityNovelApi.Novel) -> Unit, onCreate: () -> Unit, onEdit: (CommunityNovelApi.Novel) -> Unit) {
-    CommunityShell("روايات المجتمع") {
-        Button(onClick = onCreate, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text("+ إنشاء رواية جديدة") }
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(query, onQuery, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("ابحث باسم الرواية أو المؤلف") })
-        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("latest" to "الأحدث", "popular" to "الأكثر قراءة", "liked" to "الأكثر إعجابًا").forEach { (value, label) ->
-                FilterChip(selected = filter == value, onClick = { onFilter(value) }, label = { Text(label, maxLines = 1, fontSize = 11.sp) })
+    PdfPage("روايات المجتمع") {
+        PdfButton("＋  إنشاء رواية جديدة", onCreate, true, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(9.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("all" to "الكل", "latest" to "الأحدث", "popular" to "الأكثر قراءة", "liked" to "الأكثر إعجابًا").forEach { (value, label) ->
+                FilterChip(selected = (value == "all" && filter == "latest") || filter == value, onClick = { onFilter(if (value == "all") "latest" else value) }, label = { Text(label, fontSize = 10.sp, maxLines = 1) }, modifier = Modifier.weight(1f), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PdfPurple, containerColor = PdfSurface, labelColor = Color.White, selectedLabelColor = Color.White))
             }
         }
-        if (mine.isNotEmpty()) {
-            Text("رواياتي", color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold)
-            mine.take(3).forEach { NovelCard(it, onOpen, onEdit) }
-            Spacer(Modifier.height(8.dp))
-        }
-        Text("الروايات المنشورة", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
-        if (novels.isEmpty()) Text("لا توجد روايات منشورة بعد. كن أول من يكتب رواية في المجتمع.", color = MslDesignTokens.textSecondary, modifier = Modifier.padding(20.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 30.dp)) { items(novels, key = { it.id }) { NovelCard(it, onOpen, {}) } }
+        Row(Modifier.fillMaxWidth().padding(top = 15.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) { Text("روايات مميزة", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp); Spacer(Modifier.weight(1f)); Text("عرض الكل", color = PdfPurpleSoft, fontSize = 11.sp) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { (novels.ifEmpty { mine }).take(3).forEach { FeaturedCard(it, onOpen) } }
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) { Text("الأحدث", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp); Spacer(Modifier.weight(1f)); Text("⌄ التصنيفات", color = PdfMuted, fontSize = 11.sp) }
+        OutlinedTextField(query, onQuery, modifier = Modifier.fillMaxWidth().height(48.dp), singleLine = true, placeholder = { Text("ابحث عن رواية", color = PdfMuted) }, textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 12.sp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = PdfLine, focusedBorderColor = PdfPurple, unfocusedContainerColor = PdfSurface, focusedContainerColor = PdfSurface))
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) { items(novels, key = { it.id }) { NovelRow(it, onOpen, {}) } }
+        if (mine.isNotEmpty()) { Text("مسوداتي", color = PdfPurpleSoft, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)); mine.filter { it.status != "published" }.forEach { NovelRow(it, onOpen, onEdit) } }
     }
 }
 
-@Composable private fun NovelCard(novel: CommunityNovelApi.Novel, onOpen: (CommunityNovelApi.Novel) -> Unit, onEdit: (CommunityNovelApi.Novel) -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable { onOpen(novel) }, colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface), shape = MslDesignTokens.cardShape) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(82.dp, 108.dp).background(MslDesignTokens.surfaceHighest, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("▣", color = MslDesignTokens.accentBright, fontSize = 30.sp) }
+@Composable private fun FeaturedCard(novel: CommunityNovelApi.Novel, onOpen: (CommunityNovelApi.Novel) -> Unit) {
+    Column(Modifier.weight(1f).clickable { onOpen(novel) }) {
+        Box(Modifier.fillMaxWidth().height(94.dp).clip(RoundedCornerShape(8.dp)).background(when (novel.category) { "fantasy" -> Color(0xFF3A3154); "romance" -> Color(0xFF2C594D); else -> Color(0xFF283A57) }), contentAlignment = Alignment.Center) { Text("▣", color = Color.White.copy(alpha = .8f), fontSize = 25.sp) }
+        Text(novel.title.ifBlank { "عنوان الرواية" }, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 5.dp))
+        Text("اسم المؤلف", color = PdfMuted, fontSize = 9.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable private fun NovelRow(novel: CommunityNovelApi.Novel, onOpen: (CommunityNovelApi.Novel) -> Unit, onEdit: (CommunityNovelApi.Novel) -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable { onOpen(novel) }, colors = CardDefaults.cardColors(containerColor = PdfSurface), shape = RoundedCornerShape(11.dp)) {
+        Row(Modifier.padding(9.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(64.dp, 92.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF51402B)), contentAlignment = Alignment.Center) { Text("▣", color = Color.White.copy(alpha = .8f), fontSize = 22.sp) }
             Column(Modifier.weight(1f)) {
-                Text(novel.title, color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("مؤلف المجتمع", color = MslDesignTokens.textSecondary, fontSize = 12.sp)
-                Text(novel.description.ifBlank { "لا يوجد وصف مختصر للرواية." }, color = MslDesignTokens.textSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { AssistChip(onClick = {}, label = { Text(categoryLabel(novel.category), fontSize = 10.sp) }); AssistChip(onClick = {}, label = { Text(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة", fontSize = 10.sp) }) }
-                Text("${novel.chapterCount} فصل  •  ${novel.viewCount} قراءة", color = MslDesignTokens.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                Text(novel.title.ifBlank { "عنوان الرواية" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("اسم المؤلف", color = PdfMuted, fontSize = 10.sp)
+                Text(novel.description.ifBlank { "وصف مختصر للرواية يظهر هنا في سطرين كحد أقصى." }, color = PdfMuted, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { PdfTag(categoryLabel(novel.category)); PdfTag(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة") }
+                Text("♡  ${novel.likeCount}    ◉  ${novel.viewCount}    ▫  ${novel.chapterCount} فصل", color = PdfMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
 }
+
+@Composable private fun PdfTag(text: String) { Box(Modifier.background(PdfSurface2, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) { Text(text, color = PdfPurpleSoft, fontSize = 9.sp) } }
 
 @Composable private fun CommunityDetails(novel: CommunityNovelApi.Novel, onBack: () -> Unit, onRead: (CommunityNovelApi.Chapter) -> Unit, onEdit: () -> Unit, onNewChapter: () -> Unit, onRefresh: () -> Unit) {
     val context = LocalContext.current
@@ -135,43 +141,39 @@ fun CommunityNovelsScreen() {
     var liked by remember { mutableStateOf(novel.liked) }
     var saved by remember { mutableStateOf(novel.inLibrary) }
     LaunchedEffect(novel.id) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, novel.authorId == MslSupabase.uid(context)) } }
-    CommunityShell(novel.title, onBack) {
-        Text("مؤلف المجتمع", color = MslDesignTokens.textSecondary)
-        Text("${categoryLabel(novel.category)}  •  ${if (novel.completionStatus == "completed") "مكتملة" else "مستمرة"}", color = MslDesignTokens.accentBright, modifier = Modifier.padding(vertical = 8.dp))
-        Text(novel.description.ifBlank { "لا يوجد وصف للرواية." }, color = MslDesignTokens.textPrimary, lineHeight = 24.sp)
-        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { chapters.firstOrNull()?.let(onRead) }, enabled = chapters.isNotEmpty(), modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text("ابدأ القراءة") }
-            OutlinedButton(onClick = { saved = !saved; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLibrary(context, novel.id, saved) } } }) { Text(if (saved) "في المكتبة" else "المكتبة") }
-            OutlinedButton(onClick = { liked = !liked; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLike(context, novel.id, liked) } } }) { Text(if (liked) "♥" else "♡") }
+    PdfPage("عنوان الرواية", onBack) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(88.dp, 122.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFF5A4028)), contentAlignment = Alignment.Center) { Text("▣", color = Color.White, fontSize = 28.sp) }
+            Column(Modifier.weight(1f)) { Text(novel.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("اسم المؤلف", color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(vertical = 6.dp)); Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { PdfTag(categoryLabel(novel.category)); PdfTag(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة") }; Spacer(Modifier.height(8.dp)); PdfButton("＋ متابعة المؤلف", {}, compact = true) }
         }
-        if (novel.authorId == MslSupabase.uid(context)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEdit) { Text("تعديل") }
-                OutlinedButton(onClick = onNewChapter) { Text("+ فصل") }
-                if (novel.status != "published") {
-                    Button(onClick = { scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.setNovelStatus(context, novel.id, "published") }; onRefresh() } }, colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text("نشر") }
-                }
-            }
-        }
-        Text("الفصول المنشورة (${chapters.count { it.status == "published" }})", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp))
-        LazyColumn { items(chapters.filter { it.status == "published" }, key = { it.id }) { chapter -> ListItem(headlineContent = { Text("${chapter.number}. ${chapter.title}", color = MslDesignTokens.textPrimary) }, supportingContent = { Text("اضغط للقراءة", color = MslDesignTokens.textMuted) }, modifier = Modifier.clickable { onRead(chapter) }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) } }
+        HorizontalDivider(color = PdfLine, modifier = Modifier.padding(vertical = 10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { PdfStat("فصل", "${chapters.size}"); PdfStat("قراءة", "${novel.viewCount}"); PdfStat("إعجاب", "${novel.likeCount}"); PdfStat("تقييم", "—") }
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { PdfButton("♡", { liked = !liked; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLike(context, novel.id, liked) } } }, modifier = Modifier.width(40.dp), compact = true); PdfButton("▱", { saved = !saved; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLibrary(context, novel.id, saved) } } }, modifier = Modifier.width(40.dp), compact = true); PdfButton("ابدأ القراءة", { chapters.firstOrNull()?.let(onRead) }, true, Modifier.weight(1f)) }
+        Text(novel.description.ifBlank { "وصف الرواية الكامل يظهر هنا، ويمكن توسيعه بزر «المزيد» لقراءة الملخص كاملًا." }, color = Color.White, fontSize = 12.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text("المزيد", color = PdfPurpleSoft, fontSize = 11.sp, modifier = Modifier.padding(vertical = 5.dp))
+        Text("آخر تحديث: ٠٠/٠٠/٠٠٠٠", color = PdfMuted, fontSize = 10.sp)
+        if (novel.authorId == MslSupabase.uid(context)) { Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.End) { PdfButton("تعديل", onEdit, compact = true); Spacer(Modifier.width(6.dp)); PdfButton("＋ فصل", onNewChapter, compact = true); if (novel.status != "published") { Spacer(Modifier.width(6.dp)); PdfButton("نشر", { scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.setNovelStatus(context, novel.id, "published") }; onRefresh() } }, true, compact = true) } } }
+        Text("الفصول المنشورة (${chapters.count { it.status == "published" }})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(vertical = 8.dp))
+        LazyColumn { itemsIndexed(chapters.filter { it.status == "published" }, key = { _, c -> c.id }) { _, chapter -> Row(Modifier.fillMaxWidth().clickable { onRead(chapter) }.padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) { Text("${chapter.number}", color = PdfMuted, fontSize = 12.sp, modifier = Modifier.width(25.dp)); Text(chapter.title, color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f)); Text("٠٠/٠٠", color = PdfMuted, fontSize = 9.sp) }; HorizontalDivider(color = PdfLine) } }
     }
 }
+
+@Composable private fun PdfStat(label: String, value: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, color = Color.White, fontSize = 15.sp); Text(label, color = PdfMuted, fontSize = 10.sp) } }
 
 @Composable private fun CommunityReader(novel: CommunityNovelApi.Novel, initial: CommunityNovelApi.Chapter?, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var chapters by remember { mutableStateOf(emptyList<CommunityNovelApi.Chapter>()) }
     var index by remember { mutableIntStateOf(0) }
-    var fontSize by remember { mutableFloatStateOf(19f) }
+    var fontSize by remember { mutableFloatStateOf(20f) }
     LaunchedEffect(novel.id) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id) }; index = chapters.indexOfFirst { it.id == initial?.id }.coerceAtLeast(0) }
     val chapter = chapters.getOrNull(index)
-    CommunityShell(chapter?.title ?: "القارئ", onBack) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(28f) }) { Text("تكبير") }; TextButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(14f) }) { Text("تصغير") } }
-        if (chapter == null) CircularProgressIndicator() else {
-            Text("${novel.title}  •  الفصل ${chapter.number}", color = MslDesignTokens.accentBright, fontSize = 13.sp)
-            Text(chapter.content, color = MslDesignTokens.textPrimary, fontSize = fontSize.sp, lineHeight = (fontSize * 1.75f).sp, modifier = Modifier.padding(vertical = 18.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { TextButton(enabled = index > 0, onClick = { index--; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } }) { Text("السابق") }; TextButton(enabled = index < chapters.lastIndex, onClick = { index++; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } }) { Text("التالي") } }
+    PdfPage(chapter?.title ?: "عنوان الرواية", onBack) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Aa", color = PdfPurpleSoft, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { fontSize = (fontSize + 1).coerceAtMost(30f) }); Text("${novel.title}\nالفصل ${chapter?.number ?: "٠٠"}", color = PdfMuted, fontSize = 10.sp, textAlign = TextAlign.Center); Text("☷", color = PdfPurpleSoft, fontSize = 20.sp) }
+        HorizontalDivider(color = PdfLine, modifier = Modifier.padding(vertical = 8.dp))
+        if (chapter == null) CircularProgressIndicator(color = PdfPurpleSoft) else {
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 12.dp)) { item { Text(chapter.title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp)); Text("اسم المؤلف", color = PdfMuted, fontSize = 12.sp); Text(chapter.content, color = Color.White, fontSize = fontSize.sp, lineHeight = (fontSize * 1.8f).sp, modifier = Modifier.padding(top = 25.dp)) } }
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { PdfButton("‹ السابق", { if (index > 0) { index--; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, modifier = Modifier.weight(1f), compact = true); PdfButton("♡", {}, compact = true); PdfButton("التالي ›", { if (index < chapters.lastIndex) { index++; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, primary = true, modifier = Modifier.weight(1f), compact = true) }
         }
     }
 }
@@ -183,16 +185,22 @@ fun CommunityNovelsScreen() {
     var description by remember { mutableStateOf(initial?.description.orEmpty()) }
     var category by remember { mutableStateOf(initial?.category ?: "fantasy") }
     var message by remember { mutableStateOf<String?>(null) }
-    CommunityShell(if (initial == null) "إنشاء رواية" else "تعديل الرواية", onBack) {
-        OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("عنوان الرواية *") }, singleLine = true)
-        OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth().height(150.dp).padding(top = 8.dp), label = { Text("الوصف") })
-        Text("التصنيف", color = MslDesignTokens.textSecondary, modifier = Modifier.padding(top = 12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) { listOf("fantasy" to "فانتازيا", "romance" to "رومانسية", "action" to "أكشن", "mystery" to "غموض").forEach { (v, l) -> FilterChip(category == v, { category = v }, label = { Text(l) }) } }
-        message?.let { Text(it, color = MslDesignTokens.warning, modifier = Modifier.padding(8.dp)) }
-        Button(onClick = { if (title.isBlank()) message = "اكتب عنوان الرواية أولًا" else scope.launch { val result = withContext(Dispatchers.IO) { CommunityNovelApi.saveNovel(context, initial, title, description, category, "ar", initial?.completionStatus ?: "ongoing") }; result.fold(onSaved) { message = it.message } } }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text("حفظ المسودة") }
-        if (initial != null) Text("يمكن نشر الرواية من صفحة التفاصيل بعد إضافة فصل منشور.", color = MslDesignTokens.textMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+    PdfPage("إنشاء رواية", onBack) {
+        Text("مسودة لم يتم الحفظ", color = PdfMuted, fontSize = 10.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Box(Modifier.size(76.dp, 96.dp).clip(RoundedCornerShape(8.dp)).background(PdfSurface2), contentAlignment = Alignment.Center) { Text("▣", color = PdfPurpleSoft, fontSize = 25.sp) }; Spacer(Modifier.width(8.dp)); PdfButton("اختيار غلاف", {}, compact = true) }
+        PdfInput(title, { title = it }, "عنوان الرواية *", "اكتب عنوان الرواية")
+        PdfInput(description, { description = it }, "الوصف *", "ملخص الرواية الذي سيظهر للقراء", 100)
+        Text("التصنيف الأساسي *", color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) { listOf("fantasy" to "فانتازيا", "romance" to "رومانسية", "action" to "أكشن", "mystery" to "غموض").forEach { (v, l) -> FilterChip(category == v, { category = v }, label = { Text(l, fontSize = 10.sp) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PdfPurple, containerColor = PdfSurface, labelColor = Color.White, selectedLabelColor = Color.White)) } }
+        Text("اللغة", color = PdfMuted, fontSize = 11.sp); PdfInput("العربية", {}, "", "", 48)
+        Text("حالة الرواية", color = PdfMuted, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { PdfButton("مستمرة", {}, true, compact = true); PdfButton("مكتملة", {}, compact = true) }
+        Text("إشعار المحتوى", color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)); PdfInput("مناسب لجميع الأعمار", {}, "", "", 48)
+        message?.let { Text(it, color = Color(0xFFFFC857), fontSize = 11.sp) }
+        Spacer(Modifier.weight(1f)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) { PdfButton("حفظ كمسودة", { if (title.isBlank()) message = "اكتب عنوان الرواية أولًا" else scope.launch { val r = withContext(Dispatchers.IO) { CommunityNovelApi.saveNovel(context, initial, title, description, category, "ar", initial?.completionStatus ?: "ongoing") }; r.fold(onSaved) { message = it.message } } }, modifier = Modifier.weight(1f)); PdfButton("حفظ وإضافة فصل", { if (title.isBlank()) message = "اكتب عنوان الرواية أولًا" else scope.launch { val r = withContext(Dispatchers.IO) { CommunityNovelApi.saveNovel(context, initial, title, description, category, "ar", initial?.completionStatus ?: "ongoing") }; r.fold(onSaved) { message = it.message } } }, true, modifier = Modifier.weight(1f)) }
     }
 }
+
+@Composable private fun PdfInput(value: String, onValueChange: (String) -> Unit, label: String, placeholder: String, height: Int = 52) { OutlinedTextField(value, onValueChange, modifier = Modifier.fillMaxWidth().height(height.dp).padding(top = 6.dp), label = if (label.isBlank()) null else ({ Text(label, fontSize = 10.sp) }), placeholder = { Text(placeholder, color = PdfMuted, fontSize = 11.sp) }, textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 12.sp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = PdfLine, focusedBorderColor = PdfPurple, unfocusedContainerColor = PdfSurface, focusedContainerColor = PdfSurface)) }
 
 @Composable private fun CommunityChapterEditor(novel: CommunityNovelApi.Novel, initial: CommunityNovelApi.Chapter?, onBack: () -> Unit, onSaved: () -> Unit) {
     val context = LocalContext.current
@@ -201,21 +209,15 @@ fun CommunityNovelsScreen() {
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
     var content by remember { mutableStateOf(initial?.content.orEmpty()) }
     var message by remember { mutableStateOf<String?>(null) }
-    CommunityShell(if (initial == null) "إضافة فصل" else "تعديل الفصل", onBack) {
-        OutlinedTextField(number, { number = it.filter(Char::isDigit) }, label = { Text("رقم الفصل") }, singleLine = true)
-        OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), label = { Text("عنوان الفصل") }, singleLine = true)
-        OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp), label = { Text("محتوى الفصل") })
-        message?.let { Text(it, color = MslDesignTokens.warning) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { saveChapter(context, scope, novel, initial, number, title, content, false, { message = it }, onSaved) }, modifier = Modifier.weight(1f)) { Text("حفظ مسودة") }
-            Button(onClick = { saveChapter(context, scope, novel, initial, number, title, content, true, { message = it }, onSaved) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) { Text("نشر") }
-        }
+    PdfPage("عنوان الرواية", onBack) {
+        Text("الفصل ${number.ifBlank { "٠٠" }}", color = PdfMuted, fontSize = 11.sp)
+        PdfInput(number, { number = it.filter(Char::isDigit) }, "رقم الفصل", "٠٠", 50)
+        PdfInput(title, { title = it }, "عنوان الفصل", "عنوان الفصل", 58)
+        OutlinedTextField(content, { content = it }, modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp), placeholder = { Text("ابدأ كتابة فصلك هنا...", color = PdfMuted) }, textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 17.sp, lineHeight = 30.sp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, focusedBorderColor = PdfPurple, unfocusedContainerColor = PdfBg, focusedContainerColor = PdfBg))
+        message?.let { Text(it, color = Color(0xFFFFC857), fontSize = 11.sp) }
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) { PdfButton("حفظ كمسودة", { saveChapter(context, scope, novel, initial, number, title, content, false, { message = it }, onSaved) }, modifier = Modifier.weight(1f)); PdfButton("معاينة", {}, modifier = Modifier.weight(1f)); PdfButton("نشر", { saveChapter(context, scope, novel, initial, number, title, content, true, { message = it }, onSaved) }, true, modifier = Modifier.weight(1f)) }
     }
 }
 
-private fun saveChapter(context: android.content.Context, scope: kotlinx.coroutines.CoroutineScope, novel: CommunityNovelApi.Novel, initial: CommunityNovelApi.Chapter?, number: String, title: String, content: String, publish: Boolean, onError: (String) -> Unit, onSaved: () -> Unit) {
-    if (title.isBlank() || content.isBlank()) { onError("العنوان والمحتوى مطلوبان"); return }
-    scope.launch { val result = withContext(Dispatchers.IO) { CommunityNovelApi.saveChapter(context, novel.id, initial, number.toIntOrNull() ?: 1, title, content, publish) }; result.fold({ onSaved() }) { onError(it.message ?: "تعذر الحفظ") } }
-}
-
+private fun saveChapter(context: android.content.Context, scope: kotlinx.coroutines.CoroutineScope, novel: CommunityNovelApi.Novel, initial: CommunityNovelApi.Chapter?, number: String, title: String, content: String, publish: Boolean, onError: (String) -> Unit, onSaved: () -> Unit) { if (title.isBlank() || content.isBlank()) { onError("العنوان والمحتوى مطلوبان"); return }; scope.launch { val result = withContext(Dispatchers.IO) { CommunityNovelApi.saveChapter(context, novel.id, initial, number.toIntOrNull() ?: 1, title, content, publish) }; result.fold({ onSaved() }) { onError(it.message ?: "تعذر الحفظ") } } }
 private fun categoryLabel(value: String): String = mapOf("fantasy" to "فانتازيا", "romance" to "رومانسية", "action" to "أكشن", "adventure" to "مغامرة", "mystery" to "غموض", "horror" to "رعب", "drama" to "دراما", "sci_fi" to "خيال علمي", "comedy" to "كوميديا", "historical" to "تاريخي")[value] ?: "أخرى"
