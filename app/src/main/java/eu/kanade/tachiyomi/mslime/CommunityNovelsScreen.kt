@@ -2,7 +2,7 @@
 package eu.kanade.tachiyomi.mslime
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -110,7 +110,7 @@ fun CommunityNovelsScreen() {
 }
 
 @Composable private fun FeaturedCard(novel: CommunityNovelApi.Novel, onOpen: (CommunityNovelApi.Novel) -> Unit) {
-    Column(Modifier.weight(1f).clickable { onOpen(novel) }) {
+    Column(Modifier.width(84.dp).clickable { onOpen(novel) }) {
         Box(Modifier.fillMaxWidth().height(94.dp).clip(RoundedCornerShape(8.dp)).background(when (novel.category) { "fantasy" -> Color(0xFF3A3154); "romance" -> Color(0xFF2C594D); else -> Color(0xFF283A57) }), contentAlignment = Alignment.Center) { Text("▣", color = Color.White.copy(alpha = .8f), fontSize = 25.sp) }
         Text(novel.title.ifBlank { "عنوان الرواية" }, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 5.dp))
         Text("اسم المؤلف", color = PdfMuted, fontSize = 9.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
