@@ -12,6 +12,17 @@ object MslShop {
     private val _equippedFrameState = MutableStateFlow<String?>(null)
     val equippedFrameState = _equippedFrameState.asStateFlow()
 
+    /** Fits the avatar completely inside the transparent opening of each frame asset. */
+    fun frameAvatarFraction(frameId: String?): Float = when (frameId) {
+        "frame_dark", "frame_fire" -> 0.40f
+        "frame_ice" -> 0.41f
+        "frame_galaxy" -> 0.43f
+        "frame_king" -> 0.48f
+        "frame_samurai" -> 0.46f
+        null, "" -> 1f
+        else -> 0.40f
+    }
+
     private fun requestPrefs(context: Context) =
         context.getSharedPreferences("msl_shop_requests", Context.MODE_PRIVATE)
 

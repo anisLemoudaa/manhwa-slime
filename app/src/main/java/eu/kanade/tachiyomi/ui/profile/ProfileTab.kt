@@ -88,6 +88,7 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslShop
 import eu.kanade.tachiyomi.mslime.MslShopScreen
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
@@ -798,12 +799,20 @@ data object ProfileTab : Tab {
                             tint = MslDesignTokens.textPrimary,
                         )
                     }
+                    val frameResource = remember(equippedFrameId) {
+                        equippedFrameId?.let {
+                            ctx.resources.getIdentifier(it, "drawable", ctx.packageName)
+                        } ?: 0
+                    }
+                    val avatarFraction =
+                        if (frameResource != 0) MslShop.frameAvatarFraction(equippedFrameId) else 1f
+                    val avatarContainerSize = if (frameResource != 0) 144.dp else 118.dp
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(start = 16.dp)
                             .offset(y = 54.dp)
-                            .size(118.dp)
+                            .size(avatarContainerSize)
                             .border(
                                 3.dp,
                                 Brush.sweepGradient(
@@ -823,9 +832,8 @@ data object ProfileTab : Tab {
                     ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .fillMaxSize(avatarFraction)
                                 .clip(CircleShape)
-                                .border(3.dp, MslDesignTokens.accent, CircleShape)
                                 .background(MslDesignTokens.backgroundRaised, CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -840,14 +848,9 @@ data object ProfileTab : Tab {
                                 Image(
                                     painter = painterResource(R.drawable.ic_mihon),
                                     contentDescription = null,
-                                    modifier = Modifier.size(56.dp),
+                                    modifier = Modifier.size(if (frameResource != 0) 30.dp else 56.dp),
                                 )
                             }
-                        }
-                        val frameResource = remember(equippedFrameId) {
-                            equippedFrameId?.let {
-                                ctx.resources.getIdentifier(it, "drawable", ctx.packageName)
-                            } ?: 0
                         }
                         if (frameResource != 0) {
                             Image(
