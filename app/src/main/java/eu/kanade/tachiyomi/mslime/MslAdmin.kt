@@ -51,12 +51,22 @@ object MslAdmin {
         val createdAt: String,
     )
 
+    data class AuditEntry(
+        val action: String,
+        val targetType: String,
+        val targetId: String,
+        val reason: String?,
+        val createdAt: String,
+    )
+
     data class Snapshot(
         val role: String?,
         val canViewReports: Boolean,
         val canModerate: Boolean,
         val canResolve: Boolean,
         val reports: List<Report>?,
+        val canViewAudit: Boolean,
+        val auditEntries: List<AuditEntry>?,
     )
 
     fun role(context: android.content.Context): String? = runCatching {
@@ -97,6 +107,28 @@ object MslAdmin {
                 reason = row.optString("reason", "other"),
                 description = row.optString("description"),
                 status = row.optString("status", "open"),
+                createdAt = row.optString("created_at"),
+            )
+        }
+    }.getOrNull()
+
+    fun auditEntries(context: android.content.Context): List<AuditEntry>? = runCatching {
+        val token = MslSupabase.token(context) ?: return null
+        val response = MslSupabase.call(
+            "POST",
+            "/rest/v1/rpc/get_admin_audit_logs",
+            JSONObject().put("p_limit", 50).put("p_offset", 0).toString(),
+            token,
+        )
+        if (response.first !in 200..299) return null
+        val rows = JSONArray(response.second)
+        List(rows.length()) { i ->
+            val row = rows.getJSONObject(i)
+            AuditEntry(
+                action = row.optString("action"),
+                targetType = row.optString("target_type"),
+                targetId = row.optString("target_id"),
+                reason = row.optString("reason").takeUnless { it.isBlank() || it == "null" },
                 createdAt = row.optString("created_at"),
             )
         }
@@ -146,6 +178,8 @@ class MslAdminScreen : Screen() {
         var canModerate by remember { mutableStateOf(false) }
         var canResolve by remember { mutableStateOf(false) }
         var reports by remember { mutableStateOf<List<MslAdmin.Report>?>(null) }
+        var canViewAudit by remember { mutableStateOf(false) }
+        var auditEntries by remember { mutableStateOf<List<MslAdmin.AuditEntry>?>(null) }
         var loading by remember { mutableStateOf(true) }
         var busyId by remember { mutableStateOf<String?>(null) }
         var error by remember { mutableStateOf(false) }
@@ -161,13 +195,17 @@ class MslAdminScreen : Screen() {
                 val moderate = MslAdmin.hasPermission(context, "moderate_comments")
                 val resolve = MslAdmin.hasPermission(context, "resolve_reports")
                 val list = if (viewReports) MslAdmin.reports(context) else emptyList()
-                MslAdmin.Snapshot(currentRole, viewReports, moderate, resolve, list)
+                val viewAudit = MslAdmin.hasPermission(context, "view_audit_logs")
+                val audit = if (viewAudit) MslAdmin.auditEntries(context) else emptyList()
+                MslAdmin.Snapshot(currentRole, viewReports, moderate, resolve, list, viewAudit, audit)
             }
             role = result.role
             canViewReports = result.canViewReports
             canModerate = result.canModerate
             canResolve = result.canResolve
             reports = result.reports
+            canViewAudit = result.canViewAudit
+            auditEntries = result.auditEntries
             error = canViewReports && reports == null
             loading = false
         }
@@ -203,7 +241,7 @@ class MslAdminScreen : Screen() {
                     "لا تملك صلاحية الوصول إلى لوحة الإدارة.",
                     color = MslDesignTokens.textSecondary,
                 )
-                !canViewReports -> Text(
+                !canViewReports && !canViewAudit -> Text(
                     "لا توجد أقسام مفعلة لهذا الدور حالياً.",
                     color = MslDesignTokens.textSecondary,
                 )
@@ -214,10 +252,6 @@ class MslAdminScreen : Screen() {
                     )
                     Button(onClick = { refresh++ }) { Text("إعادة المحاولة") }
                 }
-                reports.isNullOrEmpty() -> Text(
-                    "لا توجد بلاغات مفتوحة حالياً.",
-                    color = MslDesignTokens.textSecondary,
-                )
                 else -> LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -229,6 +263,9 @@ class MslAdminScreen : Screen() {
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleMedium,
                         )
+                    }
+                    if (reports.isNullOrEmpty()) {
+                        item { Text("لا توجد بلاغات مفتوحة حالياً.", color = MslDesignTokens.textSecondary) }
                     }
                     items(reports.orEmpty(), key = { it.id }) { report ->
                         var reason by remember(report.id) { mutableStateOf("") }
@@ -315,6 +352,36 @@ class MslAdminScreen : Screen() {
                                             }
                                         },
                                     ) { Text("تجاهل البلاغ") }
+                                }
+                            }
+                        }
+                    }
+                    if (canViewAudit) {
+                        item {
+                            Text(
+                                "سجل التدقيق",
+                                color = MslDesignTokens.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        if (auditEntries == null) {
+                            item { Text("تعذّر تحميل سجل التدقيق.", color = MaterialTheme.colorScheme.error) }
+                        } else if (auditEntries.isNullOrEmpty()) {
+                            item { Text("لا توجد إجراءات مسجلة بعد.", color = MslDesignTokens.textSecondary) }
+                        } else {
+                            items(auditEntries.orEmpty()) { entry ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MslDesignTokens.surface,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("${entry.action} • ${entry.targetType}", color = MslDesignTokens.textPrimary)
+                                        Text("المعرف: ${entry.targetId}", color = MslDesignTokens.textSecondary)
+                                        entry.reason?.let { Text("السبب: $it", color = MslDesignTokens.textSecondary) }
+                                        Text(entry.createdAt, color = MslDesignTokens.textMuted, style = MaterialTheme.typography.bodySmall)
+                                    }
                                 }
                             }
                         }
