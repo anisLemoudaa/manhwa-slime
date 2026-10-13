@@ -84,6 +84,12 @@ object MslFollowGraph {
         val rank: String,
     )
 
+    data class FavoriteItem(val title: String, val cover: String?)
+
+    data class ReadingStats(val titlesViewed: Int, val activeDays: Int, val ratingsCount: Int)
+
+    data class PublicComment(val body: String, val titleKey: String, val isSpoiler: Boolean)
+
     enum class ListKind(val label: String, val rpc: String) {
         FOLLOWERS("المتابعون", "list_followers"),
         FOLLOWING("المتابَعون", "list_following"),
@@ -170,6 +176,71 @@ object MslFollowGraph {
         }.getOrNull()
     }
 
+    fun favorites(ctx: android.content.Context, userId: String, itemType: String): Pair<Boolean, List<FavoriteItem>>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_favorites",
+                JSONObject().put("p_user_id", userId).put("p_item_type", itemType)
+                    .put("p_limit", 20).put("p_offset", 0).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val json = JSONObject(result.second)
+            val rows = json.optJSONArray("items") ?: JSONArray()
+            val items = List(rows.length()) { i ->
+                val row = rows.getJSONObject(i)
+                FavoriteItem(
+                    row.optString("title", "مانهوا"),
+                    row.optString("cover").takeUnless { it.isBlank() || it == "null" },
+                )
+            }
+            json.optBoolean("allowed") to items
+        }.getOrNull()
+    }
+
+    fun readingStats(ctx: android.content.Context, userId: String): Pair<Boolean, ReadingStats?>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_reading_stats",
+                JSONObject().put("p_user_id", userId).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val json = JSONObject(result.second)
+            if (!json.optBoolean("allowed")) {
+                false to null
+            } else {
+                true to ReadingStats(
+                    json.optInt("titles_viewed"),
+                    json.optInt("active_days"),
+                    json.optInt("ratings_count"),
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun comments(ctx: android.content.Context, userId: String): Pair<Boolean, List<PublicComment>>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_user_comments",
+                JSONObject().put("p_user_id", userId).put("p_limit", 10).put("p_offset", 0).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val rows = JSONArray(result.second)
+            true to List(rows.length()) { i ->
+                val row = rows.getJSONObject(i)
+                PublicComment(row.optString("body"), row.optString("title_key"), row.optBoolean("is_spoiler"))
+            }
+        }.getOrNull()
+    }
+
     fun follow(ctx: android.content.Context, userId: String): String? = changeFollow(ctx, userId, "follow_user")
 
     fun unfollow(ctx: android.content.Context, userId: String): String? = changeFollow(ctx, userId, "unfollow_user")
@@ -249,6 +320,10 @@ private fun MslSocialProfileContent(
     var message by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
     var resumed by remember { mutableIntStateOf(0) }
+    var mangaFavorites by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?>(null) }
+    var novelFavorites by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?>(null) }
+    var readingStats by remember(userId) { mutableStateOf<Pair<Boolean, MslFollowGraph.ReadingStats?>?>(null) }
+    var publicComments by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.PublicComment>>?>(null) }
     val socialRevision by MslFollowGraph.revision.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
@@ -263,6 +338,26 @@ private fun MslSocialProfileContent(
         loading = true
         profile = withContext(Dispatchers.IO) { MslFollowGraph.profile(context, userId) }
         loading = false
+    }
+
+    LaunchedEffect(userId, profile, refresh, resumed) {
+        if (profile == null) return@LaunchedEffect
+        val content = withContext(Dispatchers.IO) {
+            listOf(
+                MslFollowGraph.favorites(context, userId, "manga"),
+                MslFollowGraph.favorites(context, userId, "novel"),
+                MslFollowGraph.readingStats(context, userId),
+                MslFollowGraph.comments(context, userId),
+            )
+        }
+        @Suppress("UNCHECKED_CAST")
+        mangaFavorites = content[0] as Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?
+        @Suppress("UNCHECKED_CAST")
+        novelFavorites = content[1] as Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?
+        @Suppress("UNCHECKED_CAST")
+        readingStats = content[2] as Pair<Boolean, MslFollowGraph.ReadingStats?>?
+        @Suppress("UNCHECKED_CAST")
+        publicComments = content[3] as Pair<Boolean, List<MslFollowGraph.PublicComment>>?
     }
 
     val isMe = userId == MslSupabase.uid(context)
@@ -375,6 +470,47 @@ private fun MslSocialProfileContent(
                 "هذا ملفك الشخصي العام. البريد الإلكتروني وسجل المشاهدة لا يظهران للعامة.",
                 color = MslDesignTokens.textSecondary,
             )
+        }
+        ProfileContentSection("مانهوا مفضلة", mangaFavorites)
+        ProfileContentSection("روايات مفضلة", novelFavorites)
+        readingStats?.let { (allowed, stats) ->
+            Text("إحصائيات القراءة", fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+            Text(
+                if (!allowed || stats == null) "الإحصائيات خاصة" else
+                    "${stats.titlesViewed} عنواناً • ${stats.activeDays} أيام نشاط • ${stats.ratingsCount} تقييماً",
+                color = MslDesignTokens.textSecondary,
+            )
+        }
+        publicComments?.let { (allowed, comments) ->
+            Text("تعليقات عامة", fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+            when {
+                !allowed -> Text("التعليقات خاصة", color = MslDesignTokens.textSecondary)
+                comments.isEmpty() -> Text("لا توجد تعليقات عامة لعرضها.", color = MslDesignTokens.textSecondary)
+                else -> comments.forEach { comment ->
+                    Text(
+                        if (comment.isSpoiler) "تنبيه حرق: افتح التعليقات لقراءة المحتوى" else comment.body,
+                        color = MslDesignTokens.textSecondary,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileContentSection(
+    title: String,
+    content: Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?,
+) {
+    content?.let { (allowed, items) ->
+        Text(title, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+        when {
+            !allowed -> Text("هذه القائمة خاصة.", color = MslDesignTokens.textSecondary)
+            items.isEmpty() -> Text("لا توجد عناصر مفضلة للعرض.", color = MslDesignTokens.textSecondary)
+            else -> items.forEach { item ->
+                Text(item.title, color = MslDesignTokens.textSecondary, modifier = Modifier.padding(vertical = 3.dp))
+            }
         }
     }
 }

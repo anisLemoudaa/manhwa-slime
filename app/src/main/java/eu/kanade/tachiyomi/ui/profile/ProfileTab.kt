@@ -104,6 +104,8 @@ import kotlinx.coroutines.withContext
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.AttachMoney
 import mihon.icons.materialsymbols.rounded.Person
+import mihon.icons.materialsymbols.rounded.Search
+import mihon.icons.materialsymbols.rounded.Security
 import mihon.icons.materialsymbols.rounded.Settings
 import mihon.icons.materialsymbols.rounded.VerifiedUser
 import tachiyomi.domain.manga.model.MangaCover
