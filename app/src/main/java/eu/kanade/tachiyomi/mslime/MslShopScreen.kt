@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -647,19 +648,23 @@ private fun FramePreview(item: MslShop.Item, modifier: Modifier = Modifier) {
     val resourceId = remember(item.assetRef) {
         item.assetRef?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
     }
-    Box(
+    BoxWithConstraints(
         modifier = modifier.clip(RoundedCornerShape(14.dp)).background(MslDesignTokens.backgroundRaised),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier.size(62.dp).clip(CircleShape).background(MslDesignTokens.surfaceHighest),
-            contentAlignment = Alignment.Center,
-        ) { Text("人", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.headlineMedium) }
         if (resourceId != 0) {
+            val frameSize = minOf(maxWidth, maxHeight)
+            val avatarSize = frameSize * MslShop.frameAvatarFraction(item.assetRef)
+            Box(
+                modifier = Modifier.size(avatarSize).clip(CircleShape).background(MslDesignTokens.surfaceHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("人", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.titleLarge)
+            }
             Image(
                 painter = painterResource(resourceId),
                 contentDescription = "معاينة ${item.name}",
-                modifier = Modifier.fillMaxSize().padding(2.dp),
+                modifier = Modifier.size(frameSize),
                 contentScale = ContentScale.Fit,
             )
         } else {

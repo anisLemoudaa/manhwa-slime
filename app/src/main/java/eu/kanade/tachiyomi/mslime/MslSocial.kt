@@ -651,13 +651,14 @@ internal fun MslSocialAvatar(
     val frameResource = remember(frameId) {
         frameId?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
     }
+    val avatarFraction = if (frameResource != 0) MslShop.frameAvatarFraction(frameId) else 1f
     val color = Color(0xFF6452C8)
     Box(
         modifier = Modifier.size(size),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().clip(CircleShape).background(color),
+            modifier = Modifier.fillMaxSize(avatarFraction).clip(CircleShape).background(color),
             contentAlignment = Alignment.Center,
         ) {
             var bitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
