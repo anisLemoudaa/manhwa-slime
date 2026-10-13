@@ -3,9 +3,16 @@ name: Build Manhwa Slime
 on:
   push:
     branches: [main, ui-refresh, redesign/reference-image]
+    tags: ["v*"]
   pull_request:
     branches: [main, ui-refresh, redesign/reference-image]
   workflow_dispatch:
+    inputs:
+      build_release:
+        description: Build a signed Release APK (requires the repository signing secrets)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,9 +22,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-debug:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -28,9 +36,70 @@ jobs:
       - name: Install Android SDK 37.2
         run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
       - uses: gradle/actions/setup-gradle@v6
-      - name: Build Debug and Release APKs
-        run: chmod +x gradlew && ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+      - name: Build Debug APK
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
       - uses: actions/upload-artifact@v7
-        with: { name: ManhwaSlime, if-no-files-found: error, path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk }
+        with:
+          name: ManhwaSlime-debug
+          if-no-files-found: error
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+
+  build-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_release) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: .github/.java-version
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 37.2
+        run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Validate and restore release keystore
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_RELEASE_KEYSTORE_BASE64 ANDROID_RELEASE_KEYSTORE_PASSWORD ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required repository secret: ${name}"
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/manhwa-slime-release.jks"
+          test -s "$RUNNER_TEMP/manhwa-slime-release.jks"
+          chmod 600 "$RUNNER_TEMP/manhwa-slime-release.jks"
+      - name: Build signed Release APKs
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/manhwa-slime-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
+      - name: Verify APK signatures
+        run: |
+          set -euo pipefail
+          apksigner="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          mapfile -t apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print)
+          if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "::error::No Release APKs were produced"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            "$apksigner" verify --verbose "$apk" >/dev/null
+          done
+          "$apksigner" verify --print-certs app/build/outputs/apk/release/app-universal-release.apk
       - uses: actions/upload-artifact@v7
-        with: { name: ManhwaSlime-release, if-no-files-found: error, path: app/build/outputs/apk/release/app-arm64-v8a-release.apk }
+        with:
+          name: ManhwaSlime-release-${{ github.run_number }}
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/release/app-universal-release.apk
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          retention-days: 30

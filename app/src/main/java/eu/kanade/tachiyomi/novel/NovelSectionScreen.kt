@@ -10,6 +10,7 @@ import android.content.ContextWrapper
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.GestureDetector
 import android.view.View
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,6 +28,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,8 +72,11 @@ private data class NovelUiState(
     val loading: Boolean = true,
     val query: String = "",
     val repoDialog: Boolean = false,
+    val sourcesDialog: Boolean = false,
     val repoUrl: String = "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
     val repoEntries: List<NovelRepositoryEntry> = emptyList(),
+    val sourceLanguageFilter: String = "all",
+    val catalogLoading: Boolean = false,
     val inputMode: NovelInputMode = NovelInputMode.REPOSITORY,
     val showFavorites: Boolean = false,
     val error: String? = null,
@@ -142,6 +149,19 @@ fun NovelSectionContent() {
 
     LaunchedEffect(Unit) { reload() }
 
+    val installEntry: (NovelRepositoryEntry) -> Unit = { entry ->
+        scope.launch {
+            val result = runCatching { manager.install(entry, state.repoUrl.trim()) }
+            if (result.isFailure) {
+                state = state.copy(error = result.exceptionOrNull()?.message)
+            } else {
+                val installed = result.getOrThrow()
+                state = state.copy(repoDialog = false, sourcesDialog = false, info = "تم تثبيت ${installed.name}")
+                reload(installed.id)
+            }
+        }
+    }
+
     NovelShell(
         state = state,
         favoriteKeys = favoriteKeys,
@@ -163,8 +183,20 @@ fun NovelSectionContent() {
         onToggleFavoriteFilter = {
             state = state.copy(showFavorites = !state.showFavorites)
         },
+        onShowSources = {
+            state = state.copy(sourcesDialog = true, sourceLanguageFilter = "all", catalogLoading = true, error = null, info = null)
+            scope.launch {
+                val result = runCatching { manager.loadRepository(state.repoUrl) }
+                state = state.copy(
+                    repoEntries = result.getOrDefault(emptyList()),
+                    catalogLoading = false,
+                    error = result.exceptionOrNull()?.message,
+                    info = result.getOrNull()?.let { "تم العثور على ${it.size} مصدرًا في الفهرس" },
+                )
+            }
+        },
         onSearch = { q ->
-            state = state.copy(query = q, info = null)
+            state = state.copy(query = q, info = null, loading = q.isNotBlank())
             searchJob?.cancel()
 
             val query = q.trim()
@@ -188,11 +220,13 @@ fun NovelSectionContent() {
 
                     // Do not let stale results overwrite a newer query.
                     if (state.query.trim() == query) {
-                        state = state.copy(novels = results, error = null)
+                        state = state.copy(novels = results, loading = false, error = null)
                     }
                 }
             } else if (query.isEmpty()) {
                 reload()
+            } else {
+                state = state.copy(loading = false, novels = emptyList(), error = "ثبّت مصدرًا واحدًا على الأقل لاستخدام البحث الشامل.")
             }
         },
         onSelectSource = { sid ->
@@ -204,17 +238,7 @@ fun NovelSectionContent() {
             state = state.copy(inputMode = it, repoEntries = emptyList(), error = null, info = null)
         },
         onRepoUrlChange = { state = state.copy(repoUrl = it, error = null, info = null) },
-        onInstall = { entry ->
-            scope.launch {
-                val r = runCatching { manager.install(entry, state.repoUrl.trim()) }
-                if (r.isFailure) {
-                    state = state.copy(error = r.exceptionOrNull()?.message)
-                } else {
-                    state = state.copy(repoDialog = false, info = "تم تثبيت ${r.getOrThrow().name}")
-                    reload(r.getOrThrow().id)
-                }
-            }
-        },
+        onInstall = installEntry,
         onInstallDirect = {
             scope.launch {
                 val url = state.repoUrl.trim()
@@ -233,16 +257,41 @@ fun NovelSectionContent() {
         },
         onCloseRepo = { state = state.copy(repoDialog = false, error = null) },
         onLoadRepo = {
+            state = state.copy(catalogLoading = true)
             scope.launch {
                 val result = runCatching { manager.loadRepository(state.repoUrl) }
                 state = state.copy(
                     repoEntries = result.getOrDefault(emptyList()),
+                    catalogLoading = false,
                     error = result.exceptionOrNull()?.message,
                     info = result.getOrNull()?.let { "تم العثور على ${it.size} مصدرًا" },
                 )
             }
         },
     )
+    if (state.sourcesDialog) {
+        NovelSourcesCatalogDialog(
+            entries = state.repoEntries,
+            installedIds = state.sources.map { it.id }.toSet(),
+            languageFilter = state.sourceLanguageFilter,
+            loading = state.catalogLoading,
+            error = state.error,
+            onLanguageFilter = { state = state.copy(sourceLanguageFilter = it) },
+            onInstall = installEntry,
+            onReload = {
+                state = state.copy(catalogLoading = true, error = null)
+                scope.launch {
+                    val result = runCatching { manager.loadRepository(state.repoUrl) }
+                    state = state.copy(
+                        repoEntries = result.getOrDefault(emptyList()),
+                        catalogLoading = false,
+                        error = result.exceptionOrNull()?.message,
+                    )
+                }
+            },
+            onDismiss = { state = state.copy(sourcesDialog = false, error = null) },
+        )
+    }
 }
 
 @Composable
@@ -251,6 +300,7 @@ private fun NovelShell(
     favoriteKeys: Set<String>,
     onToggleFavorite: (NovelItem) -> Unit,
     onToggleFavoriteFilter: () -> Unit,
+    onShowSources: () -> Unit,
     onSearch: (String) -> Unit,
     onSelectSource: (String) -> Unit,
     onAddRepository: () -> Unit,
@@ -331,17 +381,57 @@ private fun NovelShell(
                     ),
                 )
 
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onShowSources),
+                    shape = MslDesignTokens.cardShape,
+                    colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+                    border = BorderStroke(1.dp, MslDesignTokens.border),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("مصادر الروايات", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
+                            Text(
+                                "${state.sources.size} مثبتة • فهرس LNReader",
+                                color = MslDesignTokens.textMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        TextButton(onClick = onShowSources) {
+                            Text("استعراض", color = MslDesignTokens.accentBright)
+                        }
+                    }
+                }
+                Text(
+                    "البحث الشامل يبحث تلقائيًا في جميع المصادر المثبتة (${state.sources.size}).",
+                    modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 8.dp),
+                    color = MslDesignTokens.textMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item {
                         AssistChip(
-                            onClick = onAddRepository,
-                            label = { Text("إضافة مصدر") },
+                            onClick = { onSearch(state.query) },
+                            label = { Text("بحث شامل") },
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = MslDesignTokens.accent,
                                 labelColor = MslDesignTokens.textPrimary,
+                            ),
+                            border = null,
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = onAddRepository,
+                            label = { Text("إضافة مستودع") },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MslDesignTokens.surfaceHighest,
+                                labelColor = MslDesignTokens.accentBright,
                             ),
                             border = null,
                         )
@@ -724,6 +814,10 @@ class NovelDetailsScreen(
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
         val favoritesStore = remember { NovelFavoritesStore(context) }
+        val readStore = remember { NovelReadStore(context) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val detailsScope = rememberCoroutineScope()
+        var readKeys by remember { mutableStateOf(emptySet<String>()) }
         var favoriteRevision by remember { mutableIntStateOf(0) }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
@@ -731,6 +825,16 @@ class NovelDetailsScreen(
             val r = runCatching { manager.details(sourceId, path) }
             details = r.getOrNull()
             error = r.exceptionOrNull()?.message
+        }
+        LaunchedEffect(readStore) { readKeys = withContext(Dispatchers.IO) { readStore.all() } }
+        DisposableEffect(lifecycleOwner, readStore) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    detailsScope.launch { readKeys = withContext(Dispatchers.IO) { readStore.all() } }
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
         val isFavorite = remember(favoriteRevision, details) {
             favoritesStore.contains(sourceId, path)
@@ -824,8 +928,9 @@ class NovelDetailsScreen(
                         }
                     }
                     itemsIndexed(d.chapters.orEmpty()) { index, chapter ->
-                        ListItem(
-                            modifier = Modifier.clickable {
+                        val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable {
                                 val reader = NovelReaderScreen(
                                     sourceId = sourceId,
                                     novelPath = d.path,
@@ -836,11 +941,31 @@ class NovelDetailsScreen(
                                 )
                                 navigator.push(reader)
                             },
-                            headlineContent = { Text(chapter.name) },
-                            supportingContent = {
-                                if (!chapter.releaseTime.isNullOrBlank()) Text(chapter.releaseTime!!)
-                            },
-                        )
+                            shape = MslDesignTokens.compactCardShape,
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isRead) MslDesignTokens.surfaceHighest else MslDesignTokens.surface,
+                            ),
+                            border = BorderStroke(1.dp, if (isRead) MslDesignTokens.accent.copy(alpha = 0.28f) else MslDesignTokens.border),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        chapter.name,
+                                        color = if (isRead) MslDesignTokens.textMuted else MslDesignTokens.textPrimary,
+                                        fontWeight = if (isRead) FontWeight.Normal else FontWeight.SemiBold,
+                                    )
+                                    chapter.releaseTime?.takeIf { it.isNotBlank() }?.let {
+                                        Text(it, color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                                if (isRead) {
+                                    Text("مقروء ✓", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -869,6 +994,7 @@ class NovelReaderScreen(
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
         val historyStore = remember { NovelHistoryStore(context) }
+        val readStore = remember { NovelReadStore(context) }
         val offlineStore = remember { NovelOfflineStore(context) }
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
@@ -883,7 +1009,13 @@ class NovelReaderScreen(
             mutableFloatStateOf(readerPrefs.getFloat("line_spacing", 2.05f).coerceIn(1.2f, 3f))
         }
         var fontFamily by remember {
-            mutableStateOf(readerPrefs.getString("font_family", "Noto Naskh Arabic") ?: "Noto Naskh Arabic")
+            mutableStateOf(readerPrefs.getString("font_family", "Amiri") ?: "Amiri")
+        }
+        var textAlignment by remember {
+            mutableStateOf(readerPrefs.getString("text_alignment", "right") ?: "right")
+        }
+        var readingMargin by remember {
+            mutableFloatStateOf(readerPrefs.getFloat("reading_margin", 20f).coerceIn(8f, 40f))
         }
         var showReaderSettings by remember { mutableStateOf(false) }
         var fullscreen by remember { mutableStateOf(false) }
@@ -915,6 +1047,7 @@ class NovelReaderScreen(
         }
 
         var html by remember { mutableStateOf<String?>(null) }
+        var readerWebView by remember { mutableStateOf<WebView?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         var loading by remember { mutableStateOf(true) }
         var offlineSaved by remember { mutableStateOf(false) }
@@ -968,9 +1101,17 @@ class NovelReaderScreen(
 
         val hasPrevious = currentIndex > 0
         val hasNext = currentIndex < chapters.lastIndex
+        var currentChapterMarkedRead by remember(currentIndex) { mutableStateOf(false) }
+        fun markCurrentChapterRead() {
+            if (currentChapterMarkedRead) return
+            val chapter = chapters.getOrNull(currentIndex) ?: return
+            currentChapterMarkedRead = true
+            scope.launch(Dispatchers.IO) { readStore.markRead(sourceId, novelPath, chapter.path) }
+        }
 
         Scaffold(
             topBar = {
+                if (!fullscreen) {
                 TopAppBar(
                     title = {
                         Column {
@@ -1078,7 +1219,7 @@ class NovelReaderScreen(
                             Text("Aa", fontWeight = FontWeight.Bold)
                         }
                         TextButton(onClick = {
-                            context.findActivity()?.let { MslTranslate.run(it) }
+                            context.findActivity()?.let { MslTranslate.runForView(it, readerWebView) }
                         }) {
                             Text("ع", fontWeight = FontWeight.Bold)
                         }
@@ -1087,9 +1228,11 @@ class NovelReaderScreen(
                         }
                     },
                 )
+                }
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             bottomBar = {
+                if (!fullscreen) {
                 Surface(
                     tonalElevation = 4.dp,
                 ) {
@@ -1117,12 +1260,20 @@ class NovelReaderScreen(
                             text = "${currentIndex + 1}/${chapters.size}",
                             fontWeight = FontWeight.Bold,
                         )
+                        TextButton(onClick = { markCurrentChapterRead() }) {
+                            Text(
+                                if (currentChapterMarkedRead) "مقروء ✓" else "تمت القراءة",
+                                color = if (currentChapterMarkedRead) MslDesignTokens.accentBright else MslDesignTokens.textMuted,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
 
                         Button(
                             modifier = Modifier.weight(1f),
                             enabled = hasNext && !loading && html != null,
                             onClick = {
                                 if (hasNext) {
+                                    markCurrentChapterRead()
                                     if (!offlineSaved) {
                                         val chapter = chapters.getOrNull(currentIndex)
                                         if (chapter != null) {
@@ -1142,6 +1293,7 @@ class NovelReaderScreen(
                             Text(stringResource(MR.strings.coin_reader_next))
                         }
                     }
+                }
                 }
             },
         ) { padding ->
@@ -1177,37 +1329,62 @@ class NovelReaderScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(padding),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                webViewClient = WebViewClient()
-                                settings.javaScriptEnabled = false
-                                settings.domStorageEnabled = false
-                                settings.cacheMode =
-                                    WebSettings.LOAD_DEFAULT
+                factory = { ctx ->
+                        WebView(ctx).apply {
+                            readerWebView = this
+                            webViewClient = WebViewClient()
+                        settings.javaScriptEnabled = false
+                        settings.domStorageEnabled = false
+                        settings.setSupportZoom(false)
+                        settings.builtInZoomControls = false
+                        settings.cacheMode =
+                            WebSettings.LOAD_DEFAULT
+                        val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+                            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                                fullscreen = !fullscreen
+                                return true
                             }
-                        },
-                        update = { webView ->
+                        })
+                        setOnTouchListener { _, event ->
+                            detector.onTouchEvent(event)
+                            false
+                        }
+                    }
+                },
+                update = { webView ->
                             val bg = if (dark) "#10131A" else "#F7F8FC"
                             val fg = if (dark) "#E7EAF2" else "#252A36"
-                            val accent = if (dark) "#A99BFF" else "#6652D9"
+                    val accent = if (dark) "#A99BFF" else "#6652D9"
+                    val cssFont = when (fontFamily) {
+                        "Amiri" -> "MslAmiri"
+                        "Tajawal" -> "MslTajawal"
+                        else -> "MslLalezar"
+                    }
+                    webView.setOnScrollChangeListener { view, _, scrollY, _, _ ->
+                        if (scrollY > 0 && !view.canScrollVertically(1) && !loading) markCurrentChapterRead()
+                    }
 
-                            val style = """
-                                <meta name="viewport" content="width=device-width, initial-scale=1">
-                                <style>
-                                * { box-sizing: border-box; }
-                                html { background: $bg; }
-                                body {
-                                    font-family: "$fontFamily", "Noto Sans Arabic", sans-serif;
-                                    font-size: ${fontSize}px;
-                                    line-height: $lineSpacing;
-                                    padding: 26px 16px 40px 28px;
-                                    margin: 0;
-                                    background: $bg;
-                                    color: $fg;
-                                    overflow-wrap: anywhere;
-                                    direction: rtl;
-                                    text-align: right;
-                                }
+                    val style = """
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <style>
+                        @font-face { font-family: 'MslAmiri'; src: url('fonts/Amiri-Regular.ttf'); }
+                        @font-face { font-family: 'MslTajawal'; src: url('fonts/msl_font_regular.ttf'); }
+                        @font-face { font-family: 'MslLalezar'; src: url('fonts/msl_font_display.ttf'); }
+                        * { box-sizing: border-box; }
+                        html { background: $bg; }
+                        body {
+                            font-family: "$cssFont", sans-serif !important;
+                            font-size: ${fontSize}px !important;
+                            line-height: $lineSpacing !important;
+                            padding: 26px ${readingMargin.toInt()}px 40px !important;
+                            margin: 0;
+                            background: $bg;
+                            color: $fg;
+                            overflow-wrap: anywhere;
+                            direction: rtl;
+                            text-align: $textAlignment !important;
+                        }
+                        body * { font-family: "$cssFont", sans-serif !important; }
                                 h1, h2, h3 {
                                     line-height: 1.65;
                                     color: $accent;
@@ -1231,13 +1408,30 @@ class NovelReaderScreen(
                                 </style>
                             """.trimIndent()
 
-                            webView.loadDataWithBaseURL(
-                                null,
-                                style + html.orEmpty(),
-                                "text/html",
-                                "UTF-8",
-                                null,
-                            )
+                    val sourceHtml = html.orEmpty()
+                    val finalHtml = when {
+                        sourceHtml.contains("</head>", ignoreCase = true) ->
+                            sourceHtml.replaceFirst(Regex("</head>", RegexOption.IGNORE_CASE), "$style</head>")
+                        sourceHtml.contains("<body", ignoreCase = true) -> {
+                            val openingBody = Regex("<body[^>]*>", RegexOption.IGNORE_CASE).find(sourceHtml)
+                            if (openingBody == null) "<html><head>$style</head><body>$sourceHtml</body></html>"
+                            else sourceHtml.replaceRange(openingBody.range, openingBody.value + style)
+                        }
+                        sourceHtml.contains("<html", ignoreCase = true) ->
+                            sourceHtml.replaceFirst(Regex("<html[^>]*>", RegexOption.IGNORE_CASE), "<html><head>$style</head>")
+                        else -> "<!doctype html><html><head>$style</head><body>$sourceHtml</body></html>"
+                    }
+                    val renderKey = "$currentIndex|$fontSize|$lineSpacing|$fontFamily|$textAlignment|$readingMargin|$dark"
+                    if (webView.tag != renderKey) {
+                        webView.tag = renderKey
+                        webView.loadDataWithBaseURL(
+                            "file:///android_asset/",
+                            finalHtml,
+                            "text/html",
+                            "UTF-8",
+                            null,
+                        )
+                    }
                         },
                     )
                 }
@@ -1281,7 +1475,7 @@ class NovelReaderScreen(
                                 steps = 17,
                             )
                             Text("نوع الخط")
-                            listOf("Noto Naskh Arabic", "Noto Sans Arabic", "Amiri", "serif", "sans-serif").forEach { family ->
+                            listOf("Amiri", "Tajawal", "Lalezar").forEach { family ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1303,6 +1497,29 @@ class NovelReaderScreen(
                                     Text(family)
                                 }
                             }
+                            Text("محاذاة النص")
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("right" to "يمين", "center" to "وسط", "left" to "يسار").forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = textAlignment == value,
+                                        onClick = {
+                                            textAlignment = value
+                                            readerPrefs.edit().putString("text_alignment", value).apply()
+                                        },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                            Text("هامش القراءة: ${readingMargin.toInt()} px")
+                            Slider(
+                                value = readingMargin,
+                                onValueChange = {
+                                    readingMargin = it
+                                    readerPrefs.edit().putFloat("reading_margin", it).apply()
+                                },
+                                valueRange = 8f..40f,
+                                steps = 7,
+                            )
                         }
                     },
                     confirmButton = {
@@ -1313,11 +1530,15 @@ class NovelReaderScreen(
                             onClick = {
                                 fontSize = 20f
                                 lineSpacing = 2.05f
-                                fontFamily = "Noto Naskh Arabic"
+                                fontFamily = "Amiri"
+                                textAlignment = "right"
+                                readingMargin = 20f
                                 readerPrefs.edit()
                                     .putFloat("font_size", fontSize)
                                     .putFloat("line_spacing", lineSpacing)
                                     .putString("font_family", fontFamily)
+                                    .putString("text_alignment", textAlignment)
+                                    .putFloat("reading_margin", readingMargin)
                                     .apply()
                             },
                         ) { Text("إعادة الضبط") }

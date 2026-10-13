@@ -1,6 +1,7 @@
 package eu.kanade.presentation.more.settings.widget
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.StartOffsetType
@@ -47,6 +48,7 @@ internal fun BasePreferenceWidget(
     val minHeight = LocalPreferenceMinHeight.current
     Row(
         modifier = modifier
+            .animateContentSize()
             .highlightBackground(highlighted)
             .sizeIn(minHeight = minHeight)
             .clickable(enabled = onClick != null, onClick = { onClick?.invoke() })

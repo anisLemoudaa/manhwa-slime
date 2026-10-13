@@ -52,6 +52,23 @@ val interstitialChapterInterval = providers.gradleProperty("interstitialChapterI
 val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
 val productionAdmobAppId = "ca-app-pub-8274010325120724~8234433334"
 val productionRewardedAdUnitId = "ca-app-pub-8274010325120724/5166910152"
+val releaseStoreFile = providers.gradleProperty("releaseStoreFile")
+    .orElse(providers.environmentVariable("RELEASE_STORE_FILE"))
+    .getOrElse("")
+    .trim()
+val releaseStorePassword = providers.gradleProperty("releaseStorePassword")
+    .orElse(providers.environmentVariable("RELEASE_STORE_PASSWORD"))
+    .getOrElse("")
+val releaseKeyAlias = providers.gradleProperty("releaseKeyAlias")
+    .orElse(providers.environmentVariable("RELEASE_KEY_ALIAS"))
+    .getOrElse("")
+val releaseKeyPassword = providers.gradleProperty("releaseKeyPassword")
+    .orElse(providers.environmentVariable("RELEASE_KEY_PASSWORD"))
+    .getOrElse("")
+val releaseSigningConfigured = releaseStoreFile.isNotBlank() &&
+    releaseStorePassword.isNotBlank() &&
+    releaseKeyAlias.isNotBlank() &&
+    releaseKeyPassword.isNotBlank()
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -68,8 +85,8 @@ android {
         buildConfigField("boolean", "COIN_PLAY_PURCHASES_ENABLED", "$coinPlayPurchasesEnabled")
         buildConfigField("int", "INTERSTITIAL_CHAPTER_INTERVAL", "$interstitialChapterInterval")
 
-        versionCode = 34
-        versionName = "0.20.4"
+        versionCode = 36
+        versionName = "v1.0.1"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
@@ -99,6 +116,18 @@ android {
         }
     }
 
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storeType = "JKS"
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         val debug = getByName("debug") {
             applicationIdSuffix = ".dev"
@@ -115,7 +144,9 @@ android {
             buildConfigField("boolean", "ADMOB_APP_ID_CONFIGURED", "true")
             buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$releaseRewardedUnitId\"")
 
-            signingConfig = debug.signingConfig
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
 
             isProfileable = true
 
@@ -241,8 +272,12 @@ baselineProfile {
 
 dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
     implementation("com.google.mlkit:translate:17.0.3")
     implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.5.0")
+    implementation("com.google.ads.mediation:facebook:6.22.0.1")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     implementation("com.android.billingclient:billing-ktx:9.1.0")
     baselineProfile(projects.baselineProfile)
@@ -377,6 +412,11 @@ dependencies {
     implementation(libs.leakCanary.plumber)
 
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+configurations.configureEach {
+    exclude(group = "com.google.android.gms", module = "play-services-ads")
+    exclude(group = "com.google.android.gms", module = "play-services-ads-lite")
 }
 
 apollo {
