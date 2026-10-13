@@ -1001,6 +1001,22 @@ data object ProfileTab : Tab {
                         onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslAdminScreen()) },
                     )
                 }
+                ProfileActionCard(
+                    title = "البحث عن المستخدمين",
+                    subtitle = "اعثر على الملفات العامة وتابع أصحابها",
+                    icon = MaterialSymbols.Rounded.Search,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslUserSearchScreen()) },
+                )
+                if (eu.kanade.tachiyomi.mslime.MslAuth.email(ctx).isNotBlank()) {
+                    ProfileActionCard(
+                        title = "إعدادات الخصوصية",
+                        subtitle = "تحكم بما يظهر في ملفك العام",
+                        icon = MaterialSymbols.Rounded.Security,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslPrivacySettingsScreen()) },
+                    )
+                }
 
                 Text(
                     text = "الحساب",
