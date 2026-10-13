@@ -88,6 +88,7 @@ import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslShopScreen
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
 import eu.kanade.tachiyomi.novel.NovelHistoryStore
@@ -103,6 +104,8 @@ import kotlinx.coroutines.withContext
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.AttachMoney
 import mihon.icons.materialsymbols.rounded.Person
+import mihon.icons.materialsymbols.rounded.Search
+import mihon.icons.materialsymbols.rounded.Security
 import mihon.icons.materialsymbols.rounded.Settings
 import mihon.icons.materialsymbols.rounded.VerifiedUser
 import tachiyomi.domain.manga.model.MangaCover
@@ -644,6 +647,8 @@ data object ProfileTab : Tab {
         var cloudLevel by remember { mutableIntStateOf(1) }
         var cloudRank by remember { mutableStateOf<String?>(null) }
         var cloudLoaded by remember { mutableStateOf(false) }
+        var adminRole by remember { mutableStateOf<String?>(null) }
+        val equippedFrameId by eu.kanade.tachiyomi.mslime.MslShop.equippedFrameState.collectAsState()
         var socialProfile by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslFollowGraph.Profile?>(null) }
         val socialRevision by eu.kanade.tachiyomi.mslime.MslFollowGraph.revision.collectAsState()
         var name by remember {
@@ -676,6 +681,8 @@ data object ProfileTab : Tab {
                 }
             }
             cloudLoaded = true
+            withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslShop.equippedFrame(ctx) }
+            adminRole = withContext(Dispatchers.IO) { eu.kanade.tachiyomi.mslime.MslAdmin.role(ctx) }
             vipStatus = withContext(Dispatchers.IO) {
                 eu.kanade.tachiyomi.mslime.MslVip.refresh(ctx)
                     ?: if (eu.kanade.tachiyomi.mslime.MslVip.cachedActive(
@@ -740,7 +747,6 @@ data object ProfileTab : Tab {
                     MslCloudSync.imageData(ctx, "msl_avatar.img"),
                     MslCloudSync.imageData(ctx, "msl_cover.img"),
                     level,
-                    rank,
                 )
             }
         }
@@ -753,7 +759,7 @@ data object ProfileTab : Tab {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MslDesignTokens.background)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState(), overscrollEffect = null),
             ) {
                 Box(
                     modifier = Modifier
@@ -798,7 +804,6 @@ data object ProfileTab : Tab {
                             .padding(start = 16.dp)
                             .offset(y = 54.dp)
                             .size(118.dp)
-                            .clip(CircleShape)
                             .border(
                                 3.dp,
                                 Brush.sweepGradient(
@@ -812,22 +817,44 @@ data object ProfileTab : Tab {
                                 ),
                                 CircleShape,
                             )
-                            .background(MslDesignTokens.backgroundRaised)
+                            .background(MslDesignTokens.backgroundRaised, CircleShape)
                             .clickable { avatarPicker.launch("image/*") },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (avatarBitmap != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .border(3.dp, MslDesignTokens.accent, CircleShape)
+                                .background(MslDesignTokens.backgroundRaised, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (avatarBitmap != null) {
+                                Image(
+                                    bitmap = avatarBitmap.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            } else {
+                                Image(
+                                    painter = painterResource(R.drawable.ic_mihon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(56.dp),
+                                )
+                            }
+                        }
+                        val frameResource = remember(equippedFrameId) {
+                            equippedFrameId?.let {
+                                ctx.resources.getIdentifier(it, "drawable", ctx.packageName)
+                            } ?: 0
+                        }
+                        if (frameResource != 0) {
                             Image(
-                                bitmap = avatarBitmap.asImageBitmap(),
-                                contentDescription = null,
+                                painter = painterResource(frameResource),
+                                contentDescription = "إطار الصورة الشخصية",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Image(
-                                painter = painterResource(R.drawable.ic_mihon),
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp),
+                                contentScale = ContentScale.Fit,
                             )
                         }
                         if (vipStatus?.active == true) {
@@ -973,11 +1000,11 @@ data object ProfileTab : Tab {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     ProfileActionCard(
-                        title = "المحفظة",
-                        subtitle = "الرصيد والمتجر",
+                        title = "المتجر",
+                        subtitle = "إطارات وعناصر الملف الشخصي",
                         icon = MaterialSymbols.Rounded.AttachMoney,
                         modifier = Modifier.weight(1f),
-                        onClick = { navigator.push(MslWalletScreen()) },
+                        onClick = { navigator.push(MslShopScreen()) },
                     )
                     ProfileActionCard(
                         title = "الإعدادات والمزيد",
@@ -987,6 +1014,13 @@ data object ProfileTab : Tab {
                         onClick = { tabNavigator.current = MoreTab },
                     )
                 }
+                ProfileActionCard(
+                    title = "المحفظة",
+                    subtitle = "رصيد العملات وسجل المعاملات",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(MslWalletScreen()) },
+                )
                 ProfileActionCard(
                     title = "عضوية VIP",
                     subtitle = if (vipStatus?.active ==
@@ -999,6 +1033,38 @@ data object ProfileTab : Tab {
                     icon = MaterialSymbols.Rounded.AttachMoney,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslVipScreen()) },
+                )
+                if (adminRole != null && adminRole != "user") {
+                    ProfileActionCard(
+                        title = "لوحة الإدارة",
+                        subtitle = "مراجعة البلاغات حسب صلاحيتك",
+                        icon = MaterialSymbols.Rounded.VerifiedUser,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslAdminScreen()) },
+                    )
+                }
+                ProfileActionCard(
+                    title = "البحث عن المستخدمين",
+                    subtitle = "اعثر على الملفات العامة وتابع أصحابها",
+                    icon = MaterialSymbols.Rounded.Search,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslUserSearchScreen()) },
+                )
+                if (eu.kanade.tachiyomi.mslime.MslAuth.email(ctx).isNotBlank()) {
+                    ProfileActionCard(
+                        title = "إعدادات الخصوصية",
+                        subtitle = "تحكم بما يظهر في ملفك العام",
+                        icon = MaterialSymbols.Rounded.Security,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslPrivacySettingsScreen()) },
+                    )
+                }
+                ProfileActionCard(
+                    title = "مركز المساعدة",
+                    subtitle = "الأسئلة الشائعة والتواصل مع الدعم",
+                    icon = MaterialSymbols.Rounded.Person,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(eu.kanade.tachiyomi.mslime.MslHelpScreen()) },
                 )
 
                 Text(

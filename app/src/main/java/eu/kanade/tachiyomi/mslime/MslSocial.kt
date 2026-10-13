@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,9 +69,12 @@ object MslFollowGraph {
         val coverData: String?,
         val level: Int,
         val rank: String,
-        val followerCount: Int,
-        val followingCount: Int,
+        val followerCount: Int?,
+        val followingCount: Int?,
         val isFollowing: Boolean,
+        val isPrivate: Boolean,
+        val joinedAt: String?,
+        val equippedFrameId: String?,
     )
 
     data class User(
@@ -80,6 +84,12 @@ object MslFollowGraph {
         val level: Int,
         val rank: String,
     )
+
+    data class FavoriteItem(val title: String, val cover: String?)
+
+    data class ReadingStats(val titlesViewed: Int, val activeDays: Int, val ratingsCount: Int)
+
+    data class PublicComment(val body: String, val titleKey: String, val isSpoiler: Boolean)
 
     enum class ListKind(val label: String, val rpc: String) {
         FOLLOWERS("المتابعون", "list_followers"),
@@ -96,7 +106,7 @@ object MslFollowGraph {
             val accessToken = token(ctx) ?: return null
             val result = MslSupabase.call(
                 "POST",
-                "/rest/v1/rpc/get_public_profile",
+                "/rest/v1/rpc/get_public_profile_v2",
                 JSONObject().put("p_user_id", userId).toString(),
                 accessToken,
             )
@@ -109,9 +119,26 @@ object MslFollowGraph {
                 coverData = row.optString("cover_data").takeIf { it.isNotBlank() && it != "null" },
                 level = row.optInt("level", 1).coerceAtLeast(1),
                 rank = row.optString("rank", "F").ifBlank { "F" },
-                followerCount = row.optInt("follower_count", 0).coerceAtLeast(0),
-                followingCount = row.optInt("following_count", 0).coerceAtLeast(0),
+                followerCount = if (row.isNull(
+                        "follower_count",
+                    )
+                ) {
+                    null
+                } else {
+                    row.optInt("follower_count").coerceAtLeast(0)
+                },
+                followingCount = if (row.isNull(
+                        "following_count",
+                    )
+                ) {
+                    null
+                } else {
+                    row.optInt("following_count").coerceAtLeast(0)
+                },
                 isFollowing = row.optBoolean("is_following", false),
+                isPrivate = row.optBoolean("is_private", false),
+                joinedAt = row.optString("joined_at").takeUnless { it.isBlank() || it == "null" },
+                equippedFrameId = row.optString("equipped_frame_id").takeUnless { it.isBlank() || it == "null" },
             )
         }.getOrNull()
     }
@@ -146,6 +173,71 @@ object MslFollowGraph {
                     level = row.optInt("level", 1).coerceAtLeast(1),
                     rank = row.optString("rank", "F").ifBlank { "F" },
                 )
+            }
+        }.getOrNull()
+    }
+
+    fun favorites(ctx: android.content.Context, userId: String, itemType: String): Pair<Boolean, List<FavoriteItem>>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_favorites",
+                JSONObject().put("p_user_id", userId).put("p_item_type", itemType)
+                    .put("p_limit", 20).put("p_offset", 0).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val json = JSONObject(result.second)
+            val rows = json.optJSONArray("items") ?: JSONArray()
+            val items = List(rows.length()) { i ->
+                val row = rows.getJSONObject(i)
+                FavoriteItem(
+                    row.optString("title", "مانهوا"),
+                    row.optString("cover").takeUnless { it.isBlank() || it == "null" },
+                )
+            }
+            json.optBoolean("allowed") to items
+        }.getOrNull()
+    }
+
+    fun readingStats(ctx: android.content.Context, userId: String): Pair<Boolean, ReadingStats?>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_reading_stats",
+                JSONObject().put("p_user_id", userId).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val json = JSONObject(result.second)
+            if (!json.optBoolean("allowed")) {
+                false to null
+            } else {
+                true to ReadingStats(
+                    json.optInt("titles_viewed"),
+                    json.optInt("active_days"),
+                    json.optInt("ratings_count"),
+                )
+            }
+        }.getOrNull()
+    }
+
+    fun comments(ctx: android.content.Context, userId: String): Pair<Boolean, List<PublicComment>>? {
+        return runCatching {
+            val accessToken = token(ctx) ?: return null
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/get_public_user_comments",
+                JSONObject().put("p_user_id", userId).put("p_limit", 10).put("p_offset", 0).toString(),
+                accessToken,
+            )
+            if (result.first !in 200..299) return null
+            val rows = JSONArray(result.second)
+            true to List(rows.length()) { i ->
+                val row = rows.getJSONObject(i)
+                PublicComment(row.optString("body"), row.optString("title_key"), row.optBoolean("is_spoiler"))
             }
         }.getOrNull()
     }
@@ -229,6 +321,10 @@ private fun MslSocialProfileContent(
     var message by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
     var resumed by remember { mutableIntStateOf(0) }
+    var mangaFavorites by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?>(null) }
+    var novelFavorites by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?>(null) }
+    var readingStats by remember(userId) { mutableStateOf<Pair<Boolean, MslFollowGraph.ReadingStats?>?>(null) }
+    var publicComments by remember(userId) { mutableStateOf<Pair<Boolean, List<MslFollowGraph.PublicComment>>?>(null) }
     val socialRevision by MslFollowGraph.revision.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
@@ -243,6 +339,26 @@ private fun MslSocialProfileContent(
         loading = true
         profile = withContext(Dispatchers.IO) { MslFollowGraph.profile(context, userId) }
         loading = false
+    }
+
+    LaunchedEffect(userId, profile, refresh, resumed) {
+        if (profile == null) return@LaunchedEffect
+        val content = withContext(Dispatchers.IO) {
+            listOf(
+                MslFollowGraph.favorites(context, userId, "manga"),
+                MslFollowGraph.favorites(context, userId, "novel"),
+                MslFollowGraph.readingStats(context, userId),
+                MslFollowGraph.comments(context, userId),
+            )
+        }
+        @Suppress("UNCHECKED_CAST")
+        mangaFavorites = content[0] as Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?
+        @Suppress("UNCHECKED_CAST")
+        novelFavorites = content[1] as Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?
+        @Suppress("UNCHECKED_CAST")
+        readingStats = content[2] as Pair<Boolean, MslFollowGraph.ReadingStats?>?
+        @Suppress("UNCHECKED_CAST")
+        publicComments = content[3] as Pair<Boolean, List<MslFollowGraph.PublicComment>>?
     }
 
     val isMe = userId == MslSupabase.uid(context)
@@ -270,24 +386,37 @@ private fun MslSocialProfileContent(
             Button(onClick = { refresh++ }) { Text("إعادة المحاولة") }
             return
         }
-        MslSocialAvatar(user.avatarData, user.displayName, 100.dp)
+        MslSocialAvatar(
+            user.avatarData,
+            user.displayName,
+            100.dp,
+            user.equippedFrameId,
+        )
         Spacer(Modifier.height(12.dp))
         Text(user.displayName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
-        Text("المستوى ${user.level} • الرتبة ${user.rank}", color = MslDesignTokens.textSecondary)
+        if (user.isPrivate) {
+            Text("هذه البيانات خاصة من إعدادات صاحب الحساب.", color = MslDesignTokens.textSecondary)
+        } else {
+            Text("المستوى ${user.level} • الرتبة ${user.rank}", color = MslDesignTokens.textSecondary)
+        }
         Spacer(Modifier.height(18.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            MslSocialCount(
-                count = user.followerCount,
-                label = "المتابعون",
-                modifier = Modifier.weight(1f),
-                onClick = { onOpenList(MslFollowGraph.ListKind.FOLLOWERS) },
-            )
-            MslSocialCount(
-                count = user.followingCount,
-                label = "المتابَعون",
-                modifier = Modifier.weight(1f),
-                onClick = { onOpenList(MslFollowGraph.ListKind.FOLLOWING) },
-            )
+            user.followerCount?.let { count ->
+                MslSocialCount(
+                    count = count,
+                    label = "المتابعون",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOpenList(MslFollowGraph.ListKind.FOLLOWERS) },
+                )
+            }
+            user.followingCount?.let { count ->
+                MslSocialCount(
+                    count = count,
+                    label = "المتابَعون",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOpenList(MslFollowGraph.ListKind.FOLLOWING) },
+                )
+            }
         }
         if (!isMe) {
             Spacer(Modifier.height(16.dp))
@@ -339,11 +468,55 @@ private fun MslSocialProfileContent(
             MslSocialImage(cover, Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(16.dp)))
         }
         Spacer(Modifier.height(16.dp))
+        if (user.joinedAt != null) {
+            Text("تاريخ الانضمام: ${user.joinedAt.take(10)}", color = MslDesignTokens.textSecondary)
+        }
         if (isMe) {
             Text(
-                "هذا ملفك الشخصي العام. البريد الإلكتروني والمفضلة وبيانات الحساب الخاصة غير معروضة.",
+                "هذا ملفك الشخصي العام. البريد الإلكتروني وسجل المشاهدة لا يظهران للعامة.",
                 color = MslDesignTokens.textSecondary,
             )
+        }
+        ProfileContentSection("مانهوا مفضلة", mangaFavorites)
+        ProfileContentSection("روايات مفضلة", novelFavorites)
+        readingStats?.let { (allowed, stats) ->
+            Text("إحصائيات القراءة", fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+            Text(
+                if (!allowed || stats == null) "الإحصائيات خاصة" else
+                    "${stats.titlesViewed} عنواناً • ${stats.activeDays} أيام نشاط • ${stats.ratingsCount} تقييماً",
+                color = MslDesignTokens.textSecondary,
+            )
+        }
+        publicComments?.let { (allowed, comments) ->
+            Text("تعليقات عامة", fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+            when {
+                !allowed -> Text("التعليقات خاصة", color = MslDesignTokens.textSecondary)
+                comments.isEmpty() -> Text("لا توجد تعليقات عامة لعرضها.", color = MslDesignTokens.textSecondary)
+                else -> comments.forEach { comment ->
+                    Text(
+                        if (comment.isSpoiler) "تنبيه حرق: افتح التعليقات لقراءة المحتوى" else comment.body,
+                        color = MslDesignTokens.textSecondary,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileContentSection(
+    title: String,
+    content: Pair<Boolean, List<MslFollowGraph.FavoriteItem>>?,
+) {
+    content?.let { (allowed, items) ->
+        Text(title, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
+        when {
+            !allowed -> Text("هذه القائمة خاصة.", color = MslDesignTokens.textSecondary)
+            items.isEmpty() -> Text("لا توجد عناصر مفضلة للعرض.", color = MslDesignTokens.textSecondary)
+            else -> items.forEach { item ->
+                Text(item.title, color = MslDesignTokens.textSecondary, modifier = Modifier.padding(vertical = 3.dp))
+            }
         }
     }
 }
@@ -468,26 +641,48 @@ private fun MslSocialCount(
 }
 
 @Composable
-private fun MslSocialAvatar(data: String?, name: String, size: androidx.compose.ui.unit.Dp) {
+internal fun MslSocialAvatar(
+    data: String?,
+    name: String,
+    size: androidx.compose.ui.unit.Dp,
+    frameId: String? = null,
+) {
+    val context = LocalContext.current
+    val frameResource = remember(frameId) {
+        frameId?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
+    }
     val color = Color(0xFF6452C8)
     Box(
-        modifier = Modifier.size(size).clip(CircleShape).background(color),
+        modifier = Modifier.size(size),
         contentAlignment = Alignment.Center,
     ) {
-        var bitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
-        LaunchedEffect(data) {
-            bitmap = withContext(Dispatchers.IO) { decodeSocialImage(data) }
+        Box(
+            modifier = Modifier.fillMaxSize().clip(CircleShape).background(color),
+            contentAlignment = Alignment.Center,
+        ) {
+            var bitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
+            LaunchedEffect(data) {
+                bitmap = withContext(Dispatchers.IO) { decodeSocialImage(data) }
+            }
+            val image = bitmap
+            if (image != null) {
+                Image(
+                    image.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Text(name.take(1).ifBlank { "؟" }, fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
-        val image = bitmap
-        if (image != null) {
+        if (frameResource != 0) {
             Image(
-                image.asImageBitmap(),
-                contentDescription = null,
+                painter = painterResource(frameResource),
+                contentDescription = "إطار الصورة الشخصية",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
             )
-        } else {
-            Text(name.take(1).ifBlank { "؟" }, fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }

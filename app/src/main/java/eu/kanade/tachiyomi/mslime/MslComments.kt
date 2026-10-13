@@ -23,14 +23,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +91,50 @@ object MslRank {
     private val mins = listOf(0, 50, 150, 350, 700, 1200, 2000, 3500, 5500)
     fun of(read: Int): String = names[mins.indexOfLast { read >= it }.coerceAtLeast(0)]
     fun level(read: Int): Int = read / 25 + 1
+    fun nextRankThreshold(rankXp: Int): Int? = mins.firstOrNull { it > rankXp }
+
+    private fun pendingRewards(context: Context) =
+        context.getSharedPreferences(
+            "msl_pending_rank_rewards_${MslSupabase.uid(context).ifBlank { "anonymous" }}",
+            Context.MODE_PRIVATE,
+        )
+
+    private fun queueChapterReward(context: Context, chapterKey: String) {
+        val prefs = pendingRewards(context)
+        val pending = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toMutableSet()
+        pending += chapterKey
+        prefs.edit().putStringSet("chapter_keys", pending).apply()
+    }
+
+    private fun postChapterReward(context: Context, chapterKey: String): Boolean = runCatching {
+        val token = MslSupabase.token(context) ?: return false
+        val body = JSONObject().put("p_chapter_key", chapterKey).toString()
+        val response = MslSupabase.call("POST", "/rest/v1/rpc/award_rank_xp_for_chapter", body, token)
+        if (response.first !in 200..299) return false
+        val result = JSONObject(response.second)
+        result.optBoolean("ok") || result.optBoolean("already_rewarded")
+    }.getOrDefault(false)
+
+    fun awardCompletedChapter(context: Context, chapterKey: String): Boolean {
+        val awarded = postChapterReward(context, chapterKey)
+        if (!awarded) {
+            queueChapterReward(context, chapterKey)
+        } else {
+            syncPendingChapterRewards(context)
+        }
+        return awarded
+    }
+
+    fun syncPendingChapterRewards(context: Context) {
+        val prefs = pendingRewards(context)
+        val pending = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toSet()
+        for (chapterKey in pending) {
+            if (!postChapterReward(context, chapterKey)) break
+            val current = prefs.getStringSet("chapter_keys", emptySet()).orEmpty().toMutableSet()
+            current.remove(chapterKey)
+            prefs.edit().putStringSet("chapter_keys", current).apply()
+        }
+    }
 }
 
 object MslSupabase {
@@ -279,11 +326,14 @@ object MslSupabase {
         }
     }
 
-    fun report(ctx: Context, id: String): Boolean {
+    fun report(ctx: Context, id: String, reason: String, description: String): Boolean {
         return try {
             val tok = token(ctx) ?: return false
-            val j = JSONObject().put("comment_id", id).put("reason", "abuse")
-            call("POST", "/rest/v1/reports", j.toString(), tok, "return=minimal").first in 200..299
+            val j = JSONObject().put(
+                "p_comment_id",
+                id,
+            ).put("p_reason", reason).put("p_description", description.take(1000))
+            call("POST", "/rest/v1/rpc/create_comment_report", j.toString(), tok).first in 200..299
         } catch (e: Exception) {
             false
         }
@@ -430,6 +480,11 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
     var replyTo by remember { mutableStateOf<MslComment?>(null) }
     var spoiler by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
+    var pendingReport by remember { mutableStateOf<MslComment?>(null) }
+    var reportReason by remember { mutableStateOf("abuse") }
+    var reportDescription by remember { mutableStateOf("") }
+    var reportFailure by remember { mutableStateOf("") }
+    var reporting by remember { mutableStateOf(false) }
 
     val auth = ctx.getSharedPreferences("msl_auth", Context.MODE_PRIVATE)
     val prof = ctx.getSharedPreferences("msl_profile", Context.MODE_PRIVATE)
@@ -573,6 +628,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                 val read = prof.getInt("read", 0)
                                 scope.launch {
                                     val err = withContext(Dispatchers.IO) {
+                                        val serverRank = MslCloudSync.profile(ctx)?.rank ?: MslRank.of(read)
                                         MslSupabase.post(
                                             ctx,
                                             key,
@@ -580,7 +636,7 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                             body,
                                             spoiler,
                                             MslRank.level(read),
-                                            MslRank.of(read),
+                                            serverRank,
                                             myPicture,
                                             parentId = replyTo?.id,
                                         )
@@ -666,18 +722,18 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 CommentMenu(mine) {
-                                                    scope.launch {
-                                                        withContext(Dispatchers.IO) {
-                                                            if (mine) {
-                                                                MslSupabase.delete(
-                                                                    ctx,
-                                                                    c.id,
-                                                                )
-                                                            } else {
-                                                                MslSupabase.report(ctx, c.id)
+                                                    if (mine) {
+                                                        scope.launch {
+                                                            withContext(Dispatchers.IO) {
+                                                                MslSupabase.delete(ctx, c.id)
                                                             }
+                                                            refresh++
                                                         }
-                                                        refresh++
+                                                    } else {
+                                                        pendingReport = c
+                                                        reportReason = "abuse"
+                                                        reportDescription = ""
+                                                        reportFailure = ""
                                                     }
                                                 }
                                             }
@@ -685,13 +741,33 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                                             if (c.isVip || c.isPinned) {
                                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                     if (c.isVip) {
-                                                        Surface(shape = RoundedCornerShape(50), color = Color(0xFFFFC857).copy(alpha = 0.18f)) {
-                                                            Tx("👑 VIP", 11.sp, FontWeight.Bold, Color(0xFFFFC857), 1, Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = Color(0xFFFFC857).copy(alpha = 0.18f),
+                                                        ) {
+                                                            Tx(
+                                                                "👑 VIP",
+                                                                11.sp,
+                                                                FontWeight.Bold,
+                                                                Color(0xFFFFC857),
+                                                                1,
+                                                                Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                            )
                                                         }
                                                     }
                                                     if (c.isPinned) {
-                                                        Surface(shape = RoundedCornerShape(50), color = Color(0xFF9C6BFF).copy(alpha = 0.18f)) {
-                                                            Tx("مثبّت في الأعلى", 11.sp, FontWeight.Bold, Color(0xFFB79BFF), 1, Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = Color(0xFF9C6BFF).copy(alpha = 0.18f),
+                                                        ) {
+                                                            Tx(
+                                                                "مثبّت في الأعلى",
+                                                                11.sp,
+                                                                FontWeight.Bold,
+                                                                Color(0xFFB79BFF),
+                                                                1,
+                                                                Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -781,5 +857,65 @@ fun MslCommentsDialog(title: String, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+    pendingReport?.let { target ->
+        val reasons = listOf(
+            "إساءة أو سب" to "abuse",
+            "محتوى غير مناسب" to "inappropriate",
+            "تنمر أو تمييز" to "bullying",
+            "سبام" to "spam",
+            "رابط ضار" to "malicious_link",
+            "حرق متعمد" to "spoiler",
+            "سبب آخر" to "other",
+        )
+        AlertDialog(
+            onDismissRequest = { if (!reporting) pendingReport = null },
+            title = { Text("إبلاغ عن تعليق") },
+            text = {
+                Column {
+                    reasons.forEach { (label, value) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = !reporting) { reportReason = value },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = reportReason == value, onClick = {
+                                reportReason = value
+                            }, enabled = !reporting)
+                            Text(label)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = reportDescription,
+                        onValueChange = { reportDescription = it.take(1000) },
+                        label = { Text("تفاصيل إضافية (اختياري)") },
+                        enabled = !reporting,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (reportFailure.isNotBlank()) Text(reportFailure, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !reporting,
+                    onClick = {
+                        reporting = true
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                MslSupabase.report(ctx, target.id, reportReason, reportDescription)
+                            }
+                            reporting = false
+                            if (ok) {
+                                pendingReport = null
+                                msg = "تم إرسال البلاغ للمراجعة."
+                                refresh++
+                            } else {
+                                reportFailure = "تعذّر إرسال البلاغ أو سبق الإبلاغ عن هذا التعليق."
+                            }
+                        }
+                    },
+                ) { Text(if (reporting) "جارٍ الإرسال…" else "إرسال البلاغ") }
+            },
+            dismissButton = { TextButton(onClick = { if (!reporting) pendingReport = null }) { Text("إلغاء") } },
+        )
     }
 }

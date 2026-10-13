@@ -95,6 +95,31 @@ object AboutScreen : Screen() {
 
                 item {
                     TextPreferenceWidget(
+                        title = "Manhwa Slime",
+                        subtitle = "تطبيق لقراءة المانهوات والروايات من مصادر متعددة",
+                    )
+                }
+
+                item {
+                    TextPreferenceWidget(
+                        title = "المطور",
+                        subtitle = "Anis Lemd · anislemoudaa2741@gmail.com",
+                        onPreferenceClick = {
+                            context.copyToClipboard("Support email", "anislemoudaa2741@gmail.com")
+                            context.toast("تم النسخ.")
+                        },
+                    )
+                }
+
+                item {
+                    TextPreferenceWidget(
+                        title = "رقم الإصدار",
+                        subtitle = BuildConfig.VERSION_CODE.toString(),
+                    )
+                }
+
+                item {
+                    TextPreferenceWidget(
                         title = stringResource(MR.strings.version),
                         subtitle = getVersionName(withBuildDate = true),
                         onPreferenceClick = {
@@ -201,7 +226,7 @@ object AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = SimpleIcons.Github,
-                            url = "https://github.com/mihonapp",
+                            url = "https://github.com/anisLemoudaa/manhwa-slime",
                         )
                     }
                 }
