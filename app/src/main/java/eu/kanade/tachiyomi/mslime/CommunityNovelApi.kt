@@ -22,6 +22,7 @@ object CommunityNovelApi {
         val liked: Boolean = false,
         val inLibrary: Boolean = false,
         val updatedAt: String = "",
+        val tags: Set<String> = emptySet(),
     )
 
     data class Chapter(
@@ -65,7 +66,10 @@ object CommunityNovelApi {
 
     fun details(ctx: Context, id: String): Novel? {
         val rows = get(ctx, "/rest/v1/community_novels?select=*&id=eq.$id&limit=1") ?: return null
-        return parseNovels(rows).firstOrNull()
+        val novel = parseNovels(rows).firstOrNull() ?: return null
+        val saved = get(ctx, "/rest/v1/community_novel_library?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
+        val liked = get(ctx, "/rest/v1/community_novel_likes?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
+        return novel.copy(inLibrary = saved, liked = liked)
     }
 
     fun chapters(ctx: Context, novelId: String, includeDrafts: Boolean = false): List<Chapter> {
@@ -77,9 +81,10 @@ object CommunityNovelApi {
         }
     }
 
-    fun saveNovel(ctx: Context, novel: Novel?, title: String, description: String, category: String, language: String, completion: String): Result<String> = runCatching {
+    fun saveNovel(ctx: Context, novel: Novel?, title: String, description: String, category: String, language: String, completion: String, tags: Set<String> = setOf(category), coverData: String? = novel?.coverPath): Result<String> = runCatching {
         val tok = token(ctx) ?: error("يلزم تسجيل الدخول لإنشاء رواية")
-        val body = JSONObject().put("title", title.trim()).put("description", description.trim()).put("primary_category", category).put("language", language).put("completion_status", completion)
+        val body = JSONObject().put("title", title.trim()).put("description", description.trim()).put("primary_category", category).put("tags", JSONArray(tags.toList())).put("language", language).put("completion_status", completion)
+        if (!coverData.isNullOrBlank()) body.put("cover_path", coverData)
         if (novel == null) body.put("author_id", uid(ctx)).put("status", "draft")
         val path = if (novel == null) "/rest/v1/community_novels" else "/rest/v1/community_novels?id=eq.${novel.id}"
         val r = MslSupabase.call(if (novel == null) "POST" else "PATCH", path, body.toString(), tok, "return=representation")
@@ -89,7 +94,7 @@ object CommunityNovelApi {
 
     fun setNovelStatus(ctx: Context, id: String, status: String): Boolean {
         val tok = token(ctx) ?: return false
-        val body = JSONObject().put("status", status).apply { if (status == "published") put("published_at", "now()") }
+        val body = JSONObject().put("status", status)
         return MslSupabase.call("PATCH", "/rest/v1/community_novels?id=eq.$id", body.toString(), tok).first in 200..299
     }
 
@@ -123,8 +128,21 @@ object CommunityNovelApi {
         return MslSupabase.call("POST", "/rest/v1/community_reading_progress?on_conflict=user_id,novel_id", body.toString(), tok, "resolution=merge-duplicates,return=minimal").first in 200..299
     }
 
+    fun toggleAuthorFollow(ctx: Context, authorId: String, follow: Boolean): Boolean {
+        val tok = token(ctx) ?: return false
+        return if (follow) {
+            MslSupabase.call("POST", "/rest/v1/community_author_follows", JSONObject().put("follower_id", uid(ctx)).put("author_id", authorId).toString(), tok, "resolution=ignore-duplicates,return=minimal").first in 200..299
+        } else MslSupabase.call("DELETE", "/rest/v1/community_author_follows?follower_id=eq.${uid(ctx)}&author_id=eq.$authorId", null, tok).first in 200..299
+    }
+
+    fun reportNovel(ctx: Context, novelId: String, reason: String = "other", description: String = ""): Boolean {
+        val tok = token(ctx) ?: return false
+        val body = JSONObject().put("reporter_id", uid(ctx)).put("novel_id", novelId).put("reason", reason).put("description", description.take(1000))
+        return MslSupabase.call("POST", "/rest/v1/community_reports", body.toString(), tok, "return=minimal").first in 200..299
+    }
+
     private fun parseNovels(rows: JSONArray): List<Novel> = List(rows.length()) { i ->
         val o = rows.getJSONObject(i)
-        Novel(o.getString("id"), o.optString("author_id"), o.optString("title"), o.optString("description"), o.optString("cover_path").takeIf { it.isNotBlank() }, o.optString("primary_category"), o.optString("language"), o.optString("completion_status"), o.optString("status"), o.optInt("chapter_count"), o.optLong("view_count"), o.optInt("like_count"), o.optBoolean("liked"), o.optBoolean("in_library"), o.optString("updated_at"))
+        Novel(o.getString("id"), o.optString("author_id"), o.optString("title"), o.optString("description"), o.optString("cover_path").takeIf { it.isNotBlank() }, o.optString("primary_category"), o.optString("language"), o.optString("completion_status"), o.optString("status"), o.optInt("chapter_count"), o.optLong("view_count"), o.optInt("like_count"), o.optBoolean("liked"), o.optBoolean("in_library"), o.optString("updated_at"), buildSet { o.optJSONArray("tags")?.let { a -> for (i in 0 until a.length()) add(a.optString(i)) } })
     }
 }
