@@ -2,10 +2,10 @@ name: Build Manhwa Slime
 
 on:
   push:
-    branches: [main, ui-refresh, redesign/reference-image]
+    branches: [main, release/v1.0.0, ui-refresh, redesign/reference-image]
     tags: ["v*"]
   pull_request:
-    branches: [main, ui-refresh, redesign/reference-image]
+    branches: [main, release/v1.0.0, ui-refresh, redesign/reference-image]
   workflow_dispatch:
     inputs:
       build_release:
