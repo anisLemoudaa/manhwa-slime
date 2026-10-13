@@ -145,7 +145,7 @@ object MslSupabase {
     fun titleKey(title: String): String =
         title.lowercase().replace(Regex("[^\\p{L}\\p{Nd}]+"), " ").trim().take(200)
 
-    internal fun call(method: String, path: String, body: String?, token: String?, prefer: String? = null): Pair<Int, String> {
+    fun call(method: String, path: String, body: String?, token: String?, prefer: String? = null): Pair<Int, String> {
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.requestMethod = method
         c.connectTimeout = 15000

@@ -108,6 +108,7 @@ object HomeScreen : Screen() {
         LibraryTab,
         BrowseTab,
         NovelTab,
+        CommunityNovelTab,
         ProfileTab,
     )
 

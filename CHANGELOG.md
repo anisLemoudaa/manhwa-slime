@@ -10,6 +10,12 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical stuff.
 
+## [v1.0.4] - 2026-10-13
+### Added
+- إضافة قسم مستقل لروايات المجتمع مع إنشاء الروايات والفصول وحفظ المسودات والنشر والقراءة والمكتبة.
+- ربط روايات المجتمع بقاعدة Supabase الحالية مع سياسات RLS وملكية المحتوى.
+- إضافة قارئ روايات عربي RTL مع تغيير حجم الخط والتنقل بين الفصول.
+
 ## [Unreleased]
 ### Added
 - Add `id:` prefix search to remaining trackers (AniList, Bangumi, Kitsu, MangaUpdates, Shikimori, and Hikka) ([@MajorTanya](https://github.com/MajorTanya)) ([#3776](https://github.com/mihonapp/mihon/pull/3776))
