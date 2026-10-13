@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -385,7 +386,12 @@ private fun MslSocialProfileContent(
             Button(onClick = { refresh++ }) { Text("إعادة المحاولة") }
             return
         }
-        MslSocialAvatar(user.avatarData, user.displayName, 100.dp)
+        MslSocialAvatar(
+            user.avatarData,
+            user.displayName,
+            100.dp,
+            user.equippedFrameId,
+        )
         Spacer(Modifier.height(12.dp))
         Text(user.displayName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MslDesignTokens.textPrimary)
         if (user.isPrivate) {
@@ -635,26 +641,48 @@ private fun MslSocialCount(
 }
 
 @Composable
-internal fun MslSocialAvatar(data: String?, name: String, size: androidx.compose.ui.unit.Dp) {
+internal fun MslSocialAvatar(
+    data: String?,
+    name: String,
+    size: androidx.compose.ui.unit.Dp,
+    frameId: String? = null,
+) {
+    val context = LocalContext.current
+    val frameResource = remember(frameId) {
+        frameId?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
+    }
     val color = Color(0xFF6452C8)
     Box(
-        modifier = Modifier.size(size).clip(CircleShape).background(color),
+        modifier = Modifier.size(size),
         contentAlignment = Alignment.Center,
     ) {
-        var bitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
-        LaunchedEffect(data) {
-            bitmap = withContext(Dispatchers.IO) { decodeSocialImage(data) }
+        Box(
+            modifier = Modifier.fillMaxSize().clip(CircleShape).background(color),
+            contentAlignment = Alignment.Center,
+        ) {
+            var bitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
+            LaunchedEffect(data) {
+                bitmap = withContext(Dispatchers.IO) { decodeSocialImage(data) }
+            }
+            val image = bitmap
+            if (image != null) {
+                Image(
+                    image.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Text(name.take(1).ifBlank { "؟" }, fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
-        val image = bitmap
-        if (image != null) {
+        if (frameResource != 0) {
             Image(
-                image.asImageBitmap(),
-                contentDescription = null,
+                painter = painterResource(frameResource),
+                contentDescription = "إطار الصورة الشخصية",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
             )
-        } else {
-            Text(name.take(1).ifBlank { "؟" }, fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }

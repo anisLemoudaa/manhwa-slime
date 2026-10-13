@@ -15,6 +15,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -716,12 +717,15 @@ data object ProfileTab : Tab {
             }
         }
 
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        CompositionLocalProvider(
+            LocalLayoutDirection provides LayoutDirection.Rtl,
+            LocalOverscrollFactory provides null,
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MslDesignTokens.background)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState(), overscrollEffect = null),
             ) {
                 Box(
                     modifier = Modifier
@@ -766,7 +770,6 @@ data object ProfileTab : Tab {
                             .padding(start = 16.dp)
                             .offset(y = 54.dp)
                             .size(118.dp)
-                            .clip(CircleShape)
                             .border(
                                 3.dp,
                                 Brush.sweepGradient(
@@ -780,7 +783,7 @@ data object ProfileTab : Tab {
                                 ),
                                 CircleShape,
                             )
-                            .background(MslDesignTokens.backgroundRaised)
+                            .background(MslDesignTokens.backgroundRaised, CircleShape)
                             .clickable { avatarPicker.launch("image/*") },
                         contentAlignment = Alignment.Center,
                     ) {

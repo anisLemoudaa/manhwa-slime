@@ -204,10 +204,12 @@ class MslShopScreen : Screen() {
                             rankState?.let { state ->
                                 Text(
                                     "خبرة الرتبة: ${state.xp} RP  •  الرتبة الحالية: ${state.rank}" +
-                                        (
+                                        if (state.rank == "SSS+") {
+                                            "  •  رتبة خاصة"
+                                        } else {
                                             MslRank.nextRankThreshold(state.xp)?.let { "  •  الهدف التالي: $it RP" }
                                                 ?: "  •  أعلى رتبة"
-                                            ),
+                                        },
                                     color = MslDesignTokens.textSecondary,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
