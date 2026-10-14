@@ -351,7 +351,19 @@
   (async () => {
     try {
       const loadVariant = async variant => {
-        const v = await fetch(`/api/version?variant=${variant}`, {cache:'no-store'}).then(r => r.ok ? r.json() : null);
+        let v = null;
+        try {
+          const r = await fetch(`/api/version?variant=${variant}`, {cache:'no-store'});
+          const type = r.headers.get('content-type') || '';
+          if (r.ok && type.includes('application/json')) v = await r.json();
+        } catch (_) {}
+        if (!v || !v.available) {
+          const db = supabase.createClient(window.MSL_SUPABASE_URL, window.MSL_SUPABASE_KEY);
+          const {data} = await db.from('app_releases').select('variant,version_name,version_code,title,release_notes,download_url,storage_path,file_size,mandatory,published_at').eq('variant', variant).eq('status','published').limit(1).maybeSingle();
+          if (data) {
+            v = {available:Boolean(data.download_url || data.storage_path), variant:data.variant, versionName:data.version_name, versionCode:data.version_code, title:data.title, releaseNotes:data.release_notes, downloadUrl:data.download_url || `${window.MSL_SUPABASE_URL}/storage/v1/object/public/app-releases/${data.storage_path}`, fileSize:data.file_size, mandatory:data.mandatory, publishedAt:data.published_at};
+          }
+        }
         if (v?.available) APK_CONFIG[variant] = {version:v.versionName || '', size:v.fileSize ? `${Math.round(v.fileSize / 1024 / 1024)} MB` : '', releaseDate:v.publishedAt ? new Date(v.publishedAt).toLocaleDateString('ar') : '', downloadUrl:v.downloadUrl || ''};
         return v;
       };
