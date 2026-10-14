@@ -206,7 +206,10 @@
       <h2>ابدأ رحلتك مع MANHWA SLIME</h2>
       <p class="muted" style="font-size:15px; max-width:480px;">حمّل التطبيق واستكشف عالم المانهوا والروايات من هاتفك.</p>
       <div class="badges" id="apk-badges"></div>
-      <button id="apk-download-btn" class="btn btn-primary">تحميل APK مجانًا</button>
+      <div class="row" style="justify-content:center">
+        <button id="apk-standard-btn" class="btn btn-primary">تحميل النسخة الأصلية</button>
+        <button id="apk-lite-btn" class="btn btn-outline">تحميل نسخة الهواتف الضعيفة</button>
+      </div>
       <span id="apk-status" class="muted" style="font-size:12.5px;"></span>
     </div>
   </section>
@@ -312,34 +315,26 @@
     appName: "MANHWA SLIME",
     platform: "Android",
     fileType: "APK",
-    version: "",        // مثال: "1.0.0" — اتركه فارغًا حتى يتوفر الإصدار
-    size: "",           // مثال: "45 MB"
-    releaseDate: "",    // مثال: "2026-10-01"
-    downloadUrl: ""     // ضع رابط ملف APK هنا مباشرة عند توفره
+    standard: {version:"", size:"", releaseDate:"", downloadUrl:""},
+    lite: {version:"", size:"", releaseDate:"", downloadUrl:""}
   };
 
   function renderDownload(){
     const badges = document.getElementById('apk-badges');
-    const btn = document.getElementById('apk-download-btn');
+    const standard = document.getElementById('apk-standard-btn');
+    const lite = document.getElementById('apk-lite-btn');
     const status = document.getElementById('apk-status');
-    const rows = [
-      ['التطبيق', APK_CONFIG.appName],
-      ['النظام', APK_CONFIG.platform],
-      ['الملف', APK_CONFIG.fileType],
-      ['الإصدار', APK_CONFIG.version || '—'],
-      ['الحجم', APK_CONFIG.size || '—']
-    ];
-    badges.innerHTML = rows.map(([k,v]) => `<span class="badge">${k}: ${v}</span>`).join('');
-
-    if (APK_CONFIG.downloadUrl) {
-      btn.removeAttribute('disabled');
-      btn.onclick = () => window.location.href = APK_CONFIG.downloadUrl;
-      status.textContent = APK_CONFIG.releaseDate ? `تاريخ الإصدار: ${APK_CONFIG.releaseDate}` : '';
-    } else {
-      btn.setAttribute('disabled','true');
-      btn.onclick = (e) => e.preventDefault();
-      status.textContent = 'سيكون التطبيق متاحًا للتحميل قريبًا.';
-    }
+    const active = APK_CONFIG.standard.version || APK_CONFIG.lite.version;
+    badges.innerHTML = [
+      ['التطبيق', APK_CONFIG.appName], ['النظام', APK_CONFIG.platform], ['الملف', APK_CONFIG.fileType],
+      ['الأصلية', APK_CONFIG.standard.version || 'غير منشورة'], ['Lite', APK_CONFIG.lite.version || 'غير منشورة']
+    ].map(([k,v]) => `<span class="badge">${k}: ${v}</span>`).join('');
+    const setup = (button, data, label) => {
+      if (data.downloadUrl) { button.removeAttribute('disabled'); button.onclick=()=>window.location.href=data.downloadUrl; }
+      else { button.setAttribute('disabled','true'); button.onclick=e=>e.preventDefault(); }
+    };
+    setup(standard, APK_CONFIG.standard, 'الأصلية'); setup(lite, APK_CONFIG.lite, 'Lite');
+    status.textContent = active ? 'اختر النسخة المناسبة لهاتفك.' : 'ستتوفر النسختان للتحميل قريبًا.';
   }
   renderDownload();
 
@@ -355,15 +350,15 @@
 <script>
   (async () => {
     try {
-      const version = await fetch('/api/version', {cache:'no-store'}).then(r => r.ok ? r.json() : null);
-      if (version?.available) {
-        APK_CONFIG.version = version.versionName || '';
-        APK_CONFIG.size = version.fileSize ? `${Math.round(version.fileSize / 1024 / 1024)} MB` : '';
-        APK_CONFIG.releaseDate = version.publishedAt ? new Date(version.publishedAt).toLocaleDateString('ar') : '';
-        APK_CONFIG.downloadUrl = version.downloadUrl || '';
-        renderDownload();
-        document.getElementById('updates-body').innerHTML = `<p><strong style="color:#F2F2F0">${version.title || 'أحدث إصدار'}:</strong> ${(version.releaseNotes || []).join('، ') || 'تحديث جديد متوفر.'}</p>`;
-      }
+      const loadVariant = async variant => {
+        const v = await fetch(`/api/version?variant=${variant}`, {cache:'no-store'}).then(r => r.ok ? r.json() : null);
+        if (v?.available) APK_CONFIG[variant] = {version:v.versionName || '', size:v.fileSize ? `${Math.round(v.fileSize / 1024 / 1024)} MB` : '', releaseDate:v.publishedAt ? new Date(v.publishedAt).toLocaleDateString('ar') : '', downloadUrl:v.downloadUrl || ''};
+        return v;
+      };
+      const [standardVersion, liteVersion] = await Promise.all([loadVariant('standard'), loadVariant('lite')]);
+      renderDownload();
+      const version = standardVersion || liteVersion;
+      if (version?.available) document.getElementById('updates-body').innerHTML = `<p><strong style="color:#F2F2F0">${version.title || 'أحدث إصدار'}:</strong> ${(version.releaseNotes || []).join('، ') || 'تحديث جديد متوفر.'}</p>`;
       const db = supabase.createClient(window.MSL_SUPABASE_URL, window.MSL_SUPABASE_KEY);
       const {data: news} = await db.from('site_news').select('title,body,published_at').eq('status','published').order('published_at',{ascending:false}).limit(5);
       if (news?.length) document.getElementById('updates-body').innerHTML = news.map(n => `<article><h3>${String(n.title).replace(/[&<>"']/g,'')}</h3><p>${String(n.body).replace(/[&<>"']/g,'')}</p></article>`).join('');
