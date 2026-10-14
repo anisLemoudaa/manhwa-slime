@@ -30,10 +30,12 @@ fun NovelSourcesCatalogDialog(
     onReload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val visibleEntries = when (languageFilter) {
-        "ar" -> entries.filter { it.lang.orEmpty().startsWith("ar", ignoreCase = true) }
-        "en" -> entries.filter { it.lang.orEmpty().startsWith("en", ignoreCase = true) }
-        else -> entries
+    val visibleEntries = entries.filter { entry ->
+        when (languageFilter) {
+            "ar" -> entry.lang.toNovelLanguageCode() == "ar"
+            "en" -> entry.lang.toNovelLanguageCode() == "en"
+            else -> entry.lang.toNovelLanguageCode() != null
+        }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -44,9 +46,9 @@ fun NovelSourcesCatalogDialog(
         title = { Text("مصادر الروايات", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("مستودع LNReader • ${entries.size} مصدرًا")
+                Text("مصادر عربية وإنجليزية • ${visibleEntries.size} من ${entries.size}")
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("all" to "الكل", "ar" to "العربية", "en" to "الإنجليزية").forEach { (key, label) ->
+                    listOf("supported" to "العربية + الإنجليزية", "ar" to "العربية", "en" to "الإنجليزية").forEach { (key, label) ->
                         FilterChip(
                             selected = languageFilter == key,
                             onClick = { onLanguageFilter(key) },

@@ -10,6 +10,15 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical stuff.
 
+## [v1.0.7] - 2026-10-15
+### Added
+- إضافة فهارس LNReader إضافية للروايات العربية والإنجليزية.
+- إضافة مستودع امتدادات Cursed المتوافق مع Mihon إلى قسم المانهوا.
+- إضافة مرشح افتراضي يعرض مصادر العربية والإنجليزية في كتالوجي الروايات والمانهوا.
+
+### Changed
+- رفع `versionCode` إلى 42 و`versionName` إلى v1.0.7.
+
 ## [v1.0.6] - 2026-10-13
 ### Fixed
 - إكمال تفاعلات قسم روايات المجتمع دون callbacks فارغة.

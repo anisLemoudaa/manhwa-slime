@@ -25,9 +25,13 @@ class ExtensionLanguageFilterTest {
     }
 
     @Test
-    fun allFilterKeepsEveryLanguage() {
-        assertTrue(ExtensionLanguageFilter.ALL.includes("ar"))
-        assertTrue(ExtensionLanguageFilter.ALL.includes("en"))
-        assertTrue(ExtensionLanguageFilter.ALL.includes("all"))
+    fun combinedFilterKeepsArabicAndEnglishOnly() {
+        assertTrue(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("ar"))
+        assertTrue(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("ar-SA"))
+        assertTrue(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("en"))
+        assertTrue(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("en-US"))
+        assertFalse(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("fr"))
+        assertFalse(ExtensionLanguageFilter.ARABIC_ENGLISH.includes("all"))
+        assertFalse(ExtensionLanguageFilter.ARABIC_ENGLISH.includes(null))
     }
 }

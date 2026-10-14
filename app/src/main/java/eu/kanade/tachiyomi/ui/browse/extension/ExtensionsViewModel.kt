@@ -61,7 +61,7 @@ class ExtensionsViewModel(
     val searchQuery: StateFlow<String?>
         field = MutableStateFlow(null)
 
-    private val selectedLanguage = MutableStateFlow(ExtensionLanguageFilter.ALL)
+    private val selectedLanguage = MutableStateFlow(ExtensionLanguageFilter.ARABIC_ENGLISH)
     val languageFilter: StateFlow<ExtensionLanguageFilter> = selectedLanguage
 
     // Public so the tab badge can observe it without subscribing to the whole state.
@@ -238,10 +238,13 @@ class ExtensionsViewModel(
     }
 
     private suspend fun ensureKeiyoushiRepository() {
-        if (preferences.keiyoushiRepoAutoAdded.get()) return
-
-        val alreadyAdded = getExtensionStores.get().any { it.indexUrl == KEIYOUSHI_INDEX_URL }
-        if (alreadyAdded || addExtensionStore(KEIYOUSHI_INDEX_URL).isSuccess) {
+        val knownRepositories = getExtensionStores.get().mapTo(mutableSetOf()) { it.indexUrl }
+        DEFAULT_EXTENSION_REPOSITORY_URLS.forEach { repositoryUrl ->
+            if (repositoryUrl !in knownRepositories && addExtensionStore(repositoryUrl).isSuccess) {
+                knownRepositories += repositoryUrl
+            }
+        }
+        if (KEIYOUSHI_INDEX_URL in knownRepositories) {
             preferences.keiyoushiRepoAutoAdded.set(true)
         }
     }
@@ -266,15 +269,15 @@ class ExtensionsViewModel(
 typealias ItemGroups = Map<ExtensionUiModel.Header, List<ExtensionUiModel.Item>>
 
 enum class ExtensionLanguageFilter(val label: String) {
-    ALL("الكل"),
+    ARABIC_ENGLISH("العربية والإنجليزية"),
     ARABIC("المصادر العربية"),
     ENGLISH("المصادر الإنجليزية"),
     ;
 
-    fun includes(language: String): Boolean {
-        val primaryLanguage = language.substringBefore('-').substringBefore('_').lowercase()
+    fun includes(language: String?): Boolean {
+        val primaryLanguage = language.orEmpty().substringBefore('-').substringBefore('_').lowercase()
         return when (this) {
-            ALL -> true
+            ARABIC_ENGLISH -> primaryLanguage == "ar" || primaryLanguage == "en"
             ARABIC -> primaryLanguage == "ar"
             ENGLISH -> primaryLanguage == "en"
         }
@@ -294,3 +297,7 @@ object ExtensionUiModel {
 }
 
 private const val KEIYOUSHI_INDEX_URL = "https://github.com/keiyoushi/extensions/raw/repo/index.pb"
+private val DEFAULT_EXTENSION_REPOSITORY_URLS = listOf(
+    KEIYOUSHI_INDEX_URL,
+    "https://raw.githubusercontent.com/mojuru/cursed-manga-repo/repo/index.pb",
+)

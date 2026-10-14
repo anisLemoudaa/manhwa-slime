@@ -12,7 +12,24 @@ data class NovelRepositoryEntry(
     val version: String? = null,
     val url: String,
     val iconUrl: String? = null,
+    @kotlinx.serialization.Transient val repositoryUrl: String? = null,
 )
+
+internal fun String?.toNovelLanguageCode(): String? {
+    val normalized = this.orEmpty()
+        .replace(Regex("[\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]"), "")
+        .trim()
+        .lowercase()
+        .replace('_', '-')
+        .substringBefore('(')
+        .trim()
+
+    return when {
+        normalized in setOf("ar", "ara", "arabic", "العربية", "عربية", "عربي", "اللغة العربية") || normalized.startsWith("ar-") -> "ar"
+        normalized in setOf("en", "eng", "english", "الإنجليزية", "الانجليزية", "إنجليزية", "انجليزية", "إنجليزي", "انجليزي") || normalized.startsWith("en-") -> "en"
+        else -> null
+    }
+}
 
 @Serializable
 data class NovelPluginInfo(
@@ -74,4 +91,5 @@ data class NovelSourceRuntime(
     val lang: String get() = installed.metadata.lang.orEmpty().ifBlank { "متعدد" }
     val site: String get() = installed.metadata.site.orEmpty()
     val iconUrl: String? get() = installed.metadata.iconUrl
+    val languageCode: String? get() = installed.metadata.lang.toNovelLanguageCode()
 }

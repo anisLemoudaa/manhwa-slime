@@ -75,7 +75,7 @@ private data class NovelUiState(
     val sourcesDialog: Boolean = false,
     val repoUrl: String = "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
     val repoEntries: List<NovelRepositoryEntry> = emptyList(),
-    val sourceLanguageFilter: String = "all",
+    val sourceLanguageFilter: String = "supported",
     val catalogLoading: Boolean = false,
     val inputMode: NovelInputMode = NovelInputMode.REPOSITORY,
     val showFavorites: Boolean = false,
@@ -119,10 +119,12 @@ fun NovelSectionContent() {
                     manager.ensureLoaded()
                     pluginsInitialized = true
                 }
-                manager.installed()
+                manager.installed().filter { it.languageCode != null }
             }.getOrDefault(emptyList())
 
-            val sid = sourceId ?: sources.firstOrNull()?.id
+            val sid = sourceId
+                ?.takeIf { requestedId -> sources.any { it.id == requestedId } }
+                ?: sources.firstOrNull()?.id
             state = state.copy(
                 sources = sources,
                 selectedSource = sid,
@@ -151,7 +153,7 @@ fun NovelSectionContent() {
 
     val installEntry: (NovelRepositoryEntry) -> Unit = { entry ->
         scope.launch {
-            val result = runCatching { manager.install(entry, state.repoUrl.trim()) }
+            val result = runCatching { manager.install(entry, entry.repositoryUrl ?: state.repoUrl.trim()) }
             if (result.isFailure) {
                 state = state.copy(error = result.exceptionOrNull()?.message)
             } else {
@@ -184,14 +186,14 @@ fun NovelSectionContent() {
             state = state.copy(showFavorites = !state.showFavorites)
         },
         onShowSources = {
-            state = state.copy(sourcesDialog = true, sourceLanguageFilter = "all", catalogLoading = true, error = null, info = null)
+            state = state.copy(sourcesDialog = true, sourceLanguageFilter = "supported", catalogLoading = true, error = null, info = null)
             scope.launch {
-                val result = runCatching { manager.loadRepository(state.repoUrl) }
+                val result = runCatching { manager.loadRepositories() }
                 state = state.copy(
                     repoEntries = result.getOrDefault(emptyList()),
                     catalogLoading = false,
                     error = result.exceptionOrNull()?.message,
-                    info = result.getOrNull()?.let { "تم العثور على ${it.size} مصدرًا في الفهرس" },
+                    info = result.getOrNull()?.let { "تم تحميل ${it.size} مصدرًا من فهارس LNReader" },
                 )
             }
         },
@@ -281,7 +283,7 @@ fun NovelSectionContent() {
             onReload = {
                 state = state.copy(catalogLoading = true, error = null)
                 scope.launch {
-                    val result = runCatching { manager.loadRepository(state.repoUrl) }
+                    val result = runCatching { manager.loadRepositories() }
                     state = state.copy(
                         repoEntries = result.getOrDefault(emptyList()),
                         catalogLoading = false,
@@ -590,15 +592,18 @@ private fun NovelShell(
                                         contentColor = MslDesignTokens.textPrimary,
                                     ),
                                 ) { Text("تحميل المستودع") }
+                                val supportedRepoEntries = state.repoEntries.filter { it.lang.toNovelLanguageCode() != null }
                                 if (state.repoEntries.isNotEmpty()) {
                                     HorizontalDivider(color = MslDesignTokens.border)
                                     Text(
-                                        "المصادر المتاحة: ${state.repoEntries.size}",
+                                        "المصادر العربية والإنجليزية: ${supportedRepoEntries.size}",
                                         fontWeight = FontWeight.SemiBold,
                                         color = MslDesignTokens.textPrimary,
                                     )
-                                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                                        items(state.repoEntries) { entry ->
+                                    if (supportedRepoEntries.isEmpty()) {
+                                        Text("لم يعثر الفهرس على مصادر عربية أو إنجليزية.", color = MslDesignTokens.textMuted)
+                                    } else LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                                        items(supportedRepoEntries) { entry ->
                                             ListItem(
                                                 headlineContent = {
                                                     Text(entry.name, color = MslDesignTokens.textPrimary)
