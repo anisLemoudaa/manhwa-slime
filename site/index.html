@@ -350,6 +350,26 @@
       'هذا النموذج غير مفعّل حاليًا لعدم توفر خدمة إرسال خلفية. للتواصل المباشر راسلنا على: [بريد إلكتروني للدعم]';
   });
 </script>
+<script src="assets/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  (async () => {
+    try {
+      const version = await fetch('/api/version', {cache:'no-store'}).then(r => r.ok ? r.json() : null);
+      if (version?.available) {
+        APK_CONFIG.version = version.versionName || '';
+        APK_CONFIG.size = version.fileSize ? `${Math.round(version.fileSize / 1024 / 1024)} MB` : '';
+        APK_CONFIG.releaseDate = version.publishedAt ? new Date(version.publishedAt).toLocaleDateString('ar') : '';
+        APK_CONFIG.downloadUrl = version.downloadUrl || '';
+        renderDownload();
+        document.getElementById('updates-body').innerHTML = `<p><strong style="color:#F2F2F0">${version.title || 'أحدث إصدار'}:</strong> ${(version.releaseNotes || []).join('، ') || 'تحديث جديد متوفر.'}</p>`;
+      }
+      const db = supabase.createClient(window.MSL_SUPABASE_URL, window.MSL_SUPABASE_KEY);
+      const {data: news} = await db.from('site_news').select('title,body,published_at').eq('status','published').order('published_at',{ascending:false}).limit(5);
+      if (news?.length) document.getElementById('updates-body').innerHTML = news.map(n => `<article><h3>${String(n.title).replace(/[&<>"']/g,'')}</h3><p>${String(n.body).replace(/[&<>"']/g,'')}</p></article>`).join('');
+    } catch (_) { /* تبقى الصفحة قابلة للاستخدام إذا لم تُضبط خدمة الإدارة بعد */ }
+  })();
+</script>
 
 </body>
 </html>
