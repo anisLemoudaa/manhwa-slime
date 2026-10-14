@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MANHWA SLIME | الموقع الرسمي</title>
+<meta name="description" content="اكتشف تطبيق MANHWA SLIME، وتعرّف على مميزاته وأقسام المانهوا والروايات، وحمّل أحدث إصدار متوفر.">
+<meta property="og:title" content="MANHWA SLIME | الموقع الرسمي">
+<meta property="og:description" content="اكتشف تطبيق MANHWA SLIME، وتعرّف على مميزاته وأقسام المانهوا والروايات، وحمّل أحدث إصدار متوفر.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --bg:#0C0D0F; --bg-soft:#15171A; --surface:#141519; --border:#232429;
+    --green:#8CFF6B; --green-dim:#17201A; --purple:#A78BFA;
+    --text:#F2F2F0; --text-dim:#9A9AA2; --text-faint:#5C5C63;
+    box-sizing:border-box;
+  }
+  *{box-sizing:inherit;}
+  html{scroll-behavior:smooth; scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Cairo',system-ui,sans-serif; line-height:1.5;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  a{color:var(--green); text-decoration:none;}
+  a:hover{color:#b8ffb0;}
+  img{max-width:100%;}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px;}
+  .row{display:flex; flex-wrap:wrap; gap:16px;}
+  header{position:sticky; top:0; z-index:20; background:#0C0D0Fdd; backdrop-filter:blur(8px); border-bottom:1px solid var(--border);}
+  .navbar{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 0;}
+  .logo{display:flex; align-items:center; gap:9px; font-weight:800; font-size:18px;}
+  .logo .dot{width:26px; height:26px; border-radius:28%; object-fit:cover; display:inline-block;}
+  nav.links{display:flex; align-items:center; gap:22px; flex-wrap:wrap; font-size:14px;}
+  nav.links a{color:var(--text-dim);}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; font-weight:700; border-radius:12px; padding:13px 22px; font-size:14.5px; border:none; cursor:pointer; font-family:inherit;}
+  .btn-primary{background:var(--green); color:#0C0D0F;}
+  .btn-primary:hover{background:#b8ffb0; color:#0C0D0F;}
+  .btn-outline{background:transparent; color:var(--text); border:1.5px solid #3A3B42;}
+  .btn-outline:hover{border-color:var(--green); color:var(--green);}
+  .btn[disabled]{opacity:.55; cursor:not-allowed;}
+  .pill{display:inline-flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); color:var(--purple); font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:999px; width:fit-content;}
+  section{padding:64px 0;}
+  h1,h2,h3{margin:0; color:#F7F7F5; font-weight:800;}
+  h1{font-size:clamp(30px,5vw,46px); line-height:1.3;}
+  h2{font-size:clamp(24px,3.5vw,30px); text-align:center;}
+  p{margin:0;}
+  .muted{color:var(--text-dim);}
+  .hero{display:flex; flex-wrap:wrap; align-items:center; gap:44px; padding:40px 0 72px;}
+  .hero-text{flex:999 1 400px; min-width:0; display:flex; flex-direction:column; gap:18px;}
+  .hero-visual{flex:1 1 240px; min-width:220px; display:flex; justify-content:center;}
+  .blob-wrap{position:relative; width:260px; height:260px; max-width:60vw; max-height:60vw;}
+  .blob-glow{position:absolute; inset:0; border-radius:50%; background:#a78bfa2e; filter:blur(26px);}
+  .blob-icon{position:absolute; inset:18px; width:calc(100% - 36px); height:calc(100% - 36px); border-radius:22%; box-shadow:0 24px 55px -16px #38b6ff66;}
+  .section-head{display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:34px;}
+  .grid{display:flex; flex-wrap:wrap; gap:18px;}
+  .card{flex:1 1 270px; min-width:230px; background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:24px; display:flex; flex-direction:column; gap:12px;}
+  .icon-box{width:40px; height:40px; border-radius:11px; background:var(--green-dim); color:var(--green); display:flex; align-items:center; justify-content:center;}
+  .card h3{font-size:16px;}
+  .card p{font-size:13.5px; color:var(--text-dim); line-height:1.8;}
+  .showcase-card{flex:1 1 310px; min-width:260px; background:var(--surface); border:1px solid var(--border); border-radius:20px; overflow:hidden; display:flex; flex-direction:column;}
+  .showcase-thumb{height:140px; background:linear-gradient(135deg,#1C1726,#20232A); display:flex; align-items:center; justify-content:center; color:var(--green);}
+  .showcase-body{padding:20px; display:flex; flex-direction:column; gap:10px;}
+  .showcase-body h3{font-size:16.5px;}
+  .showcase-body p{font-size:13.5px; color:var(--text-dim); line-height:1.8;}
+  .download-box{padding:44px 28px; border-radius:24px; background:linear-gradient(135deg,#15171A,#1C1726); border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; gap:20px; text-align:center;}
+  .badges{display:flex; flex-wrap:wrap; gap:9px; justify-content:center;}
+  .badge{background:#1A1B20; border:1px solid var(--border); color:#C9C9CE; font-size:12px; padding:7px 13px; border-radius:999px;}
+  details{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px;}
+  details + details{margin-top:10px;}
+  summary{cursor:pointer; font-weight:700; font-size:15px; list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  summary::after{content:"+"; float:left; font-size:20px; color:var(--green);}
+  details[open] summary::after{content:"−";}
+  details p{margin-top:10px; color:var(--text-dim); font-size:14px; line-height:1.8;}
+  form{display:flex; flex-direction:column; gap:14px; max-width:520px; margin:0 auto;}
+  label{font-size:13.5px; color:var(--text-dim); display:flex; flex-direction:column; gap:6px;}
+  input, textarea{background:#17181C; border:1px solid var(--border); border-radius:10px; color:var(--text); padding:11px 13px; font-family:inherit; font-size:14px;}
+  input:focus, textarea:focus{outline:2px solid var(--green); outline-offset:1px;}
+  textarea{min-height:110px; resize:vertical;}
+  .form-status{font-size:13px; color:var(--purple); min-height:18px;}
+  footer{border-top:1px solid var(--border); padding:48px 0 32px;}
+  .footer-top{display:flex; flex-wrap:wrap; gap:36px; justify-content:space-between;}
+  .footer-cols{display:flex; flex-wrap:wrap; gap:40px;}
+  .footer-col{display:flex; flex-direction:column; gap:9px; font-size:13.5px;}
+  .footer-col a{color:var(--text-dim);}
+  .footer-col .head{color:var(--text-faint); font-weight:700;}
+  .copyright{text-align:center; color:var(--text-faint); font-size:12.5px; margin-top:34px;}
+  .page-section{max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:14px;}
+  .page-section h3{font-size:16px; margin-top:12px;}
+  .page-section p, .page-section li{color:var(--text-dim); font-size:14px; line-height:1.9;}
+  @media (max-width:640px){ nav.links{display:none;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap navbar">
+    <a href="#hero" class="logo"><img src="assets/images/logo.svg" class="dot" alt="شعار MANHWA SLIME">MANHWA SLIME</a>
+    <nav class="links">
+      <a href="#features">مميزات التطبيق</a>
+      <a href="#sections">أقسام التطبيق</a>
+      <a href="#updates">آخر التحديثات</a>
+      <a href="#faq">الأسئلة الشائعة</a>
+      <a href="#support">الدعم والتواصل</a>
+    </nav>
+    <a href="#download" class="btn btn-primary">تحميل التطبيق مجانًا</a>
+  </div>
+</header>
+
+<main>
+
+  <section id="hero" class="wrap">
+    <div class="hero">
+      <div class="hero-text">
+        <span class="pill">MANHWA SLIME · التطبيق الرسمي</span>
+        <h1>عالم المانهوا والروايات بين يديك</h1>
+        <p class="muted" style="font-size:16px; line-height:1.9; max-width:520px;">اكتشف عوالم جديدة، وعِش مغامرات لا تُنسى، وتابع قصصك المفضلة في تجربة واحدة تجمع بين المانهوا والروايات ومجتمع القرّاء.</p>
+        <div class="row">
+          <a href="#download" class="btn btn-primary">تحميل التطبيق مجانًا</a>
+          <a href="#features" class="btn btn-outline">اكتشف المميزات</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="blob-wrap">
+          <div class="blob-glow"></div>
+          <img class="blob-icon" src="assets/images/logo.svg" alt="شخصية MANHWA SLIME">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="wrap">
+    <div class="section-head">
+      <h2>كل ما تحبه، في مكان واحد</h2>
+      <p class="muted" style="font-size:14px;">مميزات صُممت لتمنحك تجربة قراءة كاملة</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C4 4.67 4.67 4 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5c0-.83-.67-1.5-1.5-1.5H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg></span>
+        <h3>مكتبة المانهوا</h3>
+        <p>اكتشف أعمالًا متنوعة وتابع الفصول الجديدة من خلال المصادر المتاحة داخل التطبيق.</p>
+      </div>
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M9 4v13a3 3 0 0 1-3 3"/><path d="M10 9h5M10 13h5"/></svg></span>
+        <h3>قسم الروايات</h3>
+        <p>استمتع بقراءة الروايات المتوفرة عبر مصادر القراءة المدمجة في التطبيق.</p>
+      </div>
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
+        <h3>روايات المجتمع</h3>
+        <p>تعرّف على القسم المخصص للروايات التي ينشرها مستخدمو التطبيق، واكتشف قصص المجتمع.</p>
+      </div>
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg></span>
+        <h3>تجربة قراءة مريحة</h3>
+        <p>استمتع بواجهة قراءة مصممة لتوفير تجربة استخدام مريحة وسهلة.</p>
+      </div>
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 16"/><path d="M4 20v-4h4"/></svg></span>
+        <h3>تحديثات مستمرة</h3>
+        <p>تابع التحسينات والإصلاحات والإصدارات الجديدة للتطبيق.</p>
+      </div>
+      <div class="card">
+        <span class="icon-box"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-9.3-9.3C1.7 7.8 3.6 5 6.6 5c1.9 0 3.4 1 4.4 2.4C12 6 13.5 5 15.4 5c3 0 4.9 2.8 3.9 5.7C17.5 15.4 12 20 12 20z"/></svg></span>
+        <h3>مجتمع القرّاء</h3>
+        <p>اكتشف مساحة تجمع محبي المانهوا والروايات.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="sections" class="wrap">
+    <div class="section-head"><h2>اكتشف عوالم MANHWA SLIME</h2></div>
+    <div class="grid">
+      <div class="showcase-card">
+        <div class="showcase-thumb"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></div>
+        <div class="showcase-body">
+          <h3>روايات المجتمع</h3>
+          <p>قصص يكتبها القرّاء، وعوالم جديدة يصنعها الخيال.</p>
+          <a href="#download">اكتشف المزيد ←</a>
+        </div>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-thumb"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M9 4v13a3 3 0 0 1-3 3"/><path d="M10 9h5M10 13h5"/></svg></div>
+        <div class="showcase-body">
+          <h3>الروايات</h3>
+          <p>اكتشف الروايات المتاحة عبر مصادر القراءة داخل التطبيق.</p>
+          <a href="#download">اكتشف المزيد ←</a>
+        </div>
+      </div>
+      <div class="showcase-card">
+        <div class="showcase-thumb"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg></div>
+        <div class="showcase-body">
+          <h3>المانهوا</h3>
+          <p>انطلق إلى عوالم مليئة بالمغامرات والشخصيات والقصص.</p>
+          <a href="#download">اكتشف المزيد ←</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="wrap">
+    <div class="download-box">
+      <h2>ابدأ رحلتك مع MANHWA SLIME</h2>
+      <p class="muted" style="font-size:15px; max-width:480px;">حمّل التطبيق واستكشف عالم المانهوا والروايات من هاتفك.</p>
+      <div class="badges" id="apk-badges"></div>
+      <button id="apk-download-btn" class="btn btn-primary">تحميل APK مجانًا</button>
+      <span id="apk-status" class="muted" style="font-size:12.5px;"></span>
+    </div>
+  </section>
+
+  <section id="updates" class="wrap">
+    <div class="section-head"><h2>آخر التحديثات</h2></div>
+    <div class="page-section" id="updates-body">
+      <p>سيُحدَّث سجل الإصدارات هنا فور نشر أول إصدار رسمي للتطبيق، مع رقم الإصدار وتاريخه وأبرز المزايا والإصلاحات.</p>
+    </div>
+  </section>
+
+  <section id="faq" class="wrap">
+    <div class="section-head"><h2>الأسئلة الشائعة</h2></div>
+    <div style="max-width:720px; margin:0 auto;">
+      <details><summary>ما هو تطبيق MANHWA SLIME؟</summary><p>تطبيق أندرويد يجمع بين مكتبة مانهوا، قسم روايات، وقسم روايات مجتمع يكتبها المستخدمون، في واجهة واحدة.</p></details>
+      <details><summary>كيف يمكنني تحميل التطبيق؟</summary><p>اضغط على زر «تحميل APK مجانًا» في قسم التحميل بالأعلى بمجرد توفر الملف.</p></details>
+      <details><summary>هل تحميل التطبيق مجاني؟</summary><p>نعم، تحميل التطبيق من هذا الموقع مجاني بالكامل.</p></details>
+      <details><summary>كيف أعرف أنني أحمل أحدث إصدار؟</summary><p>رقم الإصدار وتاريخه يظهران في قسم «آخر التحديثات» وبجانب زر التحميل.</p></details>
+      <details><summary>ما الفرق بين قسم الروايات وقسم روايات المجتمع؟</summary><p>قسم الروايات يعرض روايات متاحة عبر مصادر قراءة داخل التطبيق، أما روايات المجتمع فهي قصص ينشرها مستخدمو التطبيق أنفسهم.</p></details>
+      <details><summary>كيف أبلغ عن مشكلة؟</summary><p>استخدم نموذج «الدعم والتواصل» أسفل الصفحة لوصف المشكلة.</p></details>
+    </div>
+  </section>
+
+  <section id="privacy" class="wrap">
+    <div class="section-head"><h2>سياسة الخصوصية</h2></div>
+    <div class="page-section">
+      <p><strong style="color:#F2F2F0">آخر تحديث:</strong> [تاريخ آخر تحديث للسياسة]</p>
+      <h3>البيانات التي نجمعها</h3>
+      <p>هذا الموقع لا يجمع بيانات شخصية عبر نماذجه إلا ما يُدخله الزائر بنفسه عند التواصل عبر نموذج الدعم (العنوان والوصف، والبريد الإلكتروني إن اختار كتابته).</p>
+      <h3>ملفات تعريف الارتباط وأدوات التحليل</h3>
+      <p>لا يستخدم الموقع حاليًا أدوات تحليل أو تتبع خارجية. سيُحدَّث هذا القسم إذا تمت إضافة أي أداة من هذا النوع مستقبلًا.</p>
+      <h3>خدمات خارجية</h3>
+      <p>استضافة الموقع تتم عبر مزوّد استضافة خارجي (Cloudflare Pages)، وقد يعالج بيانات تقنية أساسية (مثل عنوان IP) وفق سياسته الخاصة.</p>
+      <h3>التواصل بشأن الخصوصية</h3>
+      <p>لأي استفسار يتعلق بالخصوصية، يمكن التواصل عبر: [بريد إلكتروني للتواصل بشأن الخصوصية].</p>
+    </div>
+  </section>
+
+  <section id="terms" class="wrap">
+    <div class="section-head"><h2>شروط الاستخدام</h2></div>
+    <div class="page-section">
+      <p>باستخدام هذا الموقع، توافق على استخدامه للتعرّف على تطبيق MANHWA SLIME ومصادره الرسمية فقط.</p>
+      <h3>المحتوى والروابط</h3>
+      <p>يُرجى التحقق من مصدر أي ملف قبل تثبيته. لا يتوفر رابط APK رسمي في هذه النسخة حتى تتم إضافة ملف حقيقي من مالك التطبيق.</p>
+      <h3>التحديثات</h3>
+      <p>قد تتغير المزايا أو روابط التنزيل عند نشر إصدارات جديدة، وسيتم تحديث بيانات الإصدار في إعدادات الصفحة.</p>
+    </div>
+  </section>
+
+  <section id="support" class="wrap">
+    <div class="section-head"><h2>الدعم والتواصل</h2></div>
+    <form id="support-form">
+      <label>عنوان المشكلة
+        <input type="text" name="title" required>
+      </label>
+      <label>شرح المشكلة
+        <textarea name="description" required></textarea>
+      </label>
+      <label>البريد الإلكتروني (اختياري)
+        <input type="email" name="email">
+      </label>
+      <button type="submit" class="btn btn-primary">إرسال</button>
+      <span class="form-status" id="support-status"></span>
+    </form>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-top">
+      <div style="max-width:260px; display:flex; flex-direction:column; gap:9px;">
+        <div class="logo" style="font-size:15.5px;"><img src="assets/images/logo.svg" class="dot" style="width:18px;height:18px;" alt="شعار MANHWA SLIME">MANHWA SLIME</div>
+        <p class="muted" style="font-size:13.5px;">عالمك المفضل للمانهوا والروايات</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <span class="head">التطبيق</span>
+          <a href="#download">تحميل APK</a>
+          <a href="#features">المميزات</a>
+          <a href="#sections">الأقسام</a>
+        </div>
+        <div class="footer-col">
+          <span class="head">قانوني</span>
+          <a href="#privacy">سياسة الخصوصية</a>
+          <a href="#terms">شروط الاستخدام</a>
+        </div>
+        <div class="footer-col">
+          <span class="head">الدعم</span>
+          <a href="#support">تواصل معنا</a>
+        </div>
+      </div>
+    </div>
+    <p class="copyright">© MANHWA SLIME. جميع الحقوق محفوظة.</p>
+  </div>
+</footer>
+
+<script>
+  // ============================================================
+  // إعدادات مركزية — عدّل هذا الكائن فقط عند صدور إصدار جديد
+  // ============================================================
+  const APK_CONFIG = {
+    appName: "MANHWA SLIME",
+    platform: "Android",
+    fileType: "APK",
+    version: "",        // مثال: "1.0.0" — اتركه فارغًا حتى يتوفر الإصدار
+    size: "",           // مثال: "45 MB"
+    releaseDate: "",    // مثال: "2026-10-01"
+    downloadUrl: ""     // ضع رابط ملف APK هنا مباشرة عند توفره
+  };
+
+  function renderDownload(){
+    const badges = document.getElementById('apk-badges');
+    const btn = document.getElementById('apk-download-btn');
+    const status = document.getElementById('apk-status');
+    const rows = [
+      ['التطبيق', APK_CONFIG.appName],
+      ['النظام', APK_CONFIG.platform],
+      ['الملف', APK_CONFIG.fileType],
+      ['الإصدار', APK_CONFIG.version || '—'],
+      ['الحجم', APK_CONFIG.size || '—']
+    ];
+    badges.innerHTML = rows.map(([k,v]) => `<span class="badge">${k}: ${v}</span>`).join('');
+
+    if (APK_CONFIG.downloadUrl) {
+      btn.removeAttribute('disabled');
+      btn.onclick = () => window.location.href = APK_CONFIG.downloadUrl;
+      status.textContent = APK_CONFIG.releaseDate ? `تاريخ الإصدار: ${APK_CONFIG.releaseDate}` : '';
+    } else {
+      btn.setAttribute('disabled','true');
+      btn.onclick = (e) => e.preventDefault();
+      status.textContent = 'سيكون التطبيق متاحًا للتحميل قريبًا.';
+    }
+  }
+  renderDownload();
+
+  // نموذج الدعم: غير متصل بخدمة إرسال فعلية بعد
+  document.getElementById('support-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    document.getElementById('support-status').textContent =
+      'هذا النموذج غير مفعّل حاليًا لعدم توفر خدمة إرسال خلفية. للتواصل المباشر راسلنا على: [بريد إلكتروني للدعم]';
+  });
+</script>
+
+</body>
+</html>
