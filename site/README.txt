@@ -52,3 +52,8 @@ https://manhwa-slime.pages.dev/admin/
 حالة النسخ:
 -----------
 يجب نشر كل نسخة منفصلة من لوحة الإدارة. لا يكفي نشر النسخة الأصلية لنشر Lite؛ يجب إدخال رابط Lite ثم اختيار «نسخة الهواتف الضعيفة (Lite)» والضغط على «حفظ ونشر».
+
+تحسين الظهور في البحث:
+-----------------------
+أضيفت robots.txt وsitemap.xml وcanonical وبيانات Schema.org. بعد رفع الحزمة الجديدة، سجّل الموقع في Google Search Console وأرسل:
+https://manhwa-slime.pages.dev/sitemap.xml
