@@ -44,3 +44,7 @@ https://manhwa-slime.pages.dev/admin/
 النشر من الهاتف:
 -----------------
 ارفع محتويات الحزمة بحيث يظهر index.html في الجذر، مع مجلدات admin وassets وfunctions. بعد النشر أضف متغيرات البيئة المذكورة أعلاه ثم أعد النشر إذا طلب Cloudflare ذلك.
+
+حل ملفات APK الكبيرة:
+----------------------
+إذا ظهر خطأ The object exceeded the maximum allowed size، لا ترفع الملف إلى Supabase Storage. ارفع APK كملف من مرفقات GitHub Release ثم انسخ رابط Download الخاص بالملف، وبعدها ضع الرابط في حقل «رابط APK خارجي مباشر» في لوحة الإدارة. يجب أن يبدأ الرابط بـ https:// ويكون رابط تنزيل مباشرًا للملف.
