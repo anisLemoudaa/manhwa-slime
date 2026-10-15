@@ -25,6 +25,7 @@ class AppUpdateChecker(
                     isNightlyBuildType,
                     BuildConfig.COMMIT_COUNT.toInt(),
                     BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE,
                     GITHUB_REPO,
                     forceCheck,
                 ),

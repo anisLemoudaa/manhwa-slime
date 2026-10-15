@@ -96,4 +96,30 @@ class GetApplicationReleaseTest {
 
         result shouldBe GetApplicationRelease.Result.NoNewUpdate
     }
+
+    @Test
+    fun `When official version code is not newer expect no update even with higher version name`() = runTest {
+        val release = Release(
+            "v99.0.0",
+            "info",
+            "https://example.com/release",
+            "https://example.com/release.apk",
+            versionCode = 34,
+        )
+
+        coEvery { releaseService.latest(any()) } returns release
+
+        val result = getApplicationRelease.await(
+            GetApplicationRelease.Arguments(
+                isFoss = false,
+                isNightly = false,
+                commitCount = 0,
+                versionName = "v0.20.4",
+                versionCode = 34,
+                repository = "test",
+            ),
+        )
+
+        result shouldBe GetApplicationRelease.Result.NoNewUpdate
+    }
 }

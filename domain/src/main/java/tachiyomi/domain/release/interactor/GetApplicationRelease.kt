@@ -16,7 +16,9 @@ class GetApplicationRelease(
             arguments.isNightly,
             arguments.commitCount,
             arguments.versionName,
+            arguments.versionCode,
             release.version,
+            release.versionCode,
         )
         return when {
             isNewVersion -> Result.NewUpdate(release)
@@ -28,8 +30,13 @@ class GetApplicationRelease(
         isNightly: Boolean,
         commitCount: Int,
         versionName: String,
+        versionCode: Int,
         versionTag: String,
+        releaseVersionCode: Int,
     ): Boolean {
+        if (releaseVersionCode > 0 && versionCode > 0) {
+            return releaseVersionCode > versionCode
+        }
         // Removes prefixes like "r" or "v"
         val newVersion = versionTag.replace("[^\\d.]".toRegex(), "")
         return if (isNightly) {
@@ -59,6 +66,7 @@ class GetApplicationRelease(
         val isNightly: Boolean,
         val commitCount: Int,
         val versionName: String,
+        val versionCode: Int = 0,
         val repository: String,
         val forceCheck: Boolean = false,
     )

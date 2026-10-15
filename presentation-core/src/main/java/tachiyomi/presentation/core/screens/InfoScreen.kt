@@ -42,6 +42,7 @@ fun InfoScreen(
     canAccept: Boolean = true,
     rejectText: String? = null,
     onRejectClick: (() -> Unit)? = null,
+    canReject: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
@@ -72,7 +73,7 @@ fun InfoScreen(
                 ) {
                     Text(text = acceptText)
                 }
-                if (rejectText != null && onRejectClick != null) {
+                if (canReject && rejectText != null && onRejectClick != null) {
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onRejectClick,
