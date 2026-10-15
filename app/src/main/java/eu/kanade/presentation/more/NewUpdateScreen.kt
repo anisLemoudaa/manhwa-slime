@@ -29,6 +29,7 @@ import tachiyomi.presentation.core.screens.InfoScreen
 fun NewUpdateScreen(
     versionName: String,
     changelogInfo: String,
+    mandatory: Boolean = false,
     stage: NewUpdateScreenModel.Stage,
     downloadProgress: () -> Int,
     onOpenInBrowser: () -> Unit,
@@ -52,6 +53,7 @@ fun NewUpdateScreen(
         canAccept = stage != NewUpdateScreenModel.Stage.Downloading,
         rejectText = stringResource(MR.strings.action_not_now),
         onRejectClick = onRejectUpdate,
+        canReject = !mandatory,
     ) {
         Column(
             modifier = Modifier

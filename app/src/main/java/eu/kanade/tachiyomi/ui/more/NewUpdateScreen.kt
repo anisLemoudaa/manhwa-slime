@@ -16,6 +16,7 @@ class NewUpdateScreen(
     private val changelogInfo: String,
     private val releaseLink: String,
     private val downloadLink: String,
+    private val mandatory: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -31,6 +32,7 @@ class NewUpdateScreen(
 
         NewUpdateScreen(
             versionName = versionName,
+            mandatory = mandatory,
             stage = state.stage,
             downloadProgress = { state.downloadProgress },
             changelogInfo = state.changelogInfo,
