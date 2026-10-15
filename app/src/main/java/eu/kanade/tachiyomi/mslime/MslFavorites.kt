@@ -63,11 +63,11 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Existing remote favorite categories. Community novels keep using their existing RLS-protected library table. */
-enum class MslFavoriteKind(val label: String, val wireType: String?) {
+/** Favorite categories stored in the existing RLS-protected user_favorites table. */
+enum class MslFavoriteKind(val label: String, val wireType: String) {
     MANGA("المانغا المفضلة", "manga"),
     NOVEL("الروايات المفضلة", "novel"),
-    COMMUNITY("روايات المجتمع المفضلة", null),
+    COMMUNITY("روايات المجتمع المفضلة", "community_novel"),
 }
 
 data class MslFavoriteItem(
@@ -124,6 +124,7 @@ object MslFavorites {
                             val kind = when (row.optString("item_type")) {
                                 "manga" -> MslFavoriteKind.MANGA
                                 "novel" -> MslFavoriteKind.NOVEL
+                                "community_novel" -> MslFavoriteKind.COMMUNITY
                                 else -> null
                             } ?: continue
                             add(
@@ -178,30 +179,18 @@ object MslFavorites {
             try {
                 val token = MslSupabase.token(context) ?: error("انتهت جلسة الدخول. سجّل الدخول ثم أعد المحاولة.")
                 val uid = MslSupabase.uid(context).takeIf(String::isNotBlank) ?: error("تعذّر تحديد المستخدم الحالي.")
-                val success = when (item.kind) {
-                    MslFavoriteKind.COMMUNITY -> CommunityNovelApi.toggleLibrary(context, item.itemKey, desired)
-                    MslFavoriteKind.MANGA, MslFavoriteKind.NOVEL -> {
-                        val itemType = item.kind.wireType ?: error("نوع مفضلة غير مدعوم")
-                        if (desired) {
-                            val body = JSONObject()
-                                .put("user_id", uid)
-                                .put("item_type", itemType)
-                                .put("item_key", item.itemKey)
-                                .put("title", item.title)
-                                .put("cover", item.cover ?: JSONObject.NULL)
-                                .put("source_id", item.sourceId ?: JSONObject.NULL)
-                                .put("added_at", optimistic.addedAt)
-                            MslSupabase.call("POST", "/rest/v1/user_favorites", body.toString(), token, "resolution=ignore-duplicates,return=minimal").first in 200..299
-                        } else {
-                            val key = java.net.URLEncoder.encode(item.itemKey, "UTF-8")
-                            MslSupabase.call(
-                                "DELETE",
-                                "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.$itemType&item_key=eq.$key",
-                                null,
-                                token,
-                            ).first in 200..299
-                        }
+                val rowSuccess = writeFavoriteRow(token, uid, item, item.kind.wireType, desired, optimistic.addedAt)
+                val success = if (!rowSuccess) {
+                    false
+                } else if (item.kind == MslFavoriteKind.COMMUNITY) {
+                    val librarySuccess = CommunityNovelApi.toggleLibrary(context, item.itemKey, desired)
+                    if (!librarySuccess) {
+                        // Keep the existing community library behavior in sync; compensate the new row on failure.
+                        runCatching { writeFavoriteRow(token, uid, item, item.kind.wireType, !desired, item.addedAt) }
                     }
+                    librarySuccess
+                } else {
+                    true
                 }
                 if (!success) error("لم يتم حفظ التغيير في Supabase. حاول مجددًا.")
                 if (item.kind == MslFavoriteKind.MANGA && !desired) {
@@ -235,6 +224,28 @@ object MslFavorites {
         val response = MslSupabase.call("GET", path, null, token)
         if (response.first !in 200..299) error("فشل تحميل المفضلة (${response.first}).")
         return JSONArray(response.second)
+    }
+
+    private fun writeFavoriteRow(token: String, uid: String, item: MslFavoriteItem, itemType: String, desired: Boolean, addedAt: Long): Boolean {
+        return if (desired) {
+            val body = JSONObject()
+                .put("user_id", uid)
+                .put("item_type", itemType)
+                .put("item_key", item.itemKey)
+                .put("title", item.title)
+                .put("cover", item.cover ?: JSONObject.NULL)
+                .put("source_id", item.sourceId ?: JSONObject.NULL)
+                .put("added_at", addedAt)
+            MslSupabase.call("POST", "/rest/v1/user_favorites", body.toString(), token, "resolution=ignore-duplicates,return=minimal").first in 200..299
+        } else {
+            val key = java.net.URLEncoder.encode(item.itemKey, "UTF-8")
+            MslSupabase.call(
+                "DELETE",
+                "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.$itemType&item_key=eq.$key",
+                null,
+                token,
+            ).first in 200..299
+        }
     }
 
     private fun loadCommunityLibrary(token: String, uid: String): List<MslFavoriteItem> {
