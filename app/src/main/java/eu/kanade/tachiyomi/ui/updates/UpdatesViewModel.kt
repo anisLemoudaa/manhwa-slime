@@ -59,6 +59,7 @@ import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -210,9 +211,10 @@ class UpdatesViewModel(
         }
     }
 
-    private fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
+    private suspend fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
         return this
-            .map { update ->
+            .mapNotNull { update ->
+                if (getManga.await(update.mangaId)?.isAdultContent() == true) return@mapNotNull null
                 val activeDownload = downloadManager.getQueuedDownloadOrNull(update.chapterId)
                 val downloaded = downloadManager.isChapterDownloaded(
                     update.chapterName,

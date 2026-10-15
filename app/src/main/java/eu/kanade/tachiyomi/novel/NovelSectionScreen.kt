@@ -1214,7 +1214,7 @@ class NovelDetailsScreen(
 
 private suspend fun saveNovelOfflineChapter(
     context: android.content.Context,
-    manager: NovelManager,
+    manager: NovelSourceManager,
     store: NovelOfflineStore,
     sourceId: String,
     details: NovelDetails,

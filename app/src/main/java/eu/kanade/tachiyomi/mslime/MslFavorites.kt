@@ -5,6 +5,7 @@ package eu.kanade.tachiyomi.mslime
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.novel.NovelFavoriteEntry
 import eu.kanade.tachiyomi.novel.NovelFavoritesStore
+import eu.kanade.tachiyomi.novel.hasAdultContentMarker
 import mihon.app.di.appGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +64,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import tachiyomi.domain.manga.model.isAdultContent
 
 /** Favorite categories stored in the existing RLS-protected user_favorites table. */
 enum class MslFavoriteKind(val label: String, val wireType: String) {
@@ -140,7 +143,13 @@ object MslFavorites {
                         }
                     }.toMutableList()
                     items += loadCommunityLibrary(token, uid)
-                    mutableSnapshot.value = MslFavoriteSnapshot(items = items.distinctBy { it.kind to it.itemKey }, loaded = true)
+                    val safeItems = items.filterNot { item ->
+                        if (item.kind != MslFavoriteKind.MANGA) return@filterNot false
+                        if (hasAdultContentMarker(item.title)) return@filterNot true
+                        val sourceId = item.sourceId?.toLongOrNull() ?: return@filterNot false
+                        context.appGraph.getMangaByUrlAndSourceId.await(item.itemKey, sourceId)?.isAdultContent() == true
+                    }
+                    mutableSnapshot.value = MslFavoriteSnapshot(items = safeItems.distinctBy { it.kind to it.itemKey }, loaded = true)
                     // Keep the existing on-device novel list as a compatibility cache only; remote rows remain authoritative.
                     val remoteNovels = items.filter { it.kind == MslFavoriteKind.NOVEL }.mapNotNull { item ->
                         val parts = item.itemKey.split("::", limit = 2)

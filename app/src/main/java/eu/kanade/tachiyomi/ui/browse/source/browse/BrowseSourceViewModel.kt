@@ -52,6 +52,7 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.interactor.GetRemoteManga
@@ -137,7 +138,7 @@ class BrowseSourceViewModel(
                         .map { it ?: manga }
                         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), manga)
                 }
-                    .filter { !hideInLibraryItems || !it.value.favorite }
+                    .filter { !it.value.isAdultContent() && (!hideInLibraryItems || !it.value.favorite) }
             }
                 .cachedIn(viewModelScope)
         }
