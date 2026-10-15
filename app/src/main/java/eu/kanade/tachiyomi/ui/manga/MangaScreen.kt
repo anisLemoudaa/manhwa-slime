@@ -138,20 +138,24 @@ class MangaScreen(
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
             onDownloadChapter = { items: List<ChapterList.Item>, action: ChapterDownloadAction ->
-                val chapter = items.singleOrNull()?.chapter
                 if (
                     proComicSource != null &&
-                    chapter != null &&
+                    items.isNotEmpty() &&
                     action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)
                 ) {
+                    val queue = items.map { item ->
+                        Triple(item.chapter.id, proComicSource.baseUrl + item.chapter.url, item.chapter.name)
+                    }
+                    val (chapterId, chapterUrl, chapterTitle) = queue.first()
                     context.startActivity(
                         WebViewActivity.newIntent(
                             context = context,
-                            url = proComicSource.baseUrl + chapter.url,
+                            url = chapterUrl,
                             sourceId = proComicSource.id,
-                            title = chapter.name,
+                            title = chapterTitle,
                             adFreeReader = true,
-                            prepareDownloadChapterId = chapter.id,
+                            prepareDownloadChapterId = chapterId,
+                            prepareDownloadQueue = queue.drop(1),
                         ),
                     )
                 } else {

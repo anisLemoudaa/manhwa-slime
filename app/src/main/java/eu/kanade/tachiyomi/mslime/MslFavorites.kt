@@ -144,6 +144,7 @@ object MslFavorites {
                     }.toMutableList()
                     items += loadCommunityLibrary(token, uid)
                     val safeItems = items.filterNot { item ->
+                        if (item.kind == MslFavoriteKind.COMMUNITY) return@filterNot hasAdultContentMarker(item.title)
                         if (item.kind != MslFavoriteKind.MANGA) return@filterNot false
                         if (hasAdultContentMarker(item.title)) return@filterNot true
                         val sourceId = item.sourceId?.toLongOrNull() ?: return@filterNot false
@@ -269,17 +270,24 @@ object MslFavorites {
         if (ids.isEmpty()) return emptyList()
         val novels = requestRows(
             token,
-            "/rest/v1/community_novels?select=id,title,cover_path&id=in.(${ids.joinToString(",")})&limit=5000",
+            "/rest/v1/community_novels?select=id,title,cover_path,content_notice&id=in.(${ids.joinToString(",")})&limit=5000",
         )
-        return List(novels.length()) { i ->
-            val row = novels.getJSONObject(i)
-            MslFavoriteItem(
-                kind = MslFavoriteKind.COMMUNITY,
-                itemKey = row.optString("id"),
-                title = row.optString("title").ifBlank { "رواية مجتمع" },
-                cover = row.optString("cover_path").takeIf(String::isNotBlank),
-                sourceId = "community",
-            )
+        return buildList {
+            for (i in 0 until novels.length()) {
+                val row = novels.getJSONObject(i)
+                val title = row.optString("title").ifBlank { "رواية مجتمع" }
+                val notice = row.optString("content_notice", "general").lowercase()
+                if (notice in setOf("mature", "adult", "nsfw", "18+", "18plus") || hasAdultContentMarker(title)) continue
+                add(
+                    MslFavoriteItem(
+                        kind = MslFavoriteKind.COMMUNITY,
+                        itemKey = row.optString("id"),
+                        title = title,
+                        cover = row.optString("cover_path").takeIf(String::isNotBlank),
+                        sourceId = "community",
+                    ),
+                )
+            }
         }
     }
 }

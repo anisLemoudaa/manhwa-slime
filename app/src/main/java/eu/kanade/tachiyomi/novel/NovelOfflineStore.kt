@@ -24,6 +24,7 @@ data class OfflineNovelBook(
     val cover: String? = null,
     val description: String? = null,
     val isCommunity: Boolean = false,
+    val contentNotice: String = "general",
     val chapters: List<OfflineNovelChapter> = emptyList(),
 )
 
@@ -51,6 +52,7 @@ class NovelOfflineStore(context: Context) {
         chapterNumber: Double? = null,
         order: Int = 0,
         isCommunity: Boolean = false,
+        contentNotice: String = "general",
     ) {
         require(sourceId.isNotBlank() && novelPath.isNotBlank() && chapterPath.isNotBlank())
         val target = chapterFile(sourceId, novelPath, chapterPath)
@@ -76,6 +78,7 @@ class NovelOfflineStore(context: Context) {
             cover = cover ?: oldBook?.cover,
             description = description ?: oldBook?.description,
             isCommunity = isCommunity || oldBook?.isCommunity == true,
+            contentNotice = contentNotice.ifBlank { oldBook?.contentNotice ?: "general" },
             chapters = bookChapters.sortedWith(compareBy<OfflineNovelChapter> { it.order }.thenBy { it.number ?: Double.MAX_VALUE }),
         )
         existing.removeAll { it.sourceId == sourceId && it.novelPath == novelPath }

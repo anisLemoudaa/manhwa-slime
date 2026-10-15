@@ -68,6 +68,7 @@ import eu.kanade.tachiyomi.mslime.MslFavorites
 import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.mslime.MslTranslate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -986,13 +987,18 @@ class NovelDetailsScreen(
         var readKeys by remember { mutableStateOf(emptySet<String>()) }
         var downloadedPaths by remember { mutableStateOf(emptySet<String>()) }
         var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
+        var downloadingPaths by remember { mutableStateOf(emptySet<String>()) }
+        var bulkDownloading by remember { mutableStateOf(false) }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         val favoriteSnapshot by MslFavorites.snapshot.collectAsState()
         val offlineStore = remember { NovelOfflineStore(context) }
         LaunchedEffect(Unit) {
             if (!favoriteSnapshot.loaded && !favoriteSnapshot.loading) MslFavorites.load(context)
-            val r = runCatching { manager.details(sourceId, path) }
+            val r = runCatching {
+                manager.ensureLoaded()
+                manager.details(sourceId, path)
+            }
             val fetched = r.getOrNull()
             if (fetched?.isAdultContent() == true) {
                 details = null
@@ -1023,13 +1029,25 @@ class NovelDetailsScreen(
         }
         fun requestDownload(index: Int, chapter: NovelChapter) {
             val current = details ?: return
+            if (chapter.path in downloadingPaths || chapter.path in downloadedPaths) return
+            downloadingPaths = downloadingPaths + chapter.path
             detailsScope.launch {
-                val failure = saveNovelOfflineChapter(context, manager, offlineStore, sourceId, current, fallbackName, index, chapter)
-                if (failure == null) {
-                    downloadedPaths = downloadedPaths + chapter.path
-                    Toast.makeText(context, "تم تحميل ${chapter.name}", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                try {
+                    val failure = try {
+                        saveNovelOfflineChapter(context, manager, offlineStore, sourceId, current, fallbackName, index, chapter)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        error.message ?: "تعذّر تحميل ${chapter.name}."
+                    }
+                    if (failure == null) {
+                        downloadedPaths = downloadedPaths + chapter.path
+                        Toast.makeText(context, "تم تحميل ${chapter.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                    }
+                } finally {
+                    downloadingPaths = downloadingPaths - chapter.path
                 }
             }
         }
@@ -1129,23 +1147,49 @@ class NovelDetailsScreen(
                                 Text("الفصول", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                 if (selectedPaths.isNotEmpty()) {
                                     Button(
+                                        enabled = !bulkDownloading,
                                         onClick = {
                                             val selected = d.chapters.orEmpty().mapIndexedNotNull { chapterIndex, chapter ->
                                                 if (chapter.path in selectedPaths) chapterIndex to chapter else null
                                             }
+                                            if (selected.isEmpty()) return@Button
+                                            bulkDownloading = true
                                             detailsScope.launch {
-                                                selected.forEach { (chapterIndex, chapter) ->
-                                                    if (chapter.path !in downloadedPaths) {
-                                                        val failure = saveNovelOfflineChapter(context, manager, offlineStore, sourceId, d, fallbackName, chapterIndex, chapter)
-                                                        if (failure == null) downloadedPaths = downloadedPaths + chapter.path
-                                                        else Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                                                var succeeded = 0
+                                                var failed = 0
+                                                try {
+                                                    selected.forEach { (chapterIndex, chapter) ->
+                                                        if (chapter.path in downloadedPaths) {
+                                                            succeeded++
+                                                        } else {
+                                                            downloadingPaths = downloadingPaths + chapter.path
+                                                            val failure = try {
+                                                                saveNovelOfflineChapter(context, manager, offlineStore, sourceId, d, fallbackName, chapterIndex, chapter)
+                                                            } catch (cancelled: CancellationException) {
+                                                                throw cancelled
+                                                            } catch (error: Exception) {
+                                                                error.message ?: "تعذّر تحميل ${chapter.name}."
+                                                            } finally {
+                                                                downloadingPaths = downloadingPaths - chapter.path
+                                                            }
+                                                            if (failure == null) {
+                                                                downloadedPaths = downloadedPaths + chapter.path
+                                                                succeeded++
+                                                            } else {
+                                                                failed++
+                                                                Toast.makeText(context, "${chapter.name}: $failure", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
                                                     }
+                                                } finally {
+                                                    bulkDownloading = false
+                                                    selectedPaths = emptySet()
                                                 }
-                                                selectedPaths = emptySet()
+                                                Toast.makeText(context, "اكتمل التحميل: $succeeded ناجح، $failed تعذّر", Toast.LENGTH_LONG).show()
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
-                                    ) { Text("تحميل المحدد (${selectedPaths.size})") }
+                                    ) { Text(if (bulkDownloading) "جارٍ التحميل…" else "تحميل المحدد (${selectedPaths.size})") }
                                 }
                             }
                         }
@@ -1189,13 +1233,13 @@ class NovelDetailsScreen(
                                     Text("مقروء ✓", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.labelMedium)
                                 }
                                 IconButton(
-                                    onClick = { if (chapter.path !in downloadedPaths) requestDownload(index, chapter) },
-                                    enabled = chapter.path in downloadedPaths || MslWallet.enabled,
+                                    onClick = { requestDownload(index, chapter) },
+                                    enabled = chapter.path in downloadedPaths || chapter.path in downloadingPaths || MslWallet.enabled,
                                     modifier = Modifier.size(48.dp).semantics {
                                         contentDescription = if (chapter.path in downloadedPaths) "${chapter.name} محمّل" else "تحميل ${chapter.name}"
                                     },
                                 ) {
-                                    Text(if (chapter.path in downloadedPaths) "✓" else "⇩", color = MslDesignTokens.accentBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (chapter.path in downloadedPaths) "✓" else if (chapter.path in downloadingPaths) "…" else "⇩", color = MslDesignTokens.accentBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1225,15 +1269,23 @@ private suspend fun saveNovelOfflineChapter(
     if (!MslWallet.enabled) return "تنزيل الفصول غير متاح حاليًا."
     if (store.contains(sourceId, details.path, chapter.path)) return null
     val reservationId = UUID.randomUUID().toString()
-    val reservation = withContext(Dispatchers.IO) {
-        MslWallet.reserveDownload(context, reservationId, "novel:$sourceId:${details.path}:${chapter.path}")
+    val reservation = try {
+        withContext(Dispatchers.IO) {
+            MslWallet.reserveDownload(context, reservationId, "novel:$sourceId:${details.path}:${chapter.path}")
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
+        return failure.message ?: "تعذّر التحقق من رصيد التنزيل."
     }
     if (reservation == null) {
-        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
+        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
         return "تعذّر التحقق من رصيد التنزيل."
     }
     if (!reservation.allowed) return context.stringResource(MR.strings.coin_download_no_balance)
-    val saved = runCatching {
+    val saved = try {
+        manager.ensureLoaded()
         val content = manager.chapter(sourceId, chapter.path)
         withContext(Dispatchers.IO) {
             store.save(
@@ -1249,12 +1301,17 @@ private suspend fun saveNovelOfflineChapter(
                 order = index,
             )
         }
+        Result.success(Unit)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
     }
     if (saved.isFailure) {
-        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
+        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
         return saved.exceptionOrNull()?.message ?: "تعذّر تحميل الفصل."
     }
-    withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) }
+    runCatching { withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) } }
     return null
 }
 

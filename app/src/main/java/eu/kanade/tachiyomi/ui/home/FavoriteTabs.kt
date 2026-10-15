@@ -2,46 +2,56 @@ package eu.kanade.tachiyomi.ui.home
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
-import cafe.adriel.voyager.navigator.tab.TabOptions
+import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.mslime.CommunityNovelOpenScreen
-import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavoriteItem
+import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavoriteListScreen
 import eu.kanade.tachiyomi.novel.NovelDetailsScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
-import mihon.app.di.appGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mihon.app.di.appGraph
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
 import mihon.icons.materialsymbols.rounded.CollectionsBookmark
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 
-private class FavoritesDestination(
-    private val index: UShort,
-    private val label: String,
+private abstract class FavoritesDestination(
+    private val index: Int,
     private val kind: MslFavoriteKind,
-    private val icon: @Composable () -> androidx.compose.ui.graphics.painter.Painter,
 ) : Tab {
+    // Distinct, stable keys prevent Voyager from restoring several tabs into the same currentTab slot.
+    override val key: ScreenKey = "favorite-${kind.wireType}"
+
     override val options: TabOptions
         @Composable
-        get() = TabOptions(index = index, title = label, icon = icon())
+        get() = TabOptions(
+            index = index.toUShort(),
+            title = kind.label,
+            icon = rememberVectorPainter(
+                when (kind) {
+                    MslFavoriteKind.NOVEL -> MaterialSymbols.AutoMirroredRounded.ChromeReaderMode
+                    MslFavoriteKind.MANGA, MslFavoriteKind.COMMUNITY -> MaterialSymbols.Rounded.CollectionsBookmark
+                },
+            ),
+        )
 
     @Composable
     override fun Content() {
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
-        MslFavoriteListScreen(kind) { item ->
+        MslFavoriteListScreen(kind) { item: MslFavoriteItem ->
             when (item.kind) {
                 MslFavoriteKind.MANGA -> {
-                    val sourceId = item.sourceId?.toLongOrNull()
-                    if (sourceId == null) return@MslFavoriteListScreen
+                    val sourceId = item.sourceId?.toLongOrNull() ?: return@MslFavoriteListScreen
                     scope.launch {
                         val manga = withContext(Dispatchers.IO) {
                             context.appGraph.getMangaByUrlAndSourceId.await(item.itemKey, sourceId)
@@ -59,20 +69,10 @@ private class FavoritesDestination(
     }
 }
 
-val FavoriteMangaTab: Tab = FavoritesDestination(
-    index = 6u.toUShort(),
-    label = MslFavoriteKind.MANGA.label,
-    kind = MslFavoriteKind.MANGA,
-) { rememberVectorPainter(MaterialSymbols.Rounded.CollectionsBookmark) }
+private object FavoriteMangaDestination : FavoritesDestination(6, MslFavoriteKind.MANGA)
+private object FavoriteNovelDestination : FavoritesDestination(7, MslFavoriteKind.NOVEL)
+private object FavoriteCommunityDestination : FavoritesDestination(8, MslFavoriteKind.COMMUNITY)
 
-val FavoriteNovelTab: Tab = FavoritesDestination(
-    index = 7u.toUShort(),
-    label = MslFavoriteKind.NOVEL.label,
-    kind = MslFavoriteKind.NOVEL,
-) { rememberVectorPainter(MaterialSymbols.AutoMirroredRounded.ChromeReaderMode) }
-
-val FavoriteCommunityTab: Tab = FavoritesDestination(
-    index = 8u.toUShort(),
-    label = MslFavoriteKind.COMMUNITY.label,
-    kind = MslFavoriteKind.COMMUNITY,
-) { rememberVectorPainter(MaterialSymbols.Rounded.CollectionsBookmark) }
+val FavoriteMangaTab: Tab = FavoriteMangaDestination
+val FavoriteNovelTab: Tab = FavoriteNovelDestination
+val FavoriteCommunityTab: Tab = FavoriteCommunityDestination

@@ -68,7 +68,10 @@ fun DownloadedNovelsContent() {
             scope.launch {
                 books = withContext(Dispatchers.IO) {
                     store.migrateFromHistory(NovelHistoryStore(context).all())
-                    store.downloadedNovels()
+                    store.downloadedNovels().filterNot { book ->
+                        book.contentNotice.lowercase() in setOf("mature", "adult", "nsfw", "18+", "18plus") ||
+                            hasAdultContentMarker(book.title, book.description)
+                    }
                 }
             }
         }

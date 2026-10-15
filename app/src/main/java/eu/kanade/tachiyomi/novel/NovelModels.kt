@@ -89,7 +89,7 @@ data class NovelChapter(
     val releaseTime: String? = null,
     val chapterNumber: Double? = null,
     val page: String? = null,
-)
+) : java.io.Serializable
 
 @Serializable
 data class NovelDetails(

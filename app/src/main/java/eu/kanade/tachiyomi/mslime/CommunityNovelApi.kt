@@ -10,6 +10,8 @@ object CommunityNovelApi {
     data class Novel(
         val id: String,
         val authorId: String,
+        val authorName: String = "",
+        val contentNotice: String = "general",
         val title: String,
         val description: String,
         val coverPath: String?,
@@ -79,6 +81,12 @@ object CommunityNovelApi {
         return novel.copy(inLibrary = saved, liked = liked)
     }
 
+    fun incrementView(ctx: Context, novelId: String): Boolean {
+        val tok = token(ctx) ?: return false
+        val body = JSONObject().put("p_novel_id", novelId).toString()
+        return MslSupabase.call("POST", "/rest/v1/rpc/community_increment_view", body, tok).first in 200..299
+    }
+
     fun chapters(ctx: Context, novelId: String, includeDrafts: Boolean = false): List<Chapter> {
         val extra = if (includeDrafts) "" else "&status=eq.published"
         val rows = get(ctx, "/rest/v1/community_novel_chapters?select=*&novel_id=eq.$novelId$extra&order=chapter_number.asc&limit=200") ?: return emptyList()
@@ -88,9 +96,9 @@ object CommunityNovelApi {
         }.filterNot { hasAdultContentMarker(it.title, it.content) }
     }
 
-    fun saveNovel(ctx: Context, novel: Novel?, title: String, description: String, category: String, language: String, completion: String, tags: Set<String> = setOf(category), coverData: String? = novel?.coverPath): Result<String> = runCatching {
+    fun saveNovel(ctx: Context, novel: Novel?, title: String, authorName: String, description: String, category: String, language: String, completion: String, tags: Set<String> = setOf(category), coverData: String? = novel?.coverPath): Result<String> = runCatching {
         val tok = token(ctx) ?: error("يلزم تسجيل الدخول لإنشاء رواية")
-        val body = JSONObject().put("title", title.trim()).put("description", description.trim()).put("primary_category", category).put("tags", JSONArray(tags.toList())).put("language", language).put("completion_status", completion)
+        val body = JSONObject().put("title", title.trim()).put("author_name", authorName.trim()).put("description", description.trim()).put("primary_category", category).put("tags", JSONArray(tags.toList())).put("language", language).put("completion_status", completion)
         if (!coverData.isNullOrBlank()) body.put("cover_path", coverData)
         if (novel == null) body.put("author_id", uid(ctx)).put("status", "draft")
         val path = if (novel == null) "/rest/v1/community_novels" else "/rest/v1/community_novels?id=eq.${novel.id}"
@@ -148,10 +156,31 @@ object CommunityNovelApi {
         return MslSupabase.call("POST", "/rest/v1/community_reports", body.toString(), tok, "return=minimal").first in 200..299
     }
 
-    private fun isAdult(novel: Novel): Boolean = hasAdultContentMarker(novel.title, novel.description, novel.category, novel.tags.joinToString(" "))
+    private fun isAdult(novel: Novel): Boolean =
+        novel.contentNotice.lowercase() in setOf("mature", "adult", "nsfw", "18+", "18plus") ||
+            hasAdultContentMarker(novel.title, novel.description, novel.category, novel.tags.joinToString(" "))
 
     private fun parseNovels(rows: JSONArray): List<Novel> = List(rows.length()) { i ->
         val o = rows.getJSONObject(i)
-        Novel(o.getString("id"), o.optString("author_id"), o.optString("title"), o.optString("description"), o.optString("cover_path").takeIf { it.isNotBlank() }, o.optString("primary_category"), o.optString("language"), o.optString("completion_status"), o.optString("status"), o.optInt("chapter_count"), o.optLong("view_count"), o.optInt("like_count"), o.optBoolean("liked"), o.optBoolean("in_library"), o.optString("updated_at"), buildSet { o.optJSONArray("tags")?.let { a -> for (i in 0 until a.length()) add(a.optString(i)) } })
+        Novel(
+            id = o.getString("id"),
+            authorId = o.optString("author_id"),
+            authorName = o.optString("author_name"),
+            contentNotice = o.optString("content_notice", "general"),
+            title = o.optString("title"),
+            description = o.optString("description"),
+            coverPath = o.optString("cover_path").takeIf(String::isNotBlank),
+            category = o.optString("primary_category"),
+            language = o.optString("language"),
+            completionStatus = o.optString("completion_status"),
+            status = o.optString("status"),
+            chapterCount = o.optInt("chapter_count"),
+            viewCount = o.optLong("view_count"),
+            likeCount = o.optInt("like_count"),
+            liked = o.optBoolean("liked"),
+            inLibrary = o.optBoolean("in_library"),
+            updatedAt = o.optString("updated_at"),
+            tags = buildSet { o.optJSONArray("tags")?.let { a -> for (i in 0 until a.length()) add(a.optString(i)) } },
+        )
     }
 }

@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +38,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.util.Screen
@@ -116,7 +121,7 @@ fun CommunityNovelsScreen() {
         when (page) {
             CommunityPage.HOME -> CommunityHome(novels, mine, filter, query, category, { query = it }, { filter = it }, { category = it }, { selected = it; page = CommunityPage.DETAILS }, { selected = null; page = CommunityPage.EDIT_NOVEL })
             CommunityPage.DETAILS -> selected?.let { novel ->
-                CommunityDetails(novel, { page = CommunityPage.HOME }, { ch -> selectedChapter = ch; page = CommunityPage.READER }, { page = CommunityPage.EDIT_NOVEL }, { selectedChapter = null; page = CommunityPage.EDIT_CHAPTER }, { reload() })
+                CommunityDetails(novel, { reload(); page = CommunityPage.HOME }, { ch -> selectedChapter = ch; page = CommunityPage.READER }, { page = CommunityPage.EDIT_NOVEL }, { selectedChapter = null; page = CommunityPage.EDIT_CHAPTER }, { reload() })
             } ?: run { page = CommunityPage.HOME }
             CommunityPage.READER -> selected?.let { CommunityReader(it, selectedChapter, { page = CommunityPage.DETAILS }) } ?: run { page = CommunityPage.HOME }
             CommunityPage.EDIT_NOVEL -> CommunityNovelEditor(selected, { page = if (selected == null) CommunityPage.HOME else CommunityPage.DETAILS }) { id, addChapter -> scope.launch { selected = withContext(Dispatchers.IO) { CommunityNovelApi.details(context, id) }; reload(); page = if (addChapter) CommunityPage.EDIT_CHAPTER else CommunityPage.DETAILS } }
@@ -208,7 +213,7 @@ private fun CommunityFavoriteButton(novel: CommunityNovelApi.Novel, modifier: Mo
             CommunityFavoriteButton(novel, Modifier.align(Alignment.TopEnd))
         }
         Text(novel.title.ifBlank { "عنوان الرواية" }, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 5.dp))
-        Text("اسم المؤلف", color = PdfMuted, fontSize = 9.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Text(novel.authorName.ifBlank { "قارئ السلايم" }, color = PdfMuted, fontSize = 9.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -218,7 +223,7 @@ private fun CommunityFavoriteButton(novel: CommunityNovelApi.Novel, modifier: Mo
             Box(Modifier.size(84.dp, 120.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF51402B)), contentAlignment = Alignment.Center) { if (novel.coverPath != null) AsyncImage(novel.coverPath, novel.title, Modifier.fillMaxSize()) else Text("▣", color = Color.White.copy(alpha = .8f), fontSize = 22.sp) }
             Column(Modifier.weight(1f)) {
                 Text(novel.title.ifBlank { "عنوان الرواية" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("اسم المؤلف", color = PdfMuted, fontSize = 10.sp)
+                Text(novel.authorName.ifBlank { "قارئ السلايم" }, color = PdfMuted, fontSize = 10.sp)
                 Text(novel.description.ifBlank { "وصف مختصر للرواية يظهر هنا في سطرين كحد أقصى." }, color = PdfMuted, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 5.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { PdfTag(categoryLabel(novel.category)); PdfTag(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة") }
                 Text("♡  ${novel.likeCount}    ◉  ${novel.viewCount}    ▫  ${novel.chapterCount} فصل", color = PdfMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
@@ -257,6 +262,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                 chapterNumber = chapter.number.toDouble(),
                 order = order,
                 isCommunity = true,
+                contentNotice = novel.contentNotice,
             )
         }
     }
@@ -272,11 +278,17 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var chapters by remember(novel.id) { mutableStateOf(emptyList<CommunityNovelApi.Chapter>()) }
+    var viewCount by remember(novel.id) { mutableStateOf(novel.viewCount) }
     var liked by remember { mutableStateOf(novel.liked) }
     var following by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     var downloadedIds by remember(novel.id) { mutableStateOf(emptySet<String>()) }
-    LaunchedEffect(novel.id) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, novel.authorId == MslSupabase.uid(context)) } }
+    LaunchedEffect(novel.id) {
+        chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, novel.authorId == MslSupabase.uid(context)) }
+        if (novel.status == "published" && withContext(Dispatchers.IO) { CommunityNovelApi.incrementView(context, novel.id) }) {
+            viewCount += 1
+        }
+    }
     LaunchedEffect(chapters) {
         downloadedIds = withContext(Dispatchers.IO) {
             val store = NovelOfflineStore(context)
@@ -286,10 +298,10 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     PdfPage("عنوان الرواية", onBack) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.size(118.dp, 168.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFF5A4028)), contentAlignment = Alignment.Center) { if (novel.coverPath != null) AsyncImage(novel.coverPath, novel.title, Modifier.fillMaxSize()) else Text("▣", color = Color.White, fontSize = 28.sp) }
-            Column(Modifier.weight(1f)) { Text(novel.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("اسم المؤلف", color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(vertical = 6.dp)); Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { PdfTag(categoryLabel(novel.category)); PdfTag(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة") }; Spacer(Modifier.height(8.dp)); PdfButton(if (following) "✓ متابَع" else "＋ متابعة المؤلف", { following = !following; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleAuthorFollow(context, novel.authorId, following) } } }, compact = true) }
+            Column(Modifier.weight(1f)) { Text(novel.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp); Text(novel.authorName.ifBlank { "قارئ السلايم" }, color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(vertical = 6.dp)); Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { PdfTag(categoryLabel(novel.category)); PdfTag(if (novel.completionStatus == "completed") "مكتملة" else "مستمرة") }; Spacer(Modifier.height(8.dp)); PdfButton(if (following) "✓ متابَع" else "＋ متابعة المؤلف", { following = !following; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleAuthorFollow(context, novel.authorId, following) } } }, compact = true) }
         }
         HorizontalDivider(color = PdfLine, modifier = Modifier.padding(vertical = 10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { PdfStat("فصل", "${chapters.size}"); PdfStat("قراءة", "${novel.viewCount}"); PdfStat("إعجاب", "${novel.likeCount}"); PdfStat("تقييم", "—") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { PdfStat("فصل", "${chapters.size}"); PdfStat("قراءة", "$viewCount"); PdfStat("إعجاب", "${novel.likeCount}"); PdfStat("تقييم", "—") }
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { PdfButton("♡", { liked = !liked; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLike(context, novel.id, liked) } } }, modifier = Modifier.width(40.dp), compact = true); CommunityFavoriteButton(novel); PdfButton("ابدأ القراءة", { chapters.firstOrNull()?.let(onRead) }, true, Modifier.weight(1f)) }
         Text(novel.description.ifBlank { "وصف الرواية الكامل يظهر هنا." }, color = Color.White, fontSize = 12.sp, lineHeight = 21.sp, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
         Text(if (expanded) "أقل" else "المزيد", color = PdfPurpleSoft, fontSize = 11.sp, modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 5.dp))
@@ -329,6 +341,8 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     var index by remember { mutableIntStateOf(0) }
     var fontSize by remember { mutableFloatStateOf(readerPrefs.getFloat("font_size", 20f).coerceIn(14f, 32f)) }
     var lineSpacing by remember { mutableFloatStateOf(readerPrefs.getFloat("line_spacing", 1.8f).coerceIn(1.2f, 3f)) }
+    var readingMargin by remember { mutableFloatStateOf(readerPrefs.getFloat("reading_margin", 20f).coerceIn(8f, 40f)) }
+    var textAlignment by remember { mutableStateOf(readerPrefs.getString("text_alignment", "right") ?: "right") }
     var paper by remember { mutableStateOf(readerPrefs.getBoolean("community_paper", false)) }
     var amiri by remember { mutableStateOf(readerPrefs.getBoolean("community_amiri", true)) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -336,12 +350,13 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     var indexSheet by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(novel.liked) }
     DisposableEffect(fullscreen) {
-        val decor = context.findCommunityActivity()?.window?.decorView
-        decor?.systemUiVisibility = if (fullscreen) {
-            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        onDispose { decor?.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE }
+        val window = context.findCommunityActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        if (controller != null) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars()) else controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
     LaunchedEffect(novel.id) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id) }; index = chapters.indexOfFirst { it.id == initial?.id }.coerceAtLeast(0) }
     val chapter = chapters.getOrNull(index)
@@ -349,17 +364,66 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     val readerText = if (paper) Color(0xFF26201A) else Color(0xFFE6E8EC)
     Box(Modifier.fillMaxSize().background(readerBg)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-            Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("‹", color = if (paper) Color.DarkGray else Color.White, fontSize = 30.sp, modifier = Modifier.clickable { onBack() }.padding(horizontal = 6.dp))
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) { Text(novel.title, color = if (paper) Color.DarkGray else PdfMuted, fontSize = 11.sp, maxLines = 1); Text("الفصل ${chapter?.number ?: "٠٠"}", color = if (paper) Color.DarkGray else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                Text("☷", color = PdfPurpleSoft, fontSize = 21.sp, modifier = Modifier.clickable { indexSheet = true }.padding(8.dp))
-                Text("Aa", color = PdfPurpleSoft, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { settings = true }.padding(8.dp))
-                Text(if (fullscreen) "⤢" else "⛶", color = PdfPurpleSoft, fontSize = 20.sp, modifier = Modifier.clickable { fullscreen = !fullscreen }.padding(8.dp))
+            if (!fullscreen) {
+                Row(Modifier.fillMaxWidth().statusBarsPadding().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("‹", color = if (paper) Color.DarkGray else Color.White, fontSize = 30.sp, modifier = Modifier.clickable { onBack() }.padding(horizontal = 6.dp))
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(novel.title, color = if (paper) Color.DarkGray else PdfMuted, fontSize = 11.sp, maxLines = 1)
+                        Text("الفصل ${chapter?.number ?: "٠٠"}", color = if (paper) Color.DarkGray else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text("☷", color = PdfPurpleSoft, fontSize = 21.sp, modifier = Modifier.clickable { indexSheet = true }.padding(8.dp))
+                    Text("Aa", color = PdfPurpleSoft, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { settings = true }.padding(8.dp))
+                    Text("⛶", color = PdfPurpleSoft, fontSize = 20.sp, modifier = Modifier.clickable { fullscreen = true }.padding(8.dp))
+                }
+                HorizontalDivider(color = if (paper) Color(0xFFCCC2AE) else PdfLine)
             }
-            HorizontalDivider(color = if (paper) Color(0xFFCCC2AE) else PdfLine)
-            if (chapter == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PdfPurpleSoft) } else {
-                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp)) { item { Text(chapter.title, color = if (paper) Color.DarkGray else Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = if (amiri) MslUiFont else null); Text("اسم المؤلف", color = if (paper) Color.Gray else PdfMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)); Text(chapter.content, color = readerText, fontSize = fontSize.sp, lineHeight = (fontSize * lineSpacing).sp, fontFamily = if (amiri) MslUiFont else null, modifier = Modifier.padding(top = 24.dp)) } }
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { PdfButton("‹ السابق", { if (index > 0) { index--; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, modifier = Modifier.weight(1f), compact = true); PdfButton(if (liked) "♥" else "♡", { liked = !liked; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLike(context, novel.id, liked) } } }, compact = true); CommunityFavoriteButton(novel); PdfButton("التالي ›", { if (index < chapters.lastIndex) { index++; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, primary = true, modifier = Modifier.weight(1f), compact = true) }
+            if (chapter == null) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PdfPurpleSoft) }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f).pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = { fullscreen = !fullscreen })
+                    },
+                    contentPadding = PaddingValues(vertical = 24.dp),
+                ) {
+                    item {
+                        Text(
+                            chapter.title,
+                            color = if (paper) Color.DarkGray else Color.White,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = if (amiri) MslUiFont else null,
+                            modifier = Modifier.padding(horizontal = readingMargin.dp),
+                        )
+                        Text(
+                            novel.authorName.ifBlank { "قارئ السلايم" },
+                            color = if (paper) Color.Gray else PdfMuted,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 6.dp),
+                        )
+                        Text(
+                            chapter.content,
+                            color = readerText,
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * lineSpacing).sp,
+                            fontFamily = if (amiri) MslUiFont else null,
+                            textAlign = when (textAlignment) {
+                                "center" -> TextAlign.Center
+                                "justify" -> TextAlign.Justify
+                                else -> TextAlign.Right
+                            },
+                            modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 24.dp),
+                        )
+                    }
+                }
+                if (!fullscreen) {
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PdfButton("‹ السابق", { if (index > 0) { index--; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, modifier = Modifier.weight(1f), compact = true)
+                        PdfButton(if (liked) "♥" else "♡", { liked = !liked; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.toggleLike(context, novel.id, liked) } } }, compact = true)
+                        CommunityFavoriteButton(novel)
+                        PdfButton("التالي ›", { if (index < chapters.lastIndex) { index++; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, primary = true, modifier = Modifier.weight(1f), compact = true)
+                    }
+                }
             }
         }
         if (settings) ModalBottomSheet(onDismissRequest = { settings = false }, containerColor = PdfSurface) {
@@ -367,6 +431,8 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                 Text("إعدادات القراءة", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("حجم الخط  ${fontSize.toInt()}", color = PdfMuted); Slider(value = fontSize, onValueChange = { fontSize = it; readerPrefs.edit().putFloat("font_size", it).apply() }, valueRange = 14f..30f, colors = SliderDefaults.colors(thumbColor = PdfPurpleSoft, activeTrackColor = PdfPurpleSoft))
                 Text("تباعد الأسطر", color = PdfMuted); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(1.5f to "ضيق", 1.8f to "متوسط", 2.1f to "واسع").forEach { (v, label) -> PdfButton(label, { lineSpacing = v; readerPrefs.edit().putFloat("line_spacing", v).apply() }, lineSpacing == v, modifier = Modifier.weight(1f), compact = true) } }
+                Text("الهامش", color = PdfMuted); Slider(value = readingMargin, onValueChange = { readingMargin = it; readerPrefs.edit().putFloat("reading_margin", it).apply() }, valueRange = 8f..40f, colors = SliderDefaults.colors(thumbColor = PdfPurpleSoft, activeTrackColor = PdfPurpleSoft))
+                Text("محاذاة النص", color = PdfMuted); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("right" to "يمين", "center" to "وسط", "justify" to "ضبط").forEach { (value, label) -> PdfButton(label, { textAlignment = value; readerPrefs.edit().putString("text_alignment", value).apply() }, textAlignment == value, modifier = Modifier.weight(1f), compact = true) } }
                 Text("الخلفية", color = PdfMuted); Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { PdfButton("داكن", { paper = false; readerPrefs.edit().putBoolean("community_paper", false).apply() }, !paper, compact = true); PdfButton("ورقي", { paper = true; readerPrefs.edit().putBoolean("community_paper", true).apply() }, paper, compact = true); PdfButton("فاتح", { paper = false; readerPrefs.edit().putBoolean("community_paper", false).apply() }, compact = true) }
                 Text("الخط", color = PdfMuted); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { PdfButton("تاجوال", { amiri = true; readerPrefs.edit().putBoolean("community_amiri", true).apply() }, amiri, modifier = Modifier.weight(1f), compact = true); PdfButton("افتراضي", { amiri = false; readerPrefs.edit().putBoolean("community_amiri", false).apply() }, !amiri, modifier = Modifier.weight(1f), compact = true) }
                 Spacer(Modifier.height(20.dp))
@@ -380,11 +446,17 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
+    var authorName by remember(initial?.id) { mutableStateOf(initial?.authorName.orEmpty()) }
     var description by remember { mutableStateOf(initial?.description.orEmpty()) }
     var categories by remember { mutableStateOf(initial?.tags?.ifEmpty { setOf(initial.category) } ?: setOf("fantasy")) }
     var completion by remember { mutableStateOf(initial?.completionStatus ?: "ongoing") }
     var cover by remember { mutableStateOf(initial?.coverPath) }
     var message by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(initial?.id) {
+        if (authorName.isBlank()) {
+            authorName = withContext(Dispatchers.IO) { MslCloudSync.profile(context)?.name.orEmpty() }
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             cover = withContext(Dispatchers.IO) { encodeCover(context, uri) }
@@ -393,9 +465,10 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     }
     fun save(andChapter: Boolean) {
         if (title.isBlank()) { message = "اكتب عنوان الرواية أولًا"; return }
+        if (authorName.isBlank()) { message = "اكتب اسم الكاتب أولًا"; return }
         if (categories.isEmpty()) { message = "اختر تصنيفًا واحدًا على الأقل"; return }
         scope.launch {
-            val r = withContext(Dispatchers.IO) { CommunityNovelApi.saveNovel(context, initial, title.trim(), description.trim(), categories.first(), "ar", completion, categories, cover) }
+            val r = withContext(Dispatchers.IO) { CommunityNovelApi.saveNovel(context, initial, title.trim(), authorName.trim(), description.trim(), categories.first(), "ar", completion, categories, cover) }
             r.fold({ onSaved(it, andChapter) }) { message = it.message ?: "تعذر الحفظ" }
         }
     }
@@ -408,6 +481,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
             Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { PdfButton("اختيار غلاف", { picker.launch("image/*") }, compact = false); Text("JPG أو PNG أو WebP · حد أقصى 1MB", color = PdfMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp)) }
         }
         PdfInput(title, { title = it.take(120) }, "عنوان الرواية *", "اكتب عنوانًا للرواية", 64)
+        PdfInput(authorName, { authorName = it.take(80) }, "اسم الكاتب *", "الاسم الذي سيظهر للقراء", 56)
         PdfInput(description, { description = it.take(5000) }, "الوصف *", "ملخص الرواية الذي سيظهر للقراء", 128)
         Text("التصنيفات * · يمكنك اختيار أكثر من تصنيف", color = PdfMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
