@@ -276,7 +276,7 @@ object MslFavorites {
 }
 
 @Composable
-fun MslFavoriteListScreen(kind: MslFavoriteKind) {
+fun MslFavoriteListScreen(kind: MslFavoriteKind, onOpen: (MslFavoriteItem) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -332,7 +332,7 @@ fun MslFavoriteListScreen(kind: MslFavoriteKind) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.items.filter { it.kind == kind }, key = { "${it.kind.name}:${it.itemKey}" }) { item ->
-                    FavoriteRow(item = item, onRemove = {
+                    FavoriteRow(item = item, onOpen = { onOpen(item) }, onRemove = {
                         scope.launch {
                             val error = MslFavorites.toggle(context, item)
                             if (error != null) Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -358,14 +358,14 @@ private fun FavoriteMessage(message: String, action: String, onAction: () -> Uni
 }
 
 @Composable
-private fun FavoriteRow(item: MslFavoriteItem, onRemove: () -> Unit) {
+private fun FavoriteRow(item: MslFavoriteItem, onOpen: () -> Unit, onRemove: () -> Unit) {
     Card(
         shape = MslDesignTokens.cardShape,
         colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MslDesignTokens.border),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (!item.cover.isNullOrBlank()) {

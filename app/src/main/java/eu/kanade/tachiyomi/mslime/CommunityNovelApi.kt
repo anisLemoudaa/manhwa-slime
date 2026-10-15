@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.mslime
 
 import android.content.Context
+import eu.kanade.tachiyomi.novel.hasAdultContentMarker
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -61,18 +62,18 @@ object CommunityNovelApi {
             else -> "updated_at.desc"
         }
         val rows = get(ctx, "/rest/v1/community_novels?select=*&${clauses.joinToString("&")}&order=$order&limit=40") ?: return emptyList()
-        return parseNovels(rows)
+        return parseNovels(rows).filterNot(::isAdult)
     }
 
     fun mine(ctx: Context): List<Novel> {
         val id = uid(ctx).takeIf { it.isNotBlank() } ?: return emptyList()
         val rows = get(ctx, "/rest/v1/community_novels?select=*&author_id=eq.$id&order=updated_at.desc&limit=50") ?: return emptyList()
-        return parseNovels(rows)
+        return parseNovels(rows).filterNot(::isAdult)
     }
 
     fun details(ctx: Context, id: String): Novel? {
         val rows = get(ctx, "/rest/v1/community_novels?select=*&id=eq.$id&limit=1") ?: return null
-        val novel = parseNovels(rows).firstOrNull() ?: return null
+        val novel = parseNovels(rows).firstOrNull()?.takeUnless(::isAdult) ?: return null
         val saved = get(ctx, "/rest/v1/community_novel_library?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
         val liked = get(ctx, "/rest/v1/community_novel_likes?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
         return novel.copy(inLibrary = saved, liked = liked)
@@ -84,7 +85,7 @@ object CommunityNovelApi {
         return List(rows.length()) { i ->
             val o = rows.getJSONObject(i)
             Chapter(o.getString("id"), o.getString("novel_id"), o.optInt("chapter_number"), o.optString("title"), o.optString("content"), o.optString("status"))
-        }
+        }.filterNot { hasAdultContentMarker(it.title, it.content) }
     }
 
     fun saveNovel(ctx: Context, novel: Novel?, title: String, description: String, category: String, language: String, completion: String, tags: Set<String> = setOf(category), coverData: String? = novel?.coverPath): Result<String> = runCatching {
@@ -146,6 +147,8 @@ object CommunityNovelApi {
         val body = JSONObject().put("reporter_id", uid(ctx)).put("novel_id", novelId).put("reason", reason).put("description", description.take(1000))
         return MslSupabase.call("POST", "/rest/v1/community_reports", body.toString(), tok, "return=minimal").first in 200..299
     }
+
+    private fun isAdult(novel: Novel): Boolean = hasAdultContentMarker(novel.title, novel.description, novel.category, novel.tags.joinToString(" "))
 
     private fun parseNovels(rows: JSONArray): List<Novel> = List(rows.length()) { i ->
         val o = rows.getJSONObject(i)

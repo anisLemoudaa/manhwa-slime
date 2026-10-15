@@ -20,6 +20,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -186,6 +187,7 @@ fun NovelSectionContent() {
                 }
             }.awaitAll()
             val novels = responses.flatMap { it.first }
+                .filterNot { it.isAdultContent() }
                 .distinctBy { "${it.sourceId}:${it.path}" }
                 .let { items -> if (sortMode == "rating") items.sortedByDescending { it.ratingValue() ?: -1.0 } else items }
             if (state.query.trim() == querySnapshot && state.selectedSource == sid && state.allSources == allSources) {
@@ -982,16 +984,31 @@ class NovelDetailsScreen(
         val lifecycleOwner = LocalLifecycleOwner.current
         val detailsScope = rememberCoroutineScope()
         var readKeys by remember { mutableStateOf(emptySet<String>()) }
+        var downloadedPaths by remember { mutableStateOf(emptySet<String>()) }
+        var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         val favoriteSnapshot by MslFavorites.snapshot.collectAsState()
+        val offlineStore = remember { NovelOfflineStore(context) }
         LaunchedEffect(Unit) {
             if (!favoriteSnapshot.loaded && !favoriteSnapshot.loading) MslFavorites.load(context)
             val r = runCatching { manager.details(sourceId, path) }
-            details = r.getOrNull()
-            error = r.exceptionOrNull()?.message
+            val fetched = r.getOrNull()
+            if (fetched?.isAdultContent() == true) {
+                details = null
+                error = "تم حجب هذا العمل لأنه مصنّف أو موسوم بمحتوى +18."
+            } else {
+                details = fetched
+                error = r.exceptionOrNull()?.message
+            }
         }
         LaunchedEffect(readStore) { readKeys = withContext(Dispatchers.IO) { readStore.all() } }
+        LaunchedEffect(details) {
+            val current = details ?: return@LaunchedEffect
+            downloadedPaths = withContext(Dispatchers.IO) {
+                current.chapters.orEmpty().filter { offlineStore.contains(sourceId, current.path, it.path) }.map { it.path }.toSet()
+            }
+        }
         DisposableEffect(lifecycleOwner, readStore) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
@@ -1003,6 +1020,18 @@ class NovelDetailsScreen(
         }
         val isFavorite = favoriteSnapshot.items.any {
             it.kind == MslFavoriteKind.NOVEL && it.itemKey == "$sourceId::$path"
+        }
+        fun requestDownload(index: Int, chapter: NovelChapter) {
+            val current = details ?: return
+            detailsScope.launch {
+                val failure = saveNovelOfflineChapter(context, manager, offlineStore, sourceId, current, fallbackName, index, chapter)
+                if (failure == null) {
+                    downloadedPaths = downloadedPaths + chapter.path
+                    Toast.makeText(context, "تم تحميل ${chapter.name}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                }
+            }
         }
 
         Scaffold(
@@ -1096,26 +1125,49 @@ class NovelDetailsScreen(
                                 Text("💬 التعليقات")
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text("الفصول", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("الفصول", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                if (selectedPaths.isNotEmpty()) {
+                                    Button(
+                                        onClick = {
+                                            val selected = d.chapters.orEmpty().mapIndexedNotNull { chapterIndex, chapter ->
+                                                if (chapter.path in selectedPaths) chapterIndex to chapter else null
+                                            }
+                                            detailsScope.launch {
+                                                selected.forEach { (chapterIndex, chapter) ->
+                                                    if (chapter.path !in downloadedPaths) {
+                                                        val failure = saveNovelOfflineChapter(context, manager, offlineStore, sourceId, d, fallbackName, chapterIndex, chapter)
+                                                        if (failure == null) downloadedPaths = downloadedPaths + chapter.path
+                                                        else Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                                                    }
+                                                }
+                                                selectedPaths = emptySet()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
+                                    ) { Text("تحميل المحدد (${selectedPaths.size})") }
+                                }
+                            }
                         }
                     }
                     itemsIndexed(d.chapters.orEmpty()) { index, chapter ->
                         val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
                         Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable {
-                                val reader = NovelReaderScreen(
-                                    sourceId = sourceId,
-                                    novelPath = d.path,
-                                    novelName = d.name ?: fallbackName,
-                                    novelCover = d.cover,
-                                    chapters = d.chapters.orEmpty(),
-                                    chapterIndex = index,
-                                )
-                                navigator.push(reader)
-                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).combinedClickable(
+                                onClick = {
+                                    if (selectedPaths.isNotEmpty()) {
+                                        selectedPaths = if (chapter.path in selectedPaths) selectedPaths - chapter.path else selectedPaths + chapter.path
+                                    } else {
+                                        navigator.push(NovelReaderScreen(sourceId, d.path, d.name ?: fallbackName, d.cover, d.chapters.orEmpty(), index))
+                                    }
+                                },
+                                onLongClick = {
+                                    selectedPaths = if (chapter.path in selectedPaths) selectedPaths - chapter.path else selectedPaths + chapter.path
+                                },
+                            ),
                             shape = MslDesignTokens.compactCardShape,
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isRead) MslDesignTokens.surfaceHighest else MslDesignTokens.surface,
+                                containerColor = if (chapter.path in selectedPaths) MslDesignTokens.accent.copy(alpha = 0.24f) else if (isRead) MslDesignTokens.surfaceHighest else MslDesignTokens.surface,
                             ),
                             border = BorderStroke(1.dp, if (isRead) MslDesignTokens.accent.copy(alpha = 0.28f) else MslDesignTokens.border),
                         ) {
@@ -1136,6 +1188,15 @@ class NovelDetailsScreen(
                                 if (isRead) {
                                     Text("مقروء ✓", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.labelMedium)
                                 }
+                                IconButton(
+                                    onClick = { if (chapter.path !in downloadedPaths) requestDownload(index, chapter) },
+                                    enabled = chapter.path in downloadedPaths || MslWallet.enabled,
+                                    modifier = Modifier.size(48.dp).semantics {
+                                        contentDescription = if (chapter.path in downloadedPaths) "${chapter.name} محمّل" else "تحميل ${chapter.name}"
+                                    },
+                                ) {
+                                    Text(if (chapter.path in downloadedPaths) "✓" else "⇩", color = MslDesignTokens.accentBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1151,6 +1212,52 @@ class NovelDetailsScreen(
     }
 }
 
+private suspend fun saveNovelOfflineChapter(
+    context: android.content.Context,
+    manager: NovelManager,
+    store: NovelOfflineStore,
+    sourceId: String,
+    details: NovelDetails,
+    fallbackName: String,
+    index: Int,
+    chapter: NovelChapter,
+): String? {
+    if (!MslWallet.enabled) return "تنزيل الفصول غير متاح حاليًا."
+    if (store.contains(sourceId, details.path, chapter.path)) return null
+    val reservationId = UUID.randomUUID().toString()
+    val reservation = withContext(Dispatchers.IO) {
+        MslWallet.reserveDownload(context, reservationId, "novel:$sourceId:${details.path}:${chapter.path}")
+    }
+    if (reservation == null) {
+        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
+        return "تعذّر التحقق من رصيد التنزيل."
+    }
+    if (!reservation.allowed) return context.stringResource(MR.strings.coin_download_no_balance)
+    val saved = runCatching {
+        val content = manager.chapter(sourceId, chapter.path)
+        withContext(Dispatchers.IO) {
+            store.save(
+                sourceId = sourceId,
+                novelPath = details.path,
+                chapterPath = chapter.path,
+                html = content,
+                title = details.name ?: fallbackName,
+                cover = details.cover,
+                description = details.summary,
+                chapterTitle = chapter.name,
+                chapterNumber = chapter.chapterNumber,
+                order = index,
+            )
+        }
+    }
+    if (saved.isFailure) {
+        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
+        return saved.exceptionOrNull()?.message ?: "تعذّر تحميل الفصل."
+    }
+    withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) }
+    return null
+}
+
 class NovelReaderScreen(
     private val sourceId: String,
     private val novelPath: String,
@@ -1158,6 +1265,8 @@ class NovelReaderScreen(
     private val novelCover: String?,
     private val chapters: List<NovelChapter>,
     private val chapterIndex: Int,
+    private val offlineOnly: Boolean = false,
+    private val novelDescription: String? = null,
 ) : Screen() {
 
     @Composable
@@ -1243,7 +1352,8 @@ class NovelReaderScreen(
             offlineSaved = cachedContent != null
 
             val result = runCatching {
-                cachedContent ?: manager.chapter(sourceId, chapter.path)
+                if (offlineOnly) cachedContent ?: error("هذا الفصل غير محفوظ على الجهاز.")
+                else cachedContent ?: manager.chapter(sourceId, chapter.path)
             }
 
             result.onSuccess { content ->
@@ -1350,7 +1460,18 @@ class NovelReaderScreen(
                                         }
                                         val saved = runCatching {
                                             withContext(Dispatchers.IO) {
-                                                offlineStore.save(sourceId, novelPath, chapter.path, content)
+                                                offlineStore.save(
+                                                    sourceId = sourceId,
+                                                    novelPath = novelPath,
+                                                    chapterPath = chapter.path,
+                                                    html = content,
+                                                    title = novelName,
+                                                    cover = novelCover,
+                                                    description = novelDescription,
+                                                    chapterTitle = chapter.name,
+                                                    chapterNumber = chapter.chapterNumber,
+                                                    order = currentIndex,
+                                                )
                                             }
                                         }
                                         if (saved.isFailure) {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,29 +72,35 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavorites
+import eu.kanade.tachiyomi.ui.home.DownloadedNovelsTab
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.history.HistoryTab
 import eu.kanade.tachiyomi.ui.library.LibraryTab
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
-import eu.kanade.tachiyomi.ui.more.MoreTab
+import eu.kanade.tachiyomi.ui.home.NovelTab
 import eu.kanade.tachiyomi.ui.profile.ProfileTab
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
 import mihon.icons.materialsymbols.rounded.CollectionsBookmark
+import mihon.icons.materialsymbols.rounded.Download
 import mihon.icons.materialsymbols.rounded.Explore
 import mihon.icons.materialsymbols.rounded.LocalLibrary
 import mihon.icons.materialsymbols.rounded.Person
 import soup.compose.material.motion.animation.materialFadeThroughIn
 import soup.compose.material.motion.animation.materialFadeThroughOut
+import mihon.app.di.appGraph
+import mihon.domain.extension.model.ContentWarning
 
 object HomeScreen : Screen() {
     private val librarySearchEvent = Channel<String>()
     private val openTabEvent = Channel<Tab>()
+    internal val downloadedRefreshEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private const val TabFadeDuration = 200
     private const val TabNavigatorKey = "HomeTabs"
 
@@ -107,7 +114,11 @@ object HomeScreen : Screen() {
         TabNavigator(tab = HomeDashboardTab, key = TabNavigatorKey) { tabNavigator ->
             CompositionLocalProvider(LocalNavigator provides navigator) {
                 val favorites by MslFavorites.snapshot.collectAsState()
-                LaunchedEffect(Unit) { MslFavorites.load(context) }
+                LaunchedEffect(Unit) {
+                    MslFavorites.load(context)
+                    context.appGraph.sourcePreferences.enabledContentWarnings.set(setOf(ContentWarning.SAFE))
+                    context.appGraph.sourcePreferences.applyContentWarningsToInstalled.set(true)
+                }
 
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 ModalNavigationDrawer(
@@ -129,6 +140,7 @@ object HomeScreen : Screen() {
                                     close = { scope.launch { drawerState.close() } },
                                     navigate = { destination ->
                                         tabNavigator.current = destination
+                                        if (destination == DownloadedNovelsTab) downloadedRefreshEvents.tryEmit(Unit)
                                         scope.launch { drawerState.close() }
                                     },
                                 )
@@ -196,7 +208,7 @@ object HomeScreen : Screen() {
     private fun RootTopBar(onOpenMenu: () -> Unit) {
         Surface(color = MslDesignTokens.background, shadowElevation = 2.dp) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Surface(
@@ -221,8 +233,8 @@ object HomeScreen : Screen() {
                         Text("MANHWA", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Black, fontSize = 18.sp, letterSpacing = 0.5.sp)
                     }
                     androidx.compose.foundation.Image(
-                        painter = painterResource(R.drawable.ic_slime_logo),
-                        contentDescription = null,
+                        painter = painterResource(R.drawable.ic_msl_fg),
+                        contentDescription = "شعار التطبيق الأصلي",
                         modifier = Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)),
                     )
                 }
@@ -253,6 +265,7 @@ object HomeScreen : Screen() {
             DrawerItem("المكتبة", MaterialSymbols.Rounded.CollectionsBookmark, current == LibraryTab) { navigate(LibraryTab) }
             DrawerItem("تصفح", MaterialSymbols.Rounded.Explore, current == BrowseTab) { navigate(BrowseTab) }
             DrawerItem("الروايات", MaterialSymbols.AutoMirroredRounded.ChromeReaderMode, current == NovelTab) { navigate(NovelTab) }
+            DrawerItem("الروايات المحملة", MaterialSymbols.Rounded.Download, current == DownloadedNovelsTab) { navigate(DownloadedNovelsTab) }
             DrawerItem("روايات المجتمع", MaterialSymbols.Rounded.CollectionsBookmark, current == CommunityNovelTab) { navigate(CommunityNovelTab) }
 
             HorizontalDivider(color = MslDesignTokens.border, modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp))

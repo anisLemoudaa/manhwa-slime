@@ -53,9 +53,34 @@ data class NovelItem(
     val sourceId: String? = null,
     val sourceName: String? = null,
     val rating: JsonElement? = null,
+    val genres: JsonElement? = null,
+    val tags: JsonElement? = null,
+    val contentRating: JsonElement? = null,
+    val nsfw: JsonElement? = null,
+    val adult: JsonElement? = null,
 )
 
 internal fun NovelItem.ratingValue(): Double? = runCatching { rating?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull()
+
+internal fun hasAdultContentMarker(vararg values: String?): Boolean {
+    val text = values.filterNotNull().joinToString(" ").lowercase()
+    val markers = listOf(
+        "18+", "18 +", "r18", "nsfw", "adult only", "adult content", "mature", "explicit",
+        "erotica", "erotic", "hentai", "smut", "porn", "sexual content", "ecchi", "yaoi 18", "yuri 18",
+        "للكبار", "للكبار فقط", "محتوى للبالغين", "محتوى جنسي", "إباحي", "اباحي", "جنس صريح", "+١٨", "١٨+", "١٨ +",
+    )
+    return markers.any { it in text }
+}
+
+internal fun NovelItem.isAdultContent(): Boolean {
+    val explicitFlag = listOf(nsfw, adult, contentRating).any { value ->
+        value?.toString()?.lowercase()?.let { it == "true" || it.contains("nsfw") || it.contains("adult") || it.contains("18+") || it.contains("18 +") || it.contains("explicit") } == true
+    }
+    return explicitFlag || hasAdultContentMarker(name, path, sourceName, genres?.toString(), tags?.toString(), contentRating?.toString())
+}
+
+internal fun NovelDetails.isAdultContent(): Boolean =
+    hasAdultContentMarker(name, path, genres, summary, author)
 
 @Serializable
 data class NovelChapter(
