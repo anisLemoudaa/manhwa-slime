@@ -276,7 +276,6 @@ object MslCloudSync {
             return
         }
         if (local.isEmpty()) return
-        MslSupabase.call("DELETE", "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.manga", null, token)
         val payload = JSONArray()
         local.forEach { item ->
             payload.put(
@@ -290,7 +289,7 @@ object MslCloudSync {
                     .put("added_at", item.favoriteAt ?: System.currentTimeMillis()),
             )
         }
-        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "return=minimal")
+        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "resolution=merge-duplicates,return=minimal")
     }
 
     fun syncSourcesNow(ctx: Context) {
@@ -363,7 +362,6 @@ object MslCloudSync {
             return
         }
         if (local.isEmpty() && remote.isEmpty()) return
-        MslSupabase.call("DELETE", "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.novel", null, token)
         val payload = JSONArray()
         local.forEach { item ->
             payload.put(
@@ -377,7 +375,7 @@ object MslCloudSync {
                     .put("added_at", item.addedAt),
             )
         }
-        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "return=minimal")
+        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "resolution=merge-duplicates,return=minimal")
     }
 
     fun syncNovelFavoritesNow(ctx: Context) {

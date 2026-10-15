@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.novel
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class NovelRepositoryEntry(
@@ -50,7 +52,10 @@ data class NovelItem(
     val cover: String? = null,
     val sourceId: String? = null,
     val sourceName: String? = null,
+    val rating: JsonElement? = null,
 )
+
+internal fun NovelItem.ratingValue(): Double? = runCatching { rating?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull()
 
 @Serializable
 data class NovelChapter(

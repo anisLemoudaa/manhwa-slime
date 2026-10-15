@@ -12,6 +12,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.view.GestureDetector
 import android.view.View
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,6 +24,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -34,6 +40,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -48,9 +59,11 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.mslime.MslAds
-import eu.kanade.tachiyomi.mslime.MslCloudSync
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslFavoriteItem
+import eu.kanade.tachiyomi.mslime.MslFavoriteKind
+import eu.kanade.tachiyomi.mslime.MslFavorites
 import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.mslime.MslTranslate
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +73,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.widget.Toast
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -68,9 +82,12 @@ import java.util.UUID
 private data class NovelUiState(
     val sources: List<NovelSourceRuntime> = emptyList(),
     val selectedSource: String? = null,
+    val allSources: Boolean = false,
     val novels: List<NovelItem> = emptyList(),
     val loading: Boolean = true,
     val query: String = "",
+    val sortMode: String = "new",
+    val layoutMode: String = "grid",
     val repoDialog: Boolean = false,
     val sourcesDialog: Boolean = false,
     val repoUrl: String = "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
@@ -97,59 +114,91 @@ fun NovelSectionContent() {
     val context = LocalContext.current
     val navigator = LocalNavigator.currentOrThrow
     val manager = remember { NovelManagerHolder.get(context) }
-    val favoritesStore = remember { NovelFavoritesStore(context) }
+    val uiPrefs = remember { context.getSharedPreferences("msl_novel_ui", android.content.Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf(NovelUiState()) }
-    var favoritesRevision by remember { mutableIntStateOf(0) }
+    var state by remember {
+        mutableStateOf(
+            NovelUiState(
+                selectedSource = uiPrefs.getString("last_source", null),
+                sortMode = uiPrefs.getString("sort_mode", "new") ?: "new",
+                layoutMode = uiPrefs.getString("layout_mode", "grid") ?: "grid",
+            ),
+        )
+    }
     var pluginsInitialized by remember { mutableStateOf(false) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
-    val favoriteEntries = remember(favoritesRevision) {
-        favoritesStore.all()
-    }
-    val favoriteKeys = remember(favoriteEntries) {
-        favoriteEntries.map { "${it.sourceId}::${it.novelPath}" }.toSet()
+    val favoriteSnapshot by MslFavorites.snapshot.collectAsState()
+    val favoriteKeys = remember(favoriteSnapshot.items) {
+        favoriteSnapshot.items.filter { it.kind == MslFavoriteKind.NOVEL }.map { it.itemKey }.toSet()
     }
 
-    fun reload(sourceId: String? = state.selectedSource) {
+    LaunchedEffect(Unit) {
+        if (!favoriteSnapshot.loaded && !favoriteSnapshot.loading) MslFavorites.load(context)
+    }
+
+    fun reload(sourceId: String? = state.selectedSource, allSources: Boolean = state.allSources) {
         searchJob?.cancel()
-        scope.launch {
+        searchJob = scope.launch {
+            val querySnapshot = state.query.trim()
+            if (querySnapshot.isNotEmpty()) delay(350)
             // Load installed JS plugins once instead of reinitializing every source change.
             val sources = runCatching {
                 if (!pluginsInitialized) {
                     manager.ensureLoaded()
                     pluginsInitialized = true
                 }
-                manager.installed().filter { it.languageCode != null }
+                manager.installed().filter { it.languageCode in setOf("ar", "en") }
             }.getOrDefault(emptyList())
 
-            val sid = sourceId
-                ?.takeIf { requestedId -> sources.any { it.id == requestedId } }
-                ?: sources.firstOrNull()?.id
+            val sid = if (allSources) {
+                null
+            } else {
+                sourceId?.takeIf { requestedId -> sources.any { it.id == requestedId } }
+                    ?: uiPrefs.getString("last_source", null)?.takeIf { saved -> sources.any { it.id == saved } }
+                    ?: sources.firstOrNull()?.id
+            }
             state = state.copy(
                 sources = sources,
                 selectedSource = sid,
+                allSources = allSources,
                 loading = true,
                 error = null,
                 info = null,
             )
 
-            if (sid != null) {
-                val data = runCatching { manager.latest(sid) }
-                // Ignore a late response if the user has already selected another source.
-                if (state.selectedSource == sid) {
-                    state = state.copy(
-                        novels = data.getOrDefault(emptyList()),
-                        loading = false,
-                        error = data.exceptionOrNull()?.message,
-                    )
-                }
-            } else {
+            val targets = if (allSources) sources else sources.filter { it.id == sid }
+            if (targets.isEmpty()) {
                 state = state.copy(novels = emptyList(), loading = false)
+                return@launch
+            }
+
+            val sortMode = state.sortMode
+            val responses = targets.map { source ->
+                async(Dispatchers.IO) {
+                    runCatching {
+                        val result = when {
+                            querySnapshot.isNotBlank() -> manager.search(source.id, querySnapshot)
+                            sortMode == "popular" -> manager.popular(source.id)
+                            else -> manager.latest(source.id)
+                        }
+                        result.map { it.copy(sourceId = source.id, sourceName = source.name) } to null
+                    }.getOrElse { emptyList<NovelItem>() to (it.message ?: "تعذر تحميل ${source.name}.") }
+                }
+            }.awaitAll()
+            val novels = responses.flatMap { it.first }
+                .distinctBy { "${it.sourceId}:${it.path}" }
+                .let { items -> if (sortMode == "rating") items.sortedByDescending { it.ratingValue() ?: -1.0 } else items }
+            if (state.query.trim() == querySnapshot && state.selectedSource == sid && state.allSources == allSources) {
+                state = state.copy(
+                    novels = novels,
+                    loading = false,
+                    error = if (novels.isEmpty()) responses.mapNotNull { it.second }.firstOrNull() else null,
+                )
             }
         }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(Unit) { reload(state.selectedSource, allSources = false) }
 
     val installEntry: (NovelRepositoryEntry) -> Unit = { entry ->
         scope.launch {
@@ -159,7 +208,7 @@ fun NovelSectionContent() {
             } else {
                 val installed = result.getOrThrow()
                 state = state.copy(repoDialog = false, sourcesDialog = false, info = "تم تثبيت ${installed.name}")
-                reload(installed.id)
+                reload(installed.id, allSources = false)
             }
         }
     }
@@ -170,16 +219,19 @@ fun NovelSectionContent() {
         onToggleFavorite = { item ->
             val sid = item.sourceId ?: state.selectedSource
             if (sid != null) {
-                favoritesStore.toggle(
-                    NovelFavoriteEntry(
-                        sourceId = sid,
-                        novelPath = item.path,
-                        title = item.name,
-                        cover = item.cover,
-                    ),
-                )
-                favoritesRevision++
-                MslCloudSync.syncNovelFavoritesNow(context)
+                scope.launch {
+                    val error = MslFavorites.toggle(
+                        context,
+                        MslFavoriteItem(
+                            kind = MslFavoriteKind.NOVEL,
+                            itemKey = "$sid::${item.path}",
+                            title = item.name,
+                            cover = item.cover,
+                            sourceId = sid,
+                        ),
+                    )
+                    if (error != null) Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                }
             }
         },
         onToggleFavoriteFilter = {
@@ -198,43 +250,25 @@ fun NovelSectionContent() {
             }
         },
         onSearch = { q ->
-            state = state.copy(query = q, info = null, loading = q.isNotBlank())
-            searchJob?.cancel()
-
-            val query = q.trim()
-            val sourceSnapshot = state.sources
-
-            if (query.isNotEmpty() && sourceSnapshot.isNotEmpty()) {
-                // Search every installed source in parallel, then merge and de-duplicate results.
-                searchJob = scope.launch {
-                    delay(350)
-                    val results = sourceSnapshot.map { source ->
-                        async(Dispatchers.IO) {
-                            runCatching {
-                                manager.search(source.id, query).map { item ->
-                                    item.copy(sourceId = source.id, sourceName = source.name)
-                                }
-                            }.getOrDefault(emptyList())
-                        }
-                    }.awaitAll()
-                        .flatten()
-                        .distinctBy { "${it.sourceId}:${it.path}" }
-
-                    // Do not let stale results overwrite a newer query.
-                    if (state.query.trim() == query) {
-                        state = state.copy(novels = results, loading = false, error = null)
-                    }
-                }
-            } else if (query.isEmpty()) {
-                reload()
-            } else {
-                state = state.copy(loading = false, novels = emptyList(), error = "ثبّت مصدرًا واحدًا على الأقل لاستخدام البحث الشامل.")
-            }
+            state = state.copy(query = q, info = null, loading = true, error = null)
+            reload(state.selectedSource, state.allSources)
         },
         onSelectSource = { sid ->
-            searchJob?.cancel()
-            reload(sid)
+            uiPrefs.edit().putString("last_source", sid).apply()
+            reload(sid, allSources = false)
         },
+        onSelectAllSources = { reload(sourceId = null, allSources = true) },
+        onSelectSort = { sort ->
+            uiPrefs.edit().putString("sort_mode", sort).apply()
+            state = state.copy(sortMode = sort, loading = true)
+            reload(state.selectedSource, state.allSources)
+        },
+        onToggleLayout = {
+            val layout = if (state.layoutMode == "grid") "list" else "grid"
+            uiPrefs.edit().putString("layout_mode", layout).apply()
+            state = state.copy(layoutMode = layout)
+        },
+        onRetry = { reload(state.selectedSource, state.allSources) },
         onAddRepository = { state = state.copy(repoDialog = true, error = null, info = null) },
         onInputModeChange = {
             state = state.copy(inputMode = it, repoEntries = emptyList(), error = null, info = null)
@@ -305,6 +339,10 @@ private fun NovelShell(
     onShowSources: () -> Unit,
     onSearch: (String) -> Unit,
     onSelectSource: (String) -> Unit,
+    onSelectAllSources: () -> Unit,
+    onSelectSort: (String) -> Unit,
+    onToggleLayout: () -> Unit,
+    onRetry: () -> Unit,
     onAddRepository: () -> Unit,
     onInputModeChange: (NovelInputMode) -> Unit,
     onRepoUrlChange: (String) -> Unit,
@@ -324,8 +362,12 @@ private fun NovelShell(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MslDesignTokens.backgroundRaised)
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(MslDesignTokens.backgroundRaised, Color(0xFF160E2A), MslDesignTokens.backgroundRaised),
+                            ),
+                        )
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -333,27 +375,24 @@ private fun NovelShell(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 "الروايات",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 32.sp,
+                                lineHeight = 38.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = MslDesignTokens.textPrimary,
                             )
-                            Text(
-                                "(قيد التطوير)",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MslDesignTokens.textMuted,
-                            )
+                            Surface(shape = MslDesignTokens.pillShape, color = Color(0xFF2A1F5E)) {
+                                Text("قيد التطوير", modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = Color(0xFFD5C8FF), style = MaterialTheme.typography.labelSmall)
+                            }
                         }
-                        Text(
-                            "اكتشف قراءتك القادمة",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MslDesignTokens.textSecondary,
-                        )
+                        Text("اكتشف قراءتك القادمة", style = MaterialTheme.typography.bodyMedium, color = MslDesignTokens.textSecondary)
                     }
                     FilledTonalIconButton(
                         onClick = onAddRepository,
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = "إضافة مصدر" },
+                        shape = androidx.compose.foundation.shape.CircleShape,
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MslDesignTokens.surfaceHighest,
-                            contentColor = MslDesignTokens.accentBright,
+                            containerColor = MslDesignTokens.accent,
+                            contentColor = Color.White,
                         ),
                     ) {
                         Text("+", fontSize = 24.sp, fontWeight = FontWeight.Light)
@@ -365,7 +404,8 @@ private fun NovelShell(
                     onValueChange = onSearch,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     singleLine = true,
                     shape = MslDesignTokens.pillShape,
                     placeholder = {
@@ -394,9 +434,9 @@ private fun NovelShell(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("مصادر الروايات", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
+                            Text("المصادر · ${state.sources.size} مثبتة", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
                             Text(
-                                "${state.sources.size} مثبتة • فهرس LNReader",
+                                "المصادر العربية والإنجليزية المثبتة في LNReader",
                                 color = MslDesignTokens.textMuted,
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -406,36 +446,21 @@ private fun NovelShell(
                         }
                     }
                 }
-                Text(
-                    "البحث الشامل يبحث تلقائيًا في جميع المصادر المثبتة (${state.sources.size}).",
-                    modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 8.dp),
-                    color = MslDesignTokens.textMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item {
-                        AssistChip(
-                            onClick = { onSearch(state.query) },
+                        FilterChip(
+                            selected = state.allSources,
+                            onClick = onSelectAllSources,
                             label = { Text("بحث شامل") },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MslDesignTokens.accent,
-                                labelColor = MslDesignTokens.textPrimary,
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MslDesignTokens.surface,
+                                labelColor = MslDesignTokens.textSecondary,
+                                selectedContainerColor = MslDesignTokens.accent,
+                                selectedLabelColor = MslDesignTokens.textPrimary,
                             ),
-                            border = null,
-                        )
-                    }
-                    item {
-                        AssistChip(
-                            onClick = onAddRepository,
-                            label = { Text("إضافة مستودع") },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MslDesignTokens.surfaceHighest,
-                                labelColor = MslDesignTokens.accentBright,
-                            ),
-                            border = null,
                         )
                     }
                     item {
@@ -453,18 +478,46 @@ private fun NovelShell(
                     }
                     items(state.sources) { source ->
                         FilterChip(
-                            selected = state.selectedSource == source.id,
+                            selected = !state.allSources && state.selectedSource == source.id,
                             onClick = { onSelectSource(source.id) },
-                            label = {
-                                Text(source.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            },
+                            label = { Text(source.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             colors = FilterChipDefaults.filterChipColors(
                                 containerColor = MslDesignTokens.surfaceRaised,
                                 labelColor = MslDesignTokens.textSecondary,
-                                selectedContainerColor = MslDesignTokens.accent.copy(alpha = 0.28f),
+                                selectedContainerColor = MslDesignTokens.accent,
                                 selectedLabelColor = MslDesignTokens.textPrimary,
                             ),
                         )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LazyRow(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(listOf("new" to "أحدث", "popular" to "أشهر", "rating" to "أعلى تقييمًا")) { option ->
+                            FilterChip(
+                                selected = state.sortMode == option.first,
+                                onClick = { onSelectSort(option.first) },
+                                label = { Text(option.second, maxLines = 1) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = MslDesignTokens.surface,
+                                    labelColor = MslDesignTokens.textSecondary,
+                                    selectedContainerColor = MslDesignTokens.accent,
+                                    selectedLabelColor = Color.White,
+                                ),
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onToggleLayout,
+                        modifier = Modifier.size(48.dp).semantics {
+                            contentDescription = if (state.layoutMode == "grid") "التبديل إلى عرض القائمة" else "التبديل إلى عرض الشبكة"
+                        },
+                    ) {
+                        Text(if (state.layoutMode == "grid") "☰" else "▦", color = MslDesignTokens.accentBright, fontSize = 23.sp)
                     }
                 }
 
@@ -478,41 +531,57 @@ private fun NovelShell(
                         Text(it, color = MslDesignTokens.success, style = MaterialTheme.typography.bodySmall)
                     }
                     state.error?.let {
-                        Text(it, color = MslDesignTokens.danger, style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(it, modifier = Modifier.weight(1f), color = MslDesignTokens.danger, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = onRetry) { Text("إعادة المحاولة", color = MslDesignTokens.accentBright) }
+                        }
                     }
                 }
 
                 when {
-                    state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator(color = MslDesignTokens.accentBright)
-                    }
+                    state.loading -> NovelSkeletonResults(state.layoutMode)
                     state.sources.isEmpty() -> EmptyNovelSources(onAddRepository)
                     else -> {
-                        val visibleNovels =
-                            if (state.showFavorites) {
-                                state.novels.filter {
-                                    val resultSource = it.sourceId ?: state.selectedSource
-                                    resultSource != null &&
-                                        "$resultSource::${it.path}" in favoriteKeys
-                                }
-                            } else {
-                                state.novels
+                        val visibleNovels = if (state.showFavorites) {
+                            state.novels.filter { item ->
+                                val resultSource = item.sourceId ?: state.selectedSource
+                                resultSource != null && "$resultSource::${item.path}" in favoriteKeys
                             }
+                        } else {
+                            state.novels
+                        }
 
                         if (state.showFavorites && visibleNovels.isEmpty()) {
                             EmptyFavorites()
                         } else if (visibleNovels.isEmpty()) {
-                            EmptyNovelResults(state.query, state.error != null)
-                        } else {
+                            EmptyNovelResults(state.query, state.error != null, onRetry)
+                        } else if (state.layoutMode == "grid") {
                             LazyVerticalGrid(
-                                columns = GridCells.Adaptive(150.dp),
+                                columns = GridCells.Adaptive(130.dp),
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                items(visibleNovels) { item ->
+                                items(visibleNovels, key = { "${it.sourceId}:${it.path}" }) { item ->
                                     NovelCard(
+                                        item = item,
+                                        onOpen = onOpen,
+                                        isFavorite = (item.sourceId ?: state.selectedSource)?.let { resultSource ->
+                                            "$resultSource::${item.path}" in favoriteKeys
+                                        } == true,
+                                        onToggleFavorite = onToggleFavorite,
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                items(visibleNovels, key = { "${it.sourceId}:${it.path}" }) { item ->
+                                    NovelListRow(
                                         item = item,
                                         onOpen = onOpen,
                                         isFavorite = (item.sourceId ?: state.selectedSource)?.let { resultSource ->
@@ -695,63 +764,149 @@ private fun NovelCard(
         colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
         border = BorderStroke(1.dp, MslDesignTokens.border),
     ) {
-        Box {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(item) },
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(206.dp)
-                        .clip(MslDesignTokens.compactCardShape),
-                ) {
-                    AsyncImage(
-                        model = item.cover,
-                        contentDescription = item.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(MslDesignTokens.heroGradient),
-                    )
-                }
-
-                Text(
-                    item.name,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium,
-                    color = MslDesignTokens.textPrimary,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(214.dp)
+                .clip(MslDesignTokens.cardShape)
+                .clickable { onOpen(item) },
+        ) {
+            NovelCoverSkeleton(Modifier.fillMaxSize())
+            item.cover?.takeIf(String::isNotBlank)?.let { cover ->
+                AsyncImage(
+                    model = cover,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                item.sourceName?.takeIf { it.isNotBlank() }?.let { sourceName ->
-                    Text(
-                        text = "من $sourceName",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 0.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MslDesignTokens.textMuted,
-                    )
+            }
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.14f), Color.Black.copy(alpha = 0.92f))),
+                ),
+            )
+            item.sourceName?.takeIf(String::isNotBlank)?.let { name ->
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                    shape = MslDesignTokens.pillShape,
+                    color = Color.Black.copy(alpha = 0.58f),
+                ) {
+                    Text(name, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), color = Color.White, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 }
             }
-
-            FilledTonalIconButton(
+            IconButton(
                 onClick = { onToggleFavorite(item) },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MslDesignTokens.background.copy(alpha = 0.82f),
-                    contentColor = MslDesignTokens.warning,
-                ),
+                modifier = Modifier.align(Alignment.TopStart).size(48.dp).semantics {
+                    contentDescription = if (isFavorite) "إزالة ${item.name} من المفضلة" else "إضافة ${item.name} إلى المفضلة"
+                },
             ) {
+                Text("★", color = if (isFavorite) Color(0xFFFBBF24) else Color.White, fontSize = 23.sp)
+            }
+            Column(
+                modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(item.name, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    text = if (isFavorite) "★" else "☆",
-                    fontSize = 22.sp,
+                    item.ratingValue()?.let { "رواية · ★ ${"%.1f".format(it)}" } ?: "رواية",
+                    color = Color(0xFFC9CDE0),
+                    style = MaterialTheme.typography.labelSmall,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NovelListRow(
+    item: NovelItem,
+    onOpen: (NovelItem) -> Unit,
+    isFavorite: Boolean,
+    onToggleFavorite: (NovelItem) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MslDesignTokens.compactCardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+        border = BorderStroke(1.dp, MslDesignTokens.border),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { onOpen(item) }.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(10.dp))) {
+                NovelCoverSkeleton(Modifier.fillMaxSize())
+                item.cover?.takeIf(String::isNotBlank)?.let { cover ->
+                    AsyncImage(model = cover, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.name, color = MslDesignTokens.textPrimary, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.sourceName ?: "مصدر روايات", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                item.ratingValue()?.let { Text("التقييم ${"%.1f".format(it)}", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.labelSmall) }
+            }
+            IconButton(
+                onClick = { onToggleFavorite(item) },
+                modifier = Modifier.size(48.dp).semantics {
+                    contentDescription = if (isFavorite) "إزالة ${item.name} من المفضلة" else "إضافة ${item.name} إلى المفضلة"
+                },
+            ) {
+                Text("★", color = if (isFavorite) Color(0xFFFBBF24) else MslDesignTokens.textMuted, fontSize = 23.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NovelCoverSkeleton(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "novelCoverShimmer")
+    val shift by transition.animateFloat(
+        initialValue = -420f,
+        targetValue = 520f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1250, easing = LinearEasing)),
+        label = "novelCoverShimmerShift",
+    )
+    val brush = Brush.linearGradient(
+        colors = listOf(MslDesignTokens.surfaceRaised, MslDesignTokens.border.copy(alpha = 0.75f), MslDesignTokens.surfaceRaised),
+        start = Offset(shift, 0f),
+        end = Offset(shift + 360f, 360f),
+    )
+    Box(modifier.background(brush))
+}
+
+@Composable
+private fun NovelSkeletonResults(layoutMode: String) {
+    if (layoutMode == "grid") {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(130.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(6) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NovelCoverSkeleton(Modifier.fillMaxWidth().height(214.dp).clip(MslDesignTokens.cardShape))
+                    NovelCoverSkeleton(Modifier.fillMaxWidth(0.78f).height(14.dp).clip(MslDesignTokens.pillShape))
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(6) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    NovelCoverSkeleton(Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(10.dp)))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NovelCoverSkeleton(Modifier.fillMaxWidth(0.78f).height(14.dp).clip(MslDesignTokens.pillShape))
+                        NovelCoverSkeleton(Modifier.fillMaxWidth(0.48f).height(12.dp).clip(MslDesignTokens.pillShape))
+                    }
+                }
             }
         }
     }
@@ -781,7 +936,7 @@ private fun EmptyFavorites() {
 }
 
 @Composable
-private fun EmptyNovelResults(query: String, hasError: Boolean) {
+private fun EmptyNovelResults(query: String, hasError: Boolean, onRetry: () -> Unit) {
     val message = when {
         hasError -> "تعذر تحميل الروايات من هذا المصدر."
         query.isNotBlank() -> "لم يتم العثور على نتائج لـ «${query.trim()}»."
@@ -800,7 +955,12 @@ private fun EmptyNovelResults(query: String, hasError: Boolean) {
             fontWeight = FontWeight.SemiBold,
             color = MslDesignTokens.textPrimary,
         )
-        if (query.isNotBlank() && !hasError) {
+        if (hasError) {
+            Spacer(Modifier.height(10.dp))
+            Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent)) {
+                Text("إعادة المحاولة")
+            }
+        } else if (query.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
             Text("جرّب عنوانًا آخر أو تحقق من المصدر المحدد.", color = MslDesignTokens.textSecondary)
         }
@@ -818,15 +978,15 @@ class NovelDetailsScreen(
         var showNovelComments by remember { mutableStateOf(false) }
         val navigator = LocalNavigator.currentOrThrow
         val manager = remember { NovelManagerHolder.get(context) }
-        val favoritesStore = remember { NovelFavoritesStore(context) }
         val readStore = remember { NovelReadStore(context) }
         val lifecycleOwner = LocalLifecycleOwner.current
         val detailsScope = rememberCoroutineScope()
         var readKeys by remember { mutableStateOf(emptySet<String>()) }
-        var favoriteRevision by remember { mutableIntStateOf(0) }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
+        val favoriteSnapshot by MslFavorites.snapshot.collectAsState()
         LaunchedEffect(Unit) {
+            if (!favoriteSnapshot.loaded && !favoriteSnapshot.loading) MslFavorites.load(context)
             val r = runCatching { manager.details(sourceId, path) }
             details = r.getOrNull()
             error = r.exceptionOrNull()?.message
@@ -841,8 +1001,8 @@ class NovelDetailsScreen(
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
-        val isFavorite = remember(favoriteRevision, details) {
-            favoritesStore.contains(sourceId, path)
+        val isFavorite = favoriteSnapshot.items.any {
+            it.kind == MslFavoriteKind.NOVEL && it.itemKey == "$sourceId::$path"
         }
 
         Scaffold(
@@ -858,23 +1018,30 @@ class NovelDetailsScreen(
                     },
                     actions = {
                         IconButton(
+                            modifier = Modifier.semantics {
+                                contentDescription = if (isFavorite) "إزالة $fallbackName من المفضلة" else "إضافة $fallbackName إلى المفضلة"
+                            },
                             onClick = {
-                                val d = details
-                                favoritesStore.toggle(
-                                    NovelFavoriteEntry(
-                                        sourceId = sourceId,
-                                        novelPath = path,
-                                        title = d?.name ?: fallbackName,
-                                        cover = d?.cover,
-                                    ),
-                                )
-                                favoriteRevision++
-                                MslCloudSync.syncNovelFavoritesNow(context)
+                                detailsScope.launch {
+                                    val d = details
+                                    val failure = MslFavorites.toggle(
+                                        context,
+                                        MslFavoriteItem(
+                                            kind = MslFavoriteKind.NOVEL,
+                                            itemKey = "$sourceId::$path",
+                                            title = d?.name ?: fallbackName,
+                                            cover = d?.cover,
+                                            sourceId = sourceId,
+                                        ),
+                                    )
+                                    if (failure != null) Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
+                                }
                             },
                         ) {
                             Text(
                                 if (isFavorite) "★" else "☆",
                                 fontSize = 26.sp,
+                                color = if (isFavorite) Color(0xFFFBBF24) else MslDesignTokens.textSecondary,
                             )
                         }
                     },

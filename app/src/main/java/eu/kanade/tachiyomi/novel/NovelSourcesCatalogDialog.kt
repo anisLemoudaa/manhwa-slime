@@ -37,6 +37,7 @@ fun NovelSourcesCatalogDialog(
             else -> entry.lang.toNovelLanguageCode() != null
         }
     }
+    val groupedEntries = visibleEntries.groupBy { it.repositoryUrl ?: "مستودع غير معروف" }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = MslDesignTokens.cardShape,
@@ -71,43 +72,59 @@ fun NovelSourcesCatalogDialog(
                         if (entries.isEmpty()) TextButton(onClick = onReload) { Text("إعادة المحاولة") }
                     }
                     else -> LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        items(visibleEntries, key = { "${it.id}:${it.url}" }) { entry ->
-                            val installed = entry.id in installedIds
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
-                                border = BorderStroke(1.dp, MslDesignTokens.border),
-                                shape = MslDesignTokens.compactCardShape,
-                            ) {
+                        groupedEntries.forEach { (repositoryUrl, repoEntries) ->
+                            item(key = "repository:$repositoryUrl") {
+                                val repoLabel = repositoryUrl.substringAfter("raw.githubusercontent.com/", repositoryUrl)
+                                    .split('/')
+                                    .take(2)
+                                    .joinToString("/")
                                 Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                                    Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 3.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
-                                    if (!entry.iconUrl.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = entry.iconUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(36.dp).clip(MslDesignTokens.compactCardShape),
-                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                        )
+                                    Text(repoLabel, modifier = Modifier.weight(1f), color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${repoEntries.size} مصدر", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelSmall)
+                                }
+                                Text(repositoryUrl, color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            items(repoEntries, key = { "${repositoryUrl}:${it.id}:${it.url}" }) { entry ->
+                                val installed = entry.id in installedIds
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+                                    border = BorderStroke(1.dp, MslDesignTokens.border),
+                                    shape = MslDesignTokens.compactCardShape,
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        if (!entry.iconUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = entry.iconUrl,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(36.dp).clip(MslDesignTokens.compactCardShape),
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            )
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text(entry.name, color = MslDesignTokens.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                listOfNotNull(entry.lang?.uppercase(), entry.version, entry.site).joinToString(" • "),
+                                                color = MslDesignTokens.textMuted,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        Button(
+                                            onClick = { onInstall(entry) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (installed) MslDesignTokens.surfaceHighest else MslDesignTokens.accent,
+                                                contentColor = if (installed) MslDesignTokens.accentBright else MslDesignTokens.textPrimary,
+                                            ),
+                                        ) { Text(if (installed) "تحديث" else "تنزيل") }
                                     }
-                                    Column(Modifier.weight(1f)) {
-                                        Text(entry.name, color = MslDesignTokens.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(
-                                            listOfNotNull(entry.lang?.uppercase(), entry.version, entry.site).joinToString(" • "),
-                                            color = MslDesignTokens.textMuted,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                    Button(
-                                        onClick = { onInstall(entry) },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (installed) MslDesignTokens.surfaceHighest else MslDesignTokens.accent,
-                                            contentColor = if (installed) MslDesignTokens.accentBright else MslDesignTokens.textPrimary,
-                                        ),
-                                    ) { Text(if (installed) "تحديث" else "تنزيل") }
                                 }
                             }
                         }

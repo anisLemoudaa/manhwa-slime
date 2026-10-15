@@ -275,7 +275,11 @@ enum class ExtensionLanguageFilter(val label: String) {
     ;
 
     fun includes(language: String?): Boolean {
-        val primaryLanguage = language.orEmpty().substringBefore('-').substringBefore('_').lowercase()
+        val primaryLanguage = language.orEmpty()
+            .replace(Regex("[\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]"), "")
+            .substringBefore('-')
+            .substringBefore('_')
+            .lowercase()
         return when (this) {
             ARABIC_ENGLISH -> primaryLanguage == "ar" || primaryLanguage == "en"
             ARABIC -> primaryLanguage == "ar"
@@ -300,4 +304,7 @@ private const val KEIYOUSHI_INDEX_URL = "https://github.com/keiyoushi/extensions
 private val DEFAULT_EXTENSION_REPOSITORY_URLS = listOf(
     KEIYOUSHI_INDEX_URL,
     "https://raw.githubusercontent.com/mojuru/cursed-manga-repo/repo/index.pb",
+    "https://raw.githubusercontent.com/yuzono/cursed-manga-repo/repo/index.pb",
+    "https://raw.githubusercontent.com/marbou92/MHRepo/main/index.pb",
+    "https://raw.githubusercontent.com/cuong-tran/manga-repo/repo/index.pb",
 )

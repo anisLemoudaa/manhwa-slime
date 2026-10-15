@@ -125,41 +125,6 @@ private fun HomeDashboardContent() {
             .verticalScroll(rememberScrollState())
             .padding(bottom = 16.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AsyncImage(
-                model = R.drawable.ic_mihon,
-                contentDescription = null,
-                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)),
-            )
-            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "MANHWA",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 0.8.sp,
-                )
-                Text(
-                    text = "SLIME",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    color = MslDesignTokens.accentBright,
-                    letterSpacing = 0.8.sp,
-                )
-            }
-            IconButton(onClick = { navigator.push(GlobalSearchScreen(searchQuery)) }) {
-                Icon(MaterialSymbols.Rounded.Search, contentDescription = "بحث")
-            }
-            IconButton(onClick = { tabNavigator.current = UpdatesTab }) {
-                Icon(MaterialSymbols.Rounded.NewReleases, contentDescription = "آخر التحديثات")
-            }
-        }
-
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
