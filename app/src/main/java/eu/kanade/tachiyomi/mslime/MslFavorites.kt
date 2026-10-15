@@ -25,7 +25,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -380,11 +379,7 @@ private fun FavoriteRow(item: MslFavoriteItem, onRemove: () -> Unit) {
                 onClick = onRemove,
                 modifier = Modifier.size(48.dp).semantics { contentDescription = "إزالة ${item.title} من المفضلة" },
             ) {
-                Icon(
-                    imageVector = mihon.icons.materialsymbols.MaterialSymbols.Rounded.Close,
-                    contentDescription = null,
-                    tint = Color.White,
-                )
+                Text("×", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

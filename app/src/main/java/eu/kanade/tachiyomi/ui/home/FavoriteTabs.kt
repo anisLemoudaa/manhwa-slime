@@ -11,7 +11,7 @@ import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
 import mihon.icons.materialsymbols.rounded.CollectionsBookmark
 
 private class FavoritesDestination(
-    private val index: ULong,
+    private val index: UShort,
     private val label: String,
     private val kind: MslFavoriteKind,
     private val icon: @Composable () -> androidx.compose.ui.graphics.painter.Painter,
@@ -27,19 +27,19 @@ private class FavoritesDestination(
 }
 
 val FavoriteMangaTab: Tab = FavoritesDestination(
-    index = 6u,
+    index = 6u.toUShort(),
     label = MslFavoriteKind.MANGA.label,
     kind = MslFavoriteKind.MANGA,
 ) { rememberVectorPainter(MaterialSymbols.Rounded.CollectionsBookmark) }
 
 val FavoriteNovelTab: Tab = FavoritesDestination(
-    index = 7u,
+    index = 7u.toUShort(),
     label = MslFavoriteKind.NOVEL.label,
     kind = MslFavoriteKind.NOVEL,
 ) { rememberVectorPainter(MaterialSymbols.AutoMirroredRounded.ChromeReaderMode) }
 
 val FavoriteCommunityTab: Tab = FavoritesDestination(
-    index = 8u,
+    index = 8u.toUShort(),
     label = MslFavoriteKind.COMMUNITY.label,
     kind = MslFavoriteKind.COMMUNITY,
 ) { rememberVectorPainter(MaterialSymbols.Rounded.CollectionsBookmark) }
