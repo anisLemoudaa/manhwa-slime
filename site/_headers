@@ -2,3 +2,9 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/assets/images/logo-*.webp
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/images/logo.png
+  Cache-Control: public, max-age=604800
