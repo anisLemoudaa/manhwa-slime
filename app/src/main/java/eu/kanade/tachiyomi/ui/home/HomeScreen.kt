@@ -72,6 +72,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavorites
+import eu.kanade.tachiyomi.mslime.CommunityReaderChromeState
 import eu.kanade.tachiyomi.ui.home.DownloadedNovelsTab
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
@@ -156,7 +157,9 @@ object HomeScreen : Screen() {
                             ),
                             containerColor = MslDesignTokens.background,
                             topBar = {
-                                RootTopBar(onOpenMenu = { scope.launch { drawerState.open() } })
+                                if (!CommunityReaderChromeState.readerVisible) {
+                                    RootTopBar(onOpenMenu = { scope.launch { drawerState.open() } })
+                                }
                             },
                         ) { contentPadding ->
                             Box(Modifier.fillMaxSize().padding(contentPadding)) {
@@ -340,7 +343,7 @@ object HomeScreen : Screen() {
             },
             label = "tabContent",
         ) { tab ->
-            tabNavigator.saveableState(key = "currentTab", tab) { tab.Content() }
+            tabNavigator.saveableState(key = "home-tab-${tab.key}", tab) { tab.Content() }
         }
     }
 

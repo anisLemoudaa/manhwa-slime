@@ -85,8 +85,8 @@ android {
         buildConfigField("boolean", "COIN_PLAY_PURCHASES_ENABLED", "$coinPlayPurchasesEnabled")
         buildConfigField("int", "INTERSTITIAL_CHAPTER_INTERVAL", "$interstitialChapterInterval")
 
-        versionCode = 45
-        versionName = "v1.1.0"
+        versionCode = 46
+        versionName = "v1.1.1"
 
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")

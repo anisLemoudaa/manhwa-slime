@@ -26,7 +26,13 @@ object CommunityNovelApi {
         val inLibrary: Boolean = false,
         val updatedAt: String = "",
         val tags: Set<String> = emptySet(),
+        val averageRating: Double = 0.0,
+        val ratingCount: Int = 0,
+        val myRating: Int = 0,
     )
+
+    data class RatingSummary(val average: Double = 0.0, val count: Int = 0, val myRating: Int = 0)
+    data class LikeSummary(val count: Int = 0, val liked: Boolean = false)
 
     data class Chapter(
         val id: String,
@@ -77,8 +83,64 @@ object CommunityNovelApi {
         val rows = get(ctx, "/rest/v1/community_novels?select=*&id=eq.$id&limit=1") ?: return null
         val novel = parseNovels(rows).firstOrNull()?.takeUnless(::isAdult) ?: return null
         val saved = get(ctx, "/rest/v1/community_novel_library?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
-        val liked = get(ctx, "/rest/v1/community_novel_likes?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
-        return novel.copy(inLibrary = saved, liked = liked)
+        val likes = likeSummary(ctx, id)
+        val rating = ratingSummary(ctx, id)
+        return novel.copy(
+            inLibrary = saved,
+            liked = likes.liked,
+            likeCount = likes.count,
+            averageRating = rating.average,
+            ratingCount = rating.count,
+            myRating = rating.myRating,
+        )
+    }
+
+    fun likeSummary(ctx: Context, novelId: String): LikeSummary {
+        return runCatching {
+            val tok = token(ctx) ?: return LikeSummary()
+            val response = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/community_novel_like_stats",
+                JSONObject().put("p_novel_id", novelId).toString(),
+                tok,
+            )
+            if (response.first !in 200..299) return LikeSummary()
+            val row = JSONArray(response.second).optJSONObject(0) ?: JSONObject(response.second)
+            LikeSummary(row.optInt("like_count", 0), row.optBoolean("liked", false))
+        }.getOrDefault(LikeSummary())
+    }
+
+    fun ratingSummary(ctx: Context, novelId: String): RatingSummary {
+        return runCatching {
+            val tok = token(ctx) ?: return RatingSummary()
+            val response = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/community_novel_rating_stats",
+                JSONObject().put("p_novel_id", novelId).toString(),
+                tok,
+            )
+            if (response.first !in 200..299) return RatingSummary()
+            val row = JSONArray(response.second).optJSONObject(0) ?: JSONObject(response.second)
+            RatingSummary(
+                average = row.optDouble("average_rating", 0.0),
+                count = row.optInt("rating_count", 0),
+                myRating = row.optInt("my_rating", 0),
+            )
+        }.getOrDefault(RatingSummary())
+    }
+
+    fun setRating(ctx: Context, novelId: String, rating: Int): Boolean {
+        if (rating !in 1..10) return false
+        return runCatching {
+            val tok = token(ctx) ?: return false
+            val response = MslSupabase.call(
+                "POST",
+                "/rest/v1/rpc/community_set_novel_rating",
+                JSONObject().put("p_novel_id", novelId).put("p_rating", rating).toString(),
+                tok,
+            )
+            response.first in 200..299
+        }.getOrDefault(false)
     }
 
     fun incrementView(ctx: Context, novelId: String): Boolean {
@@ -94,6 +156,13 @@ object CommunityNovelApi {
             val o = rows.getJSONObject(i)
             Chapter(o.getString("id"), o.getString("novel_id"), o.optInt("chapter_number"), o.optString("title"), o.optString("content"), o.optString("status"))
         }.filterNot { hasAdultContentMarker(it.title, it.content) }
+    }
+
+    fun nextChapterNumber(ctx: Context, novelId: String): Int {
+        val rows = runCatching {
+            get(ctx, "/rest/v1/community_novel_chapters?select=chapter_number&novel_id=eq.$novelId&order=chapter_number.desc&limit=1")
+        }.getOrNull()
+        return ((rows?.optJSONObject(0)?.optInt("chapter_number") ?: 0) + 1).coerceAtLeast(1)
     }
 
     fun saveNovel(ctx: Context, novel: Novel?, title: String, authorName: String, description: String, category: String, language: String, completion: String, tags: Set<String> = setOf(category), coverData: String? = novel?.coverPath): Result<String> = runCatching {
@@ -118,7 +187,11 @@ object CommunityNovelApi {
         val body = JSONObject().put("novel_id", novelId).put("chapter_number", number).put("title", title.trim()).put("content", content).put("status", if (publish) "published" else "draft")
         val path = if (chapter == null) "/rest/v1/community_novel_chapters" else "/rest/v1/community_novel_chapters?id=eq.${chapter.id}"
         val r = MslSupabase.call(if (chapter == null) "POST" else "PATCH", path, body.toString(), tok, "return=representation")
-        if (r.first !in 200..299) error("فشل حفظ الفصل (${r.first})")
+        if (r.first !in 200..299) {
+            val duplicateChapter = r.first == 409 || r.second.contains("23505") || r.second.contains("community_novel_chapters_novel_id_chapter_number_key")
+            if (duplicateChapter) error("يوجد فصل آخر بهذا الرقم. غيّر رقم الفصل أو افتح الفصل الموجود لتعديله.")
+            error("فشل حفظ الفصل (${r.first})")
+        }
         JSONObject(JSONArray(r.second).optJSONObject(0)?.toString() ?: r.second).getString("id")
     }
 
@@ -131,10 +204,12 @@ object CommunityNovelApi {
     }
 
     fun toggleLike(ctx: Context, novelId: String, like: Boolean): Boolean {
-        val tok = token(ctx) ?: return false
-        return if (like) {
-            MslSupabase.call("POST", "/rest/v1/community_novel_likes", JSONObject().put("user_id", uid(ctx)).put("novel_id", novelId).toString(), tok, "resolution=ignore-duplicates,return=minimal").first in 200..299
-        } else MslSupabase.call("DELETE", "/rest/v1/community_novel_likes?user_id=eq.${uid(ctx)}&novel_id=eq.$novelId", null, tok).first in 200..299
+        return runCatching {
+            val tok = token(ctx) ?: return false
+            if (like) {
+                MslSupabase.call("POST", "/rest/v1/community_novel_likes", JSONObject().put("user_id", uid(ctx)).put("novel_id", novelId).toString(), tok, "resolution=ignore-duplicates,return=minimal").first in 200..299
+            } else MslSupabase.call("DELETE", "/rest/v1/community_novel_likes?user_id=eq.${uid(ctx)}&novel_id=eq.$novelId", null, tok).first in 200..299
+        }.getOrDefault(false)
     }
 
     fun saveProgress(ctx: Context, novelId: String, chapterId: String, position: Int): Boolean {
@@ -150,10 +225,18 @@ object CommunityNovelApi {
         } else MslSupabase.call("DELETE", "/rest/v1/community_author_follows?follower_id=eq.${uid(ctx)}&author_id=eq.$authorId", null, tok).first in 200..299
     }
 
-    fun reportNovel(ctx: Context, novelId: String, reason: String = "other", description: String = ""): Boolean {
-        val tok = token(ctx) ?: return false
-        val body = JSONObject().put("reporter_id", uid(ctx)).put("novel_id", novelId).put("reason", reason).put("description", description.take(1000))
-        return MslSupabase.call("POST", "/rest/v1/community_reports", body.toString(), tok, "return=minimal").first in 200..299
+    fun reportNovel(ctx: Context, novelId: String, reason: String = "other", description: String = ""): Result<Unit> = runCatching {
+        val tok = token(ctx) ?: error("تعذّر إنشاء جلسة للإبلاغ؛ سجّل الدخول ثم أعد المحاولة.")
+        val safeReason = reason.takeIf { it in setOf("copyright", "abuse", "spam", "inappropriate", "other") } ?: "other"
+        val body = JSONObject().put("reporter_id", uid(ctx)).put("novel_id", novelId).put("reason", safeReason).put("description", description.take(1000))
+        val response = MslSupabase.call("POST", "/rest/v1/community_reports", body.toString(), tok, "return=minimal")
+        if (response.first !in 200..299) {
+            val message = when (response.first) {
+                401, 403 -> "لم يسمح الخادم بإرسال البلاغ. تأكد من تسجيل الدخول ثم أعد المحاولة."
+                else -> "تعذّر إرسال البلاغ (${response.first}). تحقق من الاتصال ثم أعد المحاولة."
+            }
+            error(message)
+        }
     }
 
     private fun isAdult(novel: Novel): Boolean =

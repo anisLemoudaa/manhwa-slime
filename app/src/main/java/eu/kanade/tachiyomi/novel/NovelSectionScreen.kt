@@ -995,9 +995,11 @@ class NovelDetailsScreen(
         val offlineStore = remember { NovelOfflineStore(context) }
         LaunchedEffect(Unit) {
             if (!favoriteSnapshot.loaded && !favoriteSnapshot.loading) MslFavorites.load(context)
-            val r = runCatching {
-                manager.ensureLoaded()
-                manager.details(sourceId, path)
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    manager.ensureLoaded()
+                    manager.details(sourceId, path)
+                }
             }
             val fetched = r.getOrNull()
             if (fetched?.isAdultContent() == true) {
@@ -1285,8 +1287,10 @@ private suspend fun saveNovelOfflineChapter(
     }
     if (!reservation.allowed) return context.stringResource(MR.strings.coin_download_no_balance)
     val saved = try {
-        manager.ensureLoaded()
-        val content = manager.chapter(sourceId, chapter.path)
+        val content = withContext(Dispatchers.IO) {
+            manager.ensureLoaded()
+            manager.chapter(sourceId, chapter.path)
+        }
         withContext(Dispatchers.IO) {
             store.save(
                 sourceId = sourceId,

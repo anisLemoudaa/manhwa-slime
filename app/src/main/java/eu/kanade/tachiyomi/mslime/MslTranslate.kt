@@ -247,9 +247,38 @@ object MslTranslate {
         )
     }
 
+    /** PixelCopy is unavailable on older Android versions and may reject some reader surfaces. */
+    private fun captureWithFallback(activity: Activity, target: View, destination: Bitmap, done: (Boolean) -> Unit) {
+        fun drawView(): Boolean = runCatching {
+            destination.eraseColor(Color.TRANSPARENT)
+            target.draw(Canvas(destination))
+            true
+        }.onFailure { android.util.Log.w("MslTranslate", "Reader view draw fallback failed", it) }
+            .getOrDefault(false)
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+            done(drawView())
+            return
+        }
+        runCatching {
+            requestCapture(activity, target, destination) { code ->
+                if (code == PixelCopy.SUCCESS) {
+                    done(true)
+                } else {
+                    android.util.Log.w("MslTranslate", "PixelCopy failed with code $code; trying view.draw")
+                    done(drawView())
+                }
+            }
+        }.onFailure {
+            android.util.Log.w("MslTranslate", "PixelCopy request failed; trying view.draw", it)
+            done(drawView())
+        }
+    }
+
     fun run(activity: Activity, fab: View) {
         if (!fab.isEnabled) return
         val target = captureTarget(activity)
+        android.util.Log.i("MslTranslate", "Translate tapped; target=${target.javaClass.simpleName}, size=${target.width}x${target.height}")
         if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
@@ -269,19 +298,15 @@ object MslTranslate {
         fab.visibility = View.INVISIBLE
         toast(activity, "جارٍ قراءة الصفحة...")
         target.postDelayed({
-            runCatching {
-                requestCapture(activity, target, bmp) { code ->
-                    if (code != PixelCopy.SUCCESS) {
-                        restoreFab()
-                        toast(activity, "تعذّر التقاط الصفحة")
-                    } else {
-                        fab.visibility = View.VISIBLE
-                        process(activity, bmp, restoreFab)
-                    }
+            captureWithFallback(activity, target, bmp) { captured ->
+                if (!captured) {
+                    android.util.Log.e("MslTranslate", "Could not capture reader content using PixelCopy or View.draw")
+                    restoreFab()
+                    toast(activity, "تعذّر التقاط الصفحة؛ أعد المحاولة بعد اكتمال تحميلها")
+                } else {
+                    fab.visibility = View.VISIBLE
+                    process(activity, bmp, restoreFab)
                 }
-            }.onFailure {
-                restoreFab()
-                toast(activity, "تعذّر التقاط الصفحة")
             }
         }, 150)
     }
@@ -290,6 +315,7 @@ object MslTranslate {
 
     fun runForView(activity: Activity, pageView: View?) {
         val target = captureTarget(activity, pageView)
+        android.util.Log.i("MslTranslate", "Translate page view; target=${target.javaClass.simpleName}, size=${target.width}x${target.height}")
         if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
@@ -301,16 +327,18 @@ object MslTranslate {
             }
         toast(activity, "جارٍ قراءة الصفحة...")
         target.postDelayed({
-            runCatching {
-                requestCapture(activity, target, bmp) { code ->
-                    if (code != PixelCopy.SUCCESS) toast(activity, "تعذّر التقاط الصفحة")
-                    else process(activity, bmp)
+            captureWithFallback(activity, target, bmp) { captured ->
+                if (captured) process(activity, bmp)
+                else {
+                    android.util.Log.e("MslTranslate", "Could not capture page view using PixelCopy or View.draw")
+                    toast(activity, "تعذّر التقاط الصفحة؛ أعد المحاولة بعد اكتمال تحميلها")
                 }
-            }.onFailure { toast(activity, "تعذّر التقاط الصفحة") }
+            }
         }, 150)
     }
 
     private fun process(activity: Activity, bmp: Bitmap, onComplete: () -> Unit = {}) {
+        android.util.Log.i("MslTranslate", "Starting OCR for ${bmp.width}x${bmp.height} image")
         val finish = { activity.runOnUiThread { onComplete() } }
         val image = runCatching { InputImage.fromBitmap(bmp, 0) }.getOrElse {
             showOcrUnavailable(activity, it)
@@ -405,6 +433,7 @@ object MslTranslate {
         onComplete: () -> Unit,
     ) {
         val sourceLanguage = detectSourceLanguage(items.joinToString(" ") { it.second })
+        android.util.Log.i("MslTranslate", "Checking translation model: $sourceLanguage -> ar (${items.size} regions)")
         val tr = runCatching {
             Translation.getClient(
                 TranslatorOptions.Builder()
