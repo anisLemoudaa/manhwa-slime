@@ -68,20 +68,23 @@ object MslCloudSync {
         val token = MslSupabase.token(ctx) ?: return false
         val uid = MslSupabase.uid(ctx)
         if (uid.isEmpty()) return false
+        if (!ctx.activeNetworkState().isOnline) return false
         val body = JSONObject()
             .put("user_id", uid)
             .put("display_name", name.trim().ifEmpty { "قارئ السلايم" })
             .put("avatar_data", avatar ?: JSONObject.NULL)
             .put("cover_data", cover ?: JSONObject.NULL)
             .put("level", level.coerceAtLeast(1))
-        val result = MslSupabase.call(
-            "POST",
-            "/rest/v1/user_profiles?on_conflict=user_id",
-            body.toString(),
-            token,
-            "resolution=merge-duplicates,return=minimal",
-        )
-        return result.first in 200..299
+        return runCatching {
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/user_profiles?on_conflict=user_id",
+                body.toString(),
+                token,
+                "resolution=merge-duplicates,return=minimal",
+            )
+            result.first in 200..299
+        }.getOrDefault(false)
     }
 
     fun applyProfile(ctx: Context, remote: Profile) {
