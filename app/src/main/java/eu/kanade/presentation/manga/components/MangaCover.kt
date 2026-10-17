@@ -52,7 +52,8 @@ enum class MangaCover(val ratio: Float) {
                         Modifier
                     },
                 ),
-            contentScale = ContentScale.Crop,
+            // Covers are source artwork, not a photo backdrop: preserve every edge.
+            contentScale = ContentScale.Fit,
         )
     }
 }

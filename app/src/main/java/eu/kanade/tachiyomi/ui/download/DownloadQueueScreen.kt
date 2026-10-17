@@ -12,14 +12,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.animateFloatingActionButton
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +50,7 @@ import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.Sort
 import mihon.icons.materialsymbols.roundedfilled.Pause
 import mihon.icons.materialsymbols.roundedfilled.PlayArrow
-import tachiyomi.core.common.util.lang.launchUI
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -64,9 +63,18 @@ object DownloadQueueScreen : Screen() {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val scope = rememberCoroutineScope()
         val viewModel = metroViewModel<DownloadQueueViewModel>()
         val downloadList by viewModel.state.collectAsStateWithLifecycle()
+        LaunchedEffect(viewModel) {
+            launch {
+                viewModel.getDownloadStatusFlow()
+                    .collect(viewModel::onStatusChange)
+            }
+            launch {
+                viewModel.getDownloadProgressFlow()
+                    .collect(viewModel::onUpdateDownloadedPages)
+            }
+        }
         val downloadCount by remember {
             derivedStateOf { downloadList.sumOf { it.subItems.size } }
         }
@@ -198,37 +206,35 @@ object DownloadQueueScreen : Screen() {
                 )
             },
             floatingActionButton = {
-                val isRunning by viewModel.isDownloaderRunning.collectAsStateWithLifecycle()
-                SmallExtendedFloatingActionButton(
-                    text = {
-                        val id = if (isRunning) {
-                            MR.strings.action_pause
-                        } else {
-                            MR.strings.action_resume
-                        }
-                        Text(text = stringResource(id))
-                    },
-                    icon = {
-                        val icon = if (isRunning) {
-                            MaterialSymbols.RoundedFilled.Pause
-                        } else {
-                            MaterialSymbols.RoundedFilled.PlayArrow
-                        }
-                        Icon(imageVector = icon, contentDescription = null)
-                    },
-                    onClick = {
-                        if (isRunning) {
-                            viewModel.pauseDownloads()
-                        } else {
-                            viewModel.startDownloads()
-                        }
-                    },
-                    expanded = fabExpanded,
-                    modifier = Modifier.animateFloatingActionButton(
-                        visible = downloadList.isNotEmpty(),
-                        alignment = Alignment.BottomEnd,
-                    ),
-                )
+                if (downloadList.isNotEmpty()) {
+                    val isRunning by viewModel.isDownloaderRunning.collectAsStateWithLifecycle()
+                    SmallExtendedFloatingActionButton(
+                        text = {
+                            val id = if (isRunning) {
+                                MR.strings.action_pause
+                            } else {
+                                MR.strings.action_resume
+                            }
+                            Text(text = stringResource(id))
+                        },
+                        icon = {
+                            val icon = if (isRunning) {
+                                MaterialSymbols.RoundedFilled.Pause
+                            } else {
+                                MaterialSymbols.RoundedFilled.PlayArrow
+                            }
+                            Icon(imageVector = icon, contentDescription = null)
+                        },
+                        onClick = {
+                            if (isRunning) {
+                                viewModel.pauseDownloads()
+                            } else {
+                                viewModel.startDownloads()
+                            }
+                        },
+                        expanded = fabExpanded,
+                    )
+                }
             },
         ) { contentPadding ->
             if (downloadList.isEmpty()) {
@@ -250,36 +256,28 @@ object DownloadQueueScreen : Screen() {
                 AndroidView(
                     modifier = Modifier.fillMaxWidth(),
                     factory = { context ->
-                        viewModel.controllerBinding = DownloadListBinding.inflate(LayoutInflater.from(context))
-                        viewModel.adapter = DownloadAdapter(viewModel.listener)
-                        viewModel.controllerBinding.root.adapter = viewModel.adapter
-                        viewModel.adapter?.isHandleDragEnabled = true
-                        viewModel.controllerBinding.root.layoutManager = LinearLayoutManager(context)
+                        val binding = DownloadListBinding.inflate(LayoutInflater.from(context))
+                        val adapter = DownloadAdapter(viewModel.listener)
+                        viewModel.attachController(binding, adapter)
+                        binding.root.adapter = adapter
+                        adapter.isHandleDragEnabled = true
+                        binding.root.layoutManager = LinearLayoutManager(context)
 
-                        ViewCompat.setNestedScrollingEnabled(viewModel.controllerBinding.root, true)
+                        ViewCompat.setNestedScrollingEnabled(binding.root, true)
 
-                        scope.launchUI {
-                            viewModel.getDownloadStatusFlow()
-                                .collect(viewModel::onStatusChange)
-                        }
-                        scope.launchUI {
-                            viewModel.getDownloadProgressFlow()
-                                .collect(viewModel::onUpdateDownloadedPages)
-                        }
-
-                        viewModel.controllerBinding.root
+                        binding.root
                     },
-                    update = {
-                        viewModel.controllerBinding.root
-                            .updatePadding(
-                                left = left,
-                                top = top,
-                                right = right,
-                                bottom = bottom,
-                            )
+                    update = { recyclerView ->
+                        recyclerView.updatePadding(
+                            left = left,
+                            top = top,
+                            right = right,
+                            bottom = bottom,
+                        )
 
                         viewModel.adapter?.updateDataSet(downloadList)
                     },
+                    onRelease = viewModel::releaseController,
                 )
             }
         }

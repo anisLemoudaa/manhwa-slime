@@ -788,7 +788,7 @@ private fun NovelCard(
                 AsyncImage(
                     model = cover,
                     contentDescription = item.name,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -851,7 +851,7 @@ private fun NovelListRow(
             Box(Modifier.size(width = 56.dp, height = 76.dp).clip(RoundedCornerShape(10.dp))) {
                 NovelCoverSkeleton(Modifier.fillMaxSize())
                 item.cover?.takeIf(String::isNotBlank)?.let { cover ->
-                    AsyncImage(model = cover, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(model = cover, contentDescription = item.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

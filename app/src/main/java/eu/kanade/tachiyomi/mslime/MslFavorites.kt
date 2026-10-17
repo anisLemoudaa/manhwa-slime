@@ -399,7 +399,7 @@ private fun FavoriteRow(item: MslFavoriteItem, onOpen: () -> Unit, onRemove: () 
                     model = item.cover,
                     contentDescription = null,
                     modifier = Modifier.size(width = 58.dp, height = 78.dp).clip(RoundedCornerShape(10.dp)),
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                 )
             } else {
                 Box(

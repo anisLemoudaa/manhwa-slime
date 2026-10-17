@@ -103,7 +103,7 @@ fun DownloadedNovelsContent() {
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                             if (!book.cover.isNullOrBlank()) {
-                                AsyncImage(book.cover, book.title, Modifier.size(width = 92.dp, height = 128.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                                AsyncImage(book.cover, book.title, Modifier.size(width = 92.dp, height = 128.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(
@@ -160,7 +160,7 @@ fun DownloadedNovelsContent() {
                                 border = androidx.compose.foundation.BorderStroke(1.dp, MslDesignTokens.border),
                             ) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (!book.cover.isNullOrBlank()) AsyncImage(book.cover, book.title, Modifier.size(width = 76.dp, height = 104.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
+                                    if (!book.cover.isNullOrBlank()) AsyncImage(book.cover, book.title, Modifier.size(width = 76.dp, height = 104.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Fit)
                                     else Box(Modifier.size(width = 76.dp, height = 104.dp).clip(RoundedCornerShape(10.dp)).background(MslDesignTokens.surfaceRaised))
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
