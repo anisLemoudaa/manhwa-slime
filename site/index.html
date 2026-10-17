@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0C0D0F">
-<title>MANHWA SLIME | الموقع الرسمي</title>
-<meta name="description" content="اكتشف تطبيق MANHWA SLIME، وتعرّف على مميزاته وأقسام المانهوا والروايات، وحمّل أحدث إصدار متوفر.">
+<title>MANHWA SLIME | الموقع الرسمي لتطبيق المانهوا والروايات</title>
+<meta name="description" content="الموقع الرسمي لتطبيق MANHWA SLIME لقراءة المانهوا والروايات على أندرويد. تعرّف على المميزات، نزّل أحدث إصدار، واقرأ أخبار التطوير والدعم.">
+<meta name="description" lang="en" content="Official website of MANHWA SLIME, an Android app for manhwa and novel reading. Explore features, download releases, and follow development updates.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="keywords" content="MANHWA SLIME, Manhwa Slime, مانها سلايم, مانهوا, روايات, تطبيق مانها سلايم">
 <meta name="google-site-verification" content="rLj0P5r1TCg6-1CDNILICEbt4Ag5OGxaXzpKY3XvBSM">
@@ -13,9 +14,11 @@
 <link rel="icon" type="image/webp" sizes="64x64" href="assets/images/logo-64.webp">
 <link rel="apple-touch-icon" sizes="370x370" href="assets/images/logo-370.webp">
 <meta property="og:site_name" content="MANHWA SLIME">
-<meta property="og:title" content="MANHWA SLIME | الموقع الرسمي">
-<meta property="og:description" content="اكتشف تطبيق MANHWA SLIME، وتعرّف على مميزاته وأقسام المانهوا والروايات، وحمّل أحدث إصدار متوفر.">
+<meta property="og:title" content="MANHWA SLIME | الموقع الرسمي | Official Android App">
+<meta property="og:description" content="الموقع الرسمي لتطبيق MANHWA SLIME لقراءة المانهوا والروايات على أندرويد، مع أحدث الإصدارات وأخبار التطوير.">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:locale:alternate" content="en_US">
 <meta property="og:url" content="https://manhwa-slime.pages.dev/">
 <meta property="og:image" content="https://manhwa-slime.pages.dev/assets/images/logo.png">
 <meta property="og:image:type" content="image/png">
@@ -23,10 +26,10 @@
 <meta property="og:image:height" content="1254">
 <meta property="og:image:alt" content="شعار MANHWA SLIME مع شخصية السلايم والمانهوا">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="MANHWA SLIME | الموقع الرسمي">
+<meta name="twitter:title" content="MANHWA SLIME | الموقع الرسمي | Official Android App">
 <meta name="twitter:description" content="الموقع الرسمي لتطبيق Manhwa Slime.">
 <meta name="twitter:image" content="https://manhwa-slime.pages.dev/assets/images/logo.png">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"MobileApplication","name":"MANHWA SLIME","alternateName":["Manhwa Slime","مانها سلايم"],"applicationCategory":"EntertainmentApplication","operatingSystem":"Android","url":"https://manhwa-slime.pages.dev/","description":"التطبيق الرسمي لقراءة المانهوا والروايات ومتابعة قصص المجتمع.","image":"https://manhwa-slime.pages.dev/assets/images/logo.png","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"MobileApplication","name":"MANHWA SLIME","alternateName":["Manhwa Slime","مانها سلايم"],"applicationCategory":"EntertainmentApplication","operatingSystem":"Android","url":"https://manhwa-slime.pages.dev/","inLanguage":["ar","en"],"description":"التطبيق الرسمي لقراءة المانهوا والروايات ومتابعة قصص المجتمع.","image":"https://manhwa-slime.pages.dev/assets/images/logo.png","softwareHelp":"https://manhwa-slime.pages.dev/#faq","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="image" href="assets/images/logo-370.webp" type="image/webp" fetchpriority="high">
@@ -130,6 +133,14 @@
   .page-section{max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:14px;}
   .page-section h3{font-size:16px; margin-top:12px;}
   .page-section p, .page-section li{color:var(--text-dim); font-size:14px; line-height:1.9;}
+  .page-section ul{margin:0; padding-right:22px;}
+  .roadmap-item{position:relative; padding:18px 20px; border:1px solid var(--border); border-radius:14px; background:var(--surface);}
+  .roadmap-item + .roadmap-item{margin-top:12px;}
+  .roadmap-item strong{color:#F2F2F0;}
+  .roadmap-status{display:inline-flex; margin-bottom:7px; padding:4px 10px; border-radius:999px; background:var(--green-dim); color:var(--green); font-size:12px; font-weight:700;}
+  .hash-box{padding:16px; border:1px dashed #8CFF6B66; border-radius:14px; background:#17201A; overflow-wrap:anywhere;}
+  .hash-box code{display:block; margin-top:8px; color:#D8FFCF; font-size:12px; direction:ltr; text-align:left;}
+  .legal-note{padding:14px 16px; border-right:3px solid var(--purple); background:#1C1726; border-radius:10px;}
   @media (max-width:640px){
     .navbar{padding:10px 0;}
     nav.links{display:none; position:absolute; top:100%; right:16px; left:16px; flex-direction:column; align-items:stretch; gap:0; padding:8px; background:#121317f7; border:1px solid var(--border); border-radius:16px; box-shadow:0 18px 40px #00000070;}
@@ -157,6 +168,8 @@
       <a href="#features">مميزات التطبيق</a>
       <a href="#sections">أقسام التطبيق</a>
       <a href="#updates">آخر التحديثات</a>
+      <a href="#about">من نحن</a>
+      <a href="#roadmap">خارطة الطريق</a>
       <a href="#faq">الأسئلة الشائعة</a>
       <a href="#support">الدعم والتواصل</a>
     </nav>
@@ -275,41 +288,89 @@
     </div>
   </section>
 
+  <section id="about" class="wrap">
+    <div class="section-head"><h2>من نحن</h2><p class="muted">تعرف على صاحب المشروع وما الذي نسعى لبنائه</p></div>
+    <div class="page-section">
+      <p>MANHWA SLIME مشروع مستقل يطوره <strong style="color:#F2F2F0">أنيس لمودع</strong> بهدف تقديم تجربة عربية مريحة لاكتشاف المانهوا والروايات ومتابعة القصص المفضلة من مكان واحد.</p>
+      <p>التطبيق قيد التطوير المستمر، ولذلك قد تتغير بعض المزايا أو الواجهات أو مصادر المحتوى مع الوقت. نعمل على تحسين الأداء، إصلاح الأخطاء، والاستماع إلى ملاحظات المستخدمين قبل كل تحديث.</p>
+      <p class="legal-note">رسالتنا للمستخدمين: نريد أن يكون التطبيق واضحًا وآمنًا قدر الإمكان. نزّل التطبيق من الموقع الرسمي فقط، وتواصل معنا عند ملاحظة أي مشكلة أو محتوى غير مناسب.</p>
+    </div>
+  </section>
+
+  <section id="roadmap" class="wrap">
+    <div class="section-head"><h2>حالة التطوير وخارطة الطريق</h2><p class="muted">آخر تحديث للخارطة: 15/10/2026</p></div>
+    <div class="page-section">
+      <div class="roadmap-item"><span class="roadmap-status">مكتمل</span><br><strong>النسخة الأساسية للتطبيق</strong><p>إطلاق تجربة قراءة المانهوا والروايات، الحسابات، المفضلة، والعملات داخل التطبيق.</p></div>
+      <div class="roadmap-item"><span class="roadmap-status">مكتمل</span><br><strong>نسختا Standard وLite</strong><p>توفير نسخة أصلية ونسخة أخف للهواتف ذات الإمكانيات المحدودة.</p></div>
+      <div class="roadmap-item"><span class="roadmap-status">قيد التحسين</span><br><strong>الأداء والاستقرار</strong><p>تقليل زمن التحميل، تحسين استهلاك الذاكرة، ومعالجة الأخطاء التي تظهر على الأجهزة المختلفة.</p></div>
+      <div class="roadmap-item"><span class="roadmap-status">قادم</span><br><strong>تطوير المجتمع والمحتوى</strong><p>تحسين اكتشاف الروايات، أدوات الإبلاغ، وتنظيم المحتوى القادم من المصادر الخارجية.</p></div>
+      <div class="roadmap-item"><span class="roadmap-status">قادم</span><br><strong>تحسينات القراءة والإشعارات</strong><p>إضافة تحسينات تدريجية لتجربة القراءة، وتطوير آلية أوضح لإبلاغ المستخدمين بالتحديثات.</p></div>
+    </div>
+  </section>
+
   <section id="faq" class="wrap">
-    <div class="section-head"><h2>الأسئلة الشائعة</h2></div>
+    <div class="section-head"><h2>الأسئلة الشائعة</h2><p class="muted">إجابات مختصرة عن التحميل والمحتوى والخصوصية</p></div>
     <div style="max-width:720px; margin:0 auto;">
-      <details><summary>ما هو تطبيق MANHWA SLIME؟</summary><p>تطبيق أندرويد يجمع بين مكتبة مانهوا، قسم روايات، وقسم روايات مجتمع يكتبها المستخدمون، في واجهة واحدة.</p></details>
-      <details><summary>كيف يمكنني تحميل التطبيق؟</summary><p>اضغط على زر «تحميل APK مجانًا» في قسم التحميل بالأعلى بمجرد توفر الملف.</p></details>
-      <details><summary>هل تحميل التطبيق مجاني؟</summary><p>نعم، تحميل التطبيق من هذا الموقع مجاني بالكامل.</p></details>
-      <details><summary>كيف أعرف أنني أحمل أحدث إصدار؟</summary><p>رقم الإصدار وتاريخه يظهران في قسم «آخر التحديثات» وبجانب زر التحميل.</p></details>
-      <details><summary>ما الفرق بين قسم الروايات وقسم روايات المجتمع؟</summary><p>قسم الروايات يعرض روايات متاحة عبر مصادر قراءة داخل التطبيق، أما روايات المجتمع فهي قصص ينشرها مستخدمو التطبيق أنفسهم.</p></details>
-      <details><summary>كيف أبلغ عن مشكلة؟</summary><p>استخدم نموذج «الدعم والتواصل» أسفل الصفحة لوصف المشكلة.</p></details>
+      <details><summary>ما هو تطبيق MANHWA SLIME؟</summary><p>تطبيق أندرويد مستقل قيد التطوير يجمع تجربة قراءة المانهوا والروايات وبعض مزايا المجتمع في واجهة واحدة.</p></details>
+      <details><summary>كيف يمكنني تحميل التطبيق بأمان؟</summary><p>استخدم زر التحميل في هذا الموقع الرسمي فقط. تجنب ملفات APK المعاد رفعها في مواقع غير معروفة، وتحقق من رقم الإصدار وبصمة SHA-256 عندما تكون منشورة.</p></details>
+      <details><summary>هل التطبيق مجاني؟</summary><p>تحميل التطبيق مجاني. قد تتوفر داخل التطبيق مزايا أو عناصر اختيارية، وسيتم توضيح أي شروط أو تكلفة قبل استخدامها.</p></details>
+      <details><summary>هل يدعم التطبيق الهواتف الضعيفة؟</summary><p>نعم، توجد نسخة Lite مخصصة لتقليل الضغط على الأجهزة ذات الذاكرة أو الأداء المحدود، مع احتمال اختلاف بعض المزايا عن النسخة الأصلية.</p></details>
+      <details><summary>من أين يأتي المحتوى؟</summary><p>قد يعرض التطبيق محتوى أو روابط من مصادر خارجية. لا يعني ظهور مصدر داخل التطبيق أن المطور يملك حقوق ذلك المحتوى أو يتبنى آراء ناشره.</p></details>
+      <details><summary>كيف أتحقق من ملف APK؟</summary><p>قارن بصمة SHA-256 المعروضة في قسم التحقق أدناه مع البصمة التي يحسبها جهازك أو أداة موثوقة. إذا اختلفت البصمتان فلا تثبّت الملف.</p></details>
+      <details><summary>هل تصل إشعارات التحديث تلقائيًا؟</summary><p>يفحص التطبيق التحديثات عند فتحه إذا كانت آلية التحديث مفعّلة في النسخة المثبتة. لا يُعد ذلك إشعارًا فوريًا في شريط Android، لذلك يُفضّل فتح التطبيق من وقت لآخر.</p></details>
+      <details><summary>كيف أتواصل مع المطور؟</summary><p>راسلنا عبر <a href="mailto:anislemoudaa2741@gmail.com">anislemoudaa2741@gmail.com</a> مع ذكر رقم الإصدار ونوع الهاتف ووصف المشكلة.</p></details>
+    </div>
+  </section>
+
+  <section id="verification" class="wrap">
+    <div class="section-head"><h2>التحقق من ملف APK</h2><p class="muted">خطوة إضافية للتأكد من سلامة الملف قبل التثبيت</p></div>
+    <div class="page-section">
+      <p>بصمة SHA-256 هي قيمة مميزة للملف. عند نشر بصمة إصدار رسمي، يجب أن تطابق القيمة المحسوبة من الملف الذي نزّلته حرفيًا، بما في ذلك الأحرف والأرقام.</p>
+      <div class="hash-box"><strong>بصمة الإصدار الرسمي v1.1.1 · versionCode 46</strong><code>46cd800648b161617cd22d458494d2bd9edbf4a97a3df15f6eb23c8d19d37808</code><a href="assets/checksums/Manhwa-Slime-v1.1.1.apk.sha256" download>تنزيل ملف التحقق SHA-256</a></div>
+      <p><strong style="color:#F2F2F0">على Android/Windows:</strong> استخدم أداة موثوقة لحساب SHA-256 للملف، ثم قارن النتيجة بالبصمة المنشورة في هذه الصفحة. لا تثبّت الملف إذا كان مصدره مجهولًا أو اختلفت البصمة.</p>
+      <p class="legal-note">البصمة لا تثبت ملكية المحتوى داخل التطبيق؛ هي وسيلة للتحقق من أن ملف APK لم يتغير منذ نشره من المصدر الذي أعلن البصمة.</p>
     </div>
   </section>
 
   <section id="privacy" class="wrap">
-    <div class="section-head"><h2>سياسة الخصوصية</h2></div>
+    <div class="section-head"><h2>سياسة الخصوصية</h2><p class="muted">كيف نتعامل مع البيانات في الموقع والتطبيق</p></div>
     <div class="page-section">
-      <p><strong style="color:#F2F2F0">آخر تحديث:</strong> [تاريخ آخر تحديث للسياسة]</p>
-      <h3>البيانات التي نجمعها</h3>
-      <p>هذا الموقع لا يجمع بيانات شخصية عبر نماذجه إلا ما يُدخله الزائر بنفسه عند التواصل عبر نموذج الدعم (العنوان والوصف، والبريد الإلكتروني إن اختار كتابته).</p>
-      <h3>ملفات تعريف الارتباط وأدوات التحليل</h3>
-      <p>لا يستخدم الموقع حاليًا أدوات تحليل أو تتبع خارجية. سيُحدَّث هذا القسم إذا تمت إضافة أي أداة من هذا النوع مستقبلًا.</p>
-      <h3>خدمات خارجية</h3>
-      <p>استضافة الموقع تتم عبر مزوّد استضافة خارجي (Cloudflare Pages)، وقد يعالج بيانات تقنية أساسية (مثل عنوان IP) وفق سياسته الخاصة.</p>
-      <h3>التواصل بشأن الخصوصية</h3>
-      <p>لأي استفسار يتعلق بالخصوصية، يمكن التواصل عبر: [بريد إلكتروني للتواصل بشأن الخصوصية].</p>
+      <p><strong style="color:#F2F2F0">آخر تحديث:</strong> 15/10/2026</p>
+      <p>نحترم خصوصيتك. تشرح هذه السياسة، بصورة مبسطة، أنواع البيانات التي قد تُعالج عند استخدام موقع MANHWA SLIME أو تطبيقه، ولماذا نحتاج إليها.</p>
+      <h3>البيانات التي قد تُعالج</h3>
+      <ul><li>بيانات الحساب التي تقدمها عند التسجيل أو تسجيل الدخول، مثل البريد الإلكتروني ومعرّف الحساب.</li><li>بيانات تشغيل التطبيق، مثل المفضلة، سجل القراءة، الرصيد أو المعاملات داخل التطبيق، وإعدادات الحساب، بهدف تشغيل المزايا وحفظها بين أجهزتك.</li><li>بيانات الدعم التي ترسلها طوعًا، مثل البريد الإلكتروني ووصف المشكلة.</li><li>بيانات تقنية أساسية قد يرسلها الجهاز أو مزود الاستضافة تلقائيًا، مثل عنوان IP، نوع الجهاز، إصدار النظام، ووقت الطلب، لأغراض الأمان وتشخيص الأعطال.</li></ul>
+      <h3>المحتوى من المصادر الخارجية</h3>
+      <p>قد يتصل التطبيق بمصادر أو خدمات خارجية لجلب معلومات أو روابط قراءة. قد تعالج تلك الخدمات بيانات وفق سياساتها المستقلة، ولا يتحكم MANHWA SLIME في ممارسات الخصوصية الخاصة بها. راجع سياسة كل خدمة عند الحاجة.</p>
+      <h3>الكوكيز والتحليلات</h3>
+      <p>لا يستخدم الموقع حاليًا أدوات إعلانية أو تحليلات تسويقية مخصصة. قد تستخدم Cloudflare أو خدمات البنية التحتية سجلات تقنية وأدوات حماية أساسية لتقديم الموقع ومنع إساءة الاستخدام.</p>
+      <h3>الحفظ والأمان</h3>
+      <p>نستخدم إجراءات معقولة لحماية بيانات الحساب والخدمات، لكن لا توجد خدمة عبر الإنترنت خالية من المخاطر. لا ترسل كلمات مرور أو معلومات مالية عبر نموذج الدعم.</p>
+      <h3>الاحتفاظ والطلبات</h3>
+      <p>نحتفظ بالبيانات فقط ما دام ذلك لازمًا لتشغيل المزايا أو معالجة الدعم أو الالتزامات الأمنية. يمكنك طلب تصحيح بياناتك أو حذفها، مع مراعاة ما قد يلزم الاحتفاظ به لأسباب قانونية أو أمنية.</p>
+      <h3>التواصل</h3>
+      <p>للاستفسار عن الخصوصية أو طلب حذف بيانات مرتبطة بحسابك، راسل: <a href="mailto:anislemoudaa2741@gmail.com">anislemoudaa2741@gmail.com</a>.</p>
+      <p class="legal-note">هذه صياغة معلوماتية مبسطة وليست استشارة قانونية. قد نحدّث السياسة عند إضافة خدمات أو مزايا جديدة، وسنغيّر تاريخ التحديث عند إجراء تعديل جوهري.</p>
     </div>
   </section>
 
   <section id="terms" class="wrap">
-    <div class="section-head"><h2>شروط الاستخدام</h2></div>
+    <div class="section-head"><h2>شروط الاستخدام</h2><p class="muted">شروط واضحة لاستخدام الموقع والتطبيق</p></div>
     <div class="page-section">
-      <p>باستخدام هذا الموقع، توافق على استخدامه للتعرّف على تطبيق MANHWA SLIME ومصادره الرسمية فقط.</p>
-      <h3>المحتوى والروابط</h3>
-      <p>يُرجى التحقق من مصدر أي ملف قبل تثبيته. لا يتوفر رابط APK رسمي في هذه النسخة حتى تتم إضافة ملف حقيقي من مالك التطبيق.</p>
-      <h3>التحديثات</h3>
-      <p>قد تتغير المزايا أو روابط التنزيل عند نشر إصدارات جديدة، وسيتم تحديث بيانات الإصدار في إعدادات الصفحة.</p>
+      <p><strong style="color:#F2F2F0">تاريخ السريان:</strong> 15/10/2026</p>
+      <p>باستخدام موقع MANHWA SLIME أو تطبيقه، تقر بأنك قرأت هذه الشروط وتوافق على استخدامها بما لا يخالف القانون وحقوق الآخرين.</p>
+      <h3>الاستخدام المقبول</h3>
+      <p>تستخدم الخدمة للقراءة والتصفح والتواصل المشروع فقط. يُمنع محاولة اختراق الخدمة، أو التحايل على الرصيد أو الحسابات، أو إرسال برمجيات ضارة، أو إساءة استخدام أدوات المجتمع أو الإبلاغ.</p>
+      <h3>المصادر والمحتوى وحقوق الملكية</h3>
+      <p>قد يعرض التطبيق معلومات أو محتوى أو روابط من مصادر خارجية. يظل كل محتوى مملوكًا لأصحاب حقوقه، ولا يدّعي MANHWA SLIME ملكية أعمال الغير. تقع مسؤولية احترام حقوق النشر والعلامات التجارية على المستخدم والجهة الناشرة للمحتوى.</p>
+      <h3>ملفات APK والتحديثات</h3>
+      <p>نزّل التطبيق من الموقع الرسمي أو من رابط موثق داخل الموقع. تحقّق من رقم الإصدار وبصمة SHA-256 عند توفرها، ولا تثبّت ملفات معدلة أو معاد رفعها من مصادر مجهولة. قد نوقف إصدارًا أو نغير رابطًا أو نعدل ميزة دون ضمان استمرار كل وظيفة بنفس الشكل.</p>
+      <h3>الحسابات والأرصدة</h3>
+      <p>أنت مسؤول عن حماية حسابك وعدم مشاركة بيانات الدخول. الأرصدة أو العملات داخل التطبيق سجلات رقمية لا تمثل نقودًا نقدية ولا يجوز بيعها أو تحويلها خارج المزايا التي يوفرها التطبيق.</p>
+      <h3>حدود المسؤولية</h3>
+      <p>يبذل المطور جهدًا معقولًا لتوفير الخدمة، لكن التطبيق قيد التطوير وقد يحتوي على أخطاء أو توقف مؤقت. لا نضمن توفر كل مصدر خارجي أو دقة كل معلومة أو ملاءمة الخدمة لكل جهاز، ولا نتحمل مسؤولية محتوى أو سياسة خدمة خارجية.</p>
+      <h3>التعديلات والتواصل</h3>
+      <p>قد تتغير هذه الشروط عند تغير التطبيق أو القانون. استمرارك في الاستخدام بعد نشر التعديل يعني قبولك به. للاستفسار، راسل <a href="mailto:anislemoudaa2741@gmail.com">anislemoudaa2741@gmail.com</a>.</p>
+      <p class="legal-note">هذا التنبيه عام ومبسّط ولا يشكل استشارة قانونية. إذا كانت لديك متطلبات قانونية خاصة ببلدك، فاستشر مختصًا قانونيًا.</p>
     </div>
   </section>
 
@@ -345,6 +406,8 @@
           <a href="#download">تحميل APK</a>
           <a href="#features">المميزات</a>
           <a href="#sections">الأقسام</a>
+          <a href="#about">من نحن</a>
+          <a href="#roadmap">خارطة الطريق</a>
         </div>
         <div class="footer-col">
           <span class="head">قانوني</span>
@@ -353,6 +416,8 @@
         </div>
         <div class="footer-col">
           <span class="head">الدعم</span>
+          <a href="#faq">الأسئلة الشائعة</a>
+          <a href="#verification">التحقق من APK</a>
           <a href="#support">تواصل معنا</a>
         </div>
       </div>
@@ -395,8 +460,8 @@
   // نموذج الدعم: غير متصل بخدمة إرسال فعلية بعد
   document.getElementById('support-form').addEventListener('submit', function(e){
     e.preventDefault();
-    document.getElementById('support-status').textContent =
-      'هذا النموذج غير مفعّل حاليًا لعدم توفر خدمة إرسال خلفية. للتواصل المباشر راسلنا على: [بريد إلكتروني للدعم]';
+    document.getElementById('support-status').innerHTML =
+      'شكرًا لتواصلك. أرسل تفاصيل المشكلة مباشرة إلى <a href="mailto:anislemoudaa2741@gmail.com">anislemoudaa2741@gmail.com</a>.';
   });
 
   const menuToggle = document.getElementById('menu-toggle');
