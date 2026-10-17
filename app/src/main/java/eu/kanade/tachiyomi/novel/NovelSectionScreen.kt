@@ -90,6 +90,40 @@ internal suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<
         Result.failure(failure)
     }
 
+@Composable
+private fun NovelToolbar(
+    title: @Composable () -> Unit,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.widthIn(min = 56.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                navigationIcon()
+            }
+            Box(
+                modifier = Modifier.weight(1f),
+            ) {
+                title()
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
+    }
+}
+
 private data class NovelUiState(
     val sources: List<NovelSourceRuntime> = emptyList(),
     val selectedSource: String? = null,
@@ -1067,7 +1101,7 @@ class NovelDetailsScreen(
 
         Scaffold(
             topBar = {
-                TopAppBar(
+                NovelToolbar(
                     title = {
                         Text(details?.name ?: fallbackName)
                     },
@@ -1514,7 +1548,7 @@ class NovelReaderScreen(
         Scaffold(
             topBar = {
                 if (!fullscreen) {
-                TopAppBar(
+                NovelToolbar(
                     title = {
                         Column {
                             Text(
