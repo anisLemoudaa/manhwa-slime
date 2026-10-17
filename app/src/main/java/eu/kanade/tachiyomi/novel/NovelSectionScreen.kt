@@ -1277,7 +1277,10 @@ class NovelDetailsScreen(
                             else -> true
                         }
                     }
-                    itemsIndexed(visibleChapters) { visibleIndex, entry ->
+                    itemsIndexed(
+                        items = visibleChapters,
+                        key = { _, entry -> entry.second.path },
+                    ) { visibleIndex, entry ->
                         val (index, chapter) = entry
                         val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
                         Card(
@@ -1326,12 +1329,17 @@ class NovelDetailsScreen(
                                 if (isRead) {
                                     Text("مقروء ✓", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.labelMedium)
                                 }
-                                IconButton(
-                                    onClick = { requestDownload(index, chapter) },
-                                    enabled = chapter.path in downloadedPaths || chapter.path in downloadingPaths || MslWallet.enabled,
-                                    modifier = Modifier.size(48.dp).semantics {
-                                        contentDescription = if (chapter.path in downloadedPaths) "${chapter.name} محمّل" else "تحميل ${chapter.name}"
-                                    },
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .semantics {
+                                            contentDescription = if (chapter.path in downloadedPaths) "${chapter.name} محمّل" else "تحميل ${chapter.name}"
+                                        }
+                                        .clickable(
+                                            enabled = chapter.path in downloadedPaths || chapter.path in downloadingPaths || MslWallet.enabled,
+                                            onClick = { requestDownload(index, chapter) },
+                                        ),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text(if (chapter.path in downloadedPaths) "✓" else if (chapter.path in downloadingPaths) "…" else "⇩", color = MslDesignTokens.accentBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }
