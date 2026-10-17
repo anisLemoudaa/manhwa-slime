@@ -6,6 +6,9 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 
 @Serializable
@@ -58,13 +61,11 @@ class NovelOfflineStore(context: Context) {
         val target = chapterFile(sourceId, novelPath, chapterPath)
         val temporary = File(directory, "${target.name}.tmp")
         temporary.writeText(html, Charsets.UTF_8)
-        if (target.exists() && !target.delete()) {
+        try {
+            atomicReplaceFile(temporary, target)
+        } catch (error: Exception) {
             temporary.delete()
-            error("تعذّر استبدال نسخة الفصل المحلية")
-        }
-        if (!temporary.renameTo(target)) {
-            temporary.delete()
-            error("تعذّر حفظ الفصل على الجهاز")
+            throw error
         }
 
         val existing = readBooks().toMutableList()
@@ -135,8 +136,12 @@ class NovelOfflineStore(context: Context) {
     private fun writeBooks(books: List<OfflineNovelBook>) {
         val tmp = File(directory, "index.json.tmp")
         tmp.writeText(json.encodeToString(books), Charsets.UTF_8)
-        if (indexFile.exists() && !indexFile.delete()) error("تعذّر تحديث فهرس الروايات المحملة")
-        if (!tmp.renameTo(indexFile)) error("تعذّر حفظ فهرس الروايات المحملة")
+        try {
+            atomicReplaceFile(tmp, indexFile)
+        } catch (error: Exception) {
+            tmp.delete()
+            throw error
+        }
     }
 
     private fun chapterFile(sourceId: String, novelPath: String, chapterPath: String): File {
@@ -145,4 +150,8 @@ class NovelOfflineStore(context: Context) {
         val name = digest.joinToString("") { byte -> "%02x".format(byte) }
         return File(directory, "$name.html")
     }
+}
+
+internal fun atomicReplaceFile(temporary: File, target: File) {
+    Files.move(temporary.toPath(), target.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
 }

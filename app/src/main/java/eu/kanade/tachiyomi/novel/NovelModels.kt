@@ -91,6 +91,23 @@ data class NovelChapter(
     val page: String? = null,
 ) : java.io.Serializable
 
+internal fun orderNovelChapters(
+    chapters: List<NovelChapter>,
+    descending: Boolean?,
+): List<Pair<Int, NovelChapter>> {
+    val indexed = chapters.mapIndexed { index, chapter -> index to chapter }
+    if (descending == null) return indexed
+
+    val numbered = indexed.filter { it.second.chapterNumber != null }
+    val unnumbered = indexed.filter { it.second.chapterNumber == null }
+    val sortedNumbered = if (descending) {
+        numbered.sortedByDescending { it.second.chapterNumber }
+    } else {
+        numbered.sortedBy { it.second.chapterNumber }
+    }
+    return sortedNumbered + unnumbered
+}
+
 @Serializable
 data class NovelDetails(
     val path: String,

@@ -989,6 +989,8 @@ class NovelDetailsScreen(
         var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
         var downloadingPaths by remember { mutableStateOf(emptySet<String>()) }
         var bulkDownloading by remember { mutableStateOf(false) }
+        var chapterOrder by remember(sourceId, path) { mutableStateOf("source") }
+        var chapterReadFilter by remember(sourceId, path) { mutableStateOf("all") }
         var details by remember { mutableStateOf<NovelDetails?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         val favoriteSnapshot by MslFavorites.snapshot.collectAsState()
@@ -1196,7 +1198,44 @@ class NovelDetailsScreen(
                             }
                         }
                     }
-                    itemsIndexed(d.chapters.orEmpty()) { index, chapter ->
+                    item {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text("ترتيب الفصول", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                listOf("source" to "المصدر", "asc" to "تصاعدي", "desc" to "تنازلي").forEach { (value, label) ->
+                                    TextButton(onClick = { chapterOrder = value }, modifier = Modifier.weight(1f)) {
+                                        Text(label, color = if (chapterOrder == value) MslDesignTokens.accentBright else MslDesignTokens.textSecondary)
+                                    }
+                                }
+                            }
+                            Text("حالة القراءة", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.labelMedium)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                listOf("all" to "الكل", "unread" to "غير المقروء", "read" to "المقروء").forEach { (value, label) ->
+                                    TextButton(onClick = { chapterReadFilter = value }, modifier = Modifier.weight(1f)) {
+                                        Text(label, color = if (chapterReadFilter == value) MslDesignTokens.accentBright else MslDesignTokens.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val orderedChapters = orderNovelChapters(
+                        d.chapters.orEmpty(),
+                        when (chapterOrder) {
+                            "asc" -> false
+                            "desc" -> true
+                            else -> null
+                        },
+                    )
+                    val visibleChapters = orderedChapters.filter { (_, chapter) ->
+                        val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
+                        when (chapterReadFilter) {
+                            "read" -> isRead
+                            "unread" -> !isRead
+                            else -> true
+                        }
+                    }
+                    itemsIndexed(visibleChapters) { _, entry ->
+                        val (index, chapter) = entry
                         val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).combinedClickable(
