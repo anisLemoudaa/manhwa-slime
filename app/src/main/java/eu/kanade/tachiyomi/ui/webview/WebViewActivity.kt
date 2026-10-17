@@ -127,6 +127,7 @@ class WebViewActivity : BaseActivity() {
         assistUrl = url
         val prepareDownloadChapterId = intent.extras?.getLong(PREPARE_DOWNLOAD_CHAPTER_ID_KEY)
             ?.takeIf { it > 0 }
+        val prepareDownloadQueue = readPrepareDownloadQueue(intent)
         val prepareDownloadChapterPath = runCatching { URI(url).path }.getOrNull()
         if (prepareDownloadChapterId != null) {
             lifecycleScope.launch {
@@ -154,7 +155,21 @@ class WebViewActivity : BaseActivity() {
                                     lifecycleScope.launch(Dispatchers.IO) {
                                         downloadManager.startDownloadNow(chapterId)
                                         withContext(Dispatchers.Main) {
-                                            toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
+                                            val next = prepareDownloadQueue.firstOrNull()
+                                            if (next == null) {
+                                                toast(MR.strings.procomic_download_started, Toast.LENGTH_LONG)
+                                            } else {
+                                                val nextIntent = newIntent(
+                                                    context = this@WebViewActivity,
+                                                    url = next.second,
+                                                    sourceId = intent.extras?.getLong(SOURCE_KEY),
+                                                    title = next.third,
+                                                    adFreeReader = true,
+                                                    prepareDownloadChapterId = next.first,
+                                                    prepareDownloadQueue = prepareDownloadQueue.drop(1),
+                                                ).apply { removeFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) }
+                                                startActivity(nextIntent)
+                                            }
                                             finish()
                                         }
                                     }
@@ -215,7 +230,8 @@ class WebViewActivity : BaseActivity() {
         }
         windowInsetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+        windowInsetsController.hide(WindowInsetsCompat.Type.statusBars())
+        windowInsetsController.hide(WindowInsetsCompat.Type.navigationBars())
     }
 
     override fun onProvideAssistContent(outContent: AssistContent) {
@@ -260,7 +276,21 @@ class WebViewActivity : BaseActivity() {
         private const val TITLE_KEY = "title_key"
         private const val AD_FREE_READER_KEY = "ad_free_reader_key"
         private const val PREPARE_DOWNLOAD_CHAPTER_ID_KEY = "prepare_download_chapter_id_key"
+        private const val PREPARE_DOWNLOAD_QUEUE_IDS_KEY = "prepare_download_queue_ids_key"
+        private const val PREPARE_DOWNLOAD_QUEUE_URLS_KEY = "prepare_download_queue_urls_key"
+        private const val PREPARE_DOWNLOAD_QUEUE_TITLES_KEY = "prepare_download_queue_titles_key"
         private const val DOWNLOAD_PREPARATION_TIMEOUT_MS = 10 * 60 * 1000L
+
+        private fun readPrepareDownloadQueue(intent: Intent): List<Triple<Long, String, String>> {
+            val ids = intent.getLongArrayExtra(PREPARE_DOWNLOAD_QUEUE_IDS_KEY)?.toList().orEmpty()
+            val urls = intent.getStringArrayListExtra(PREPARE_DOWNLOAD_QUEUE_URLS_KEY).orEmpty()
+            val titles = intent.getStringArrayListExtra(PREPARE_DOWNLOAD_QUEUE_TITLES_KEY).orEmpty()
+            return ids.indices.mapNotNull { index ->
+                val url = urls.getOrNull(index)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val title = titles.getOrNull(index).orEmpty()
+                Triple(ids[index], url, title)
+            }
+        }
 
         fun newIntent(
             context: Context,
@@ -269,6 +299,7 @@ class WebViewActivity : BaseActivity() {
             title: String? = null,
             adFreeReader: Boolean = false,
             prepareDownloadChapterId: Long? = null,
+            prepareDownloadQueue: List<Triple<Long, String, String>> = emptyList(),
         ): Intent {
             return Intent(context, WebViewActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -278,6 +309,11 @@ class WebViewActivity : BaseActivity() {
                 putExtra(AD_FREE_READER_KEY, adFreeReader)
                 if (prepareDownloadChapterId != null) {
                     putExtra(PREPARE_DOWNLOAD_CHAPTER_ID_KEY, prepareDownloadChapterId)
+                }
+                if (prepareDownloadQueue.isNotEmpty()) {
+                    putExtra(PREPARE_DOWNLOAD_QUEUE_IDS_KEY, prepareDownloadQueue.map { it.first }.toLongArray())
+                    putStringArrayListExtra(PREPARE_DOWNLOAD_QUEUE_URLS_KEY, ArrayList(prepareDownloadQueue.map { it.second }))
+                    putStringArrayListExtra(PREPARE_DOWNLOAD_QUEUE_TITLES_KEY, ArrayList(prepareDownloadQueue.map { it.third }))
                 }
             }
         }

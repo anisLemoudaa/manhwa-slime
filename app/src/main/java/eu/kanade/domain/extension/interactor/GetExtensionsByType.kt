@@ -14,7 +14,7 @@ class GetExtensionsByType(
     private val extensionManager: ExtensionManager,
 ) {
 
-    fun subscribe(): Flow<Extensions> {
+    fun subscribe(additionalLanguages: Set<String> = emptySet()): Flow<Extensions> {
         val enabledContentWarnings = preferences.enabledContentWarnings.get()
 
         return combine(
@@ -38,7 +38,9 @@ class GetExtensionsByType(
                         extension.contentWarning in enabledContentWarnings
                 }
                 .flatMap { ext ->
-                    ext.sources.filter { it.lang in enabledLanguages }
+                    ext.sources.filter { source ->
+                        source.lang in enabledLanguages || source.lang.primaryLanguage() in additionalLanguages
+                    }
                         .map {
                             ext.copy(
                                 name = it.name,
@@ -62,3 +64,6 @@ class GetExtensionsByType(
         }
     }
 }
+
+private fun String.primaryLanguage(): String =
+    substringBefore('-').substringBefore('_').lowercase()

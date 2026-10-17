@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.novel
 
 import android.content.Context
 import eu.kanade.tachiyomi.network.NetworkHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -58,8 +59,27 @@ class NovelSourceManager(
                 if (!contains(normalized)) add(normalized)
             }
             store.setRepositories(repos)
-            entries
+            entries.map { it.copy(repositoryUrl = normalized) }
         }
+    }
+
+    suspend fun loadRepositories(): List<NovelRepositoryEntry> = withContext(Dispatchers.IO) {
+        val repositoryUrls = (DEFAULT_REPOSITORY_URLS + store.repositories()).distinct()
+        val entries = mutableListOf<NovelRepositoryEntry>()
+        var firstFailure: Exception? = null
+
+        repositoryUrls.forEach { repositoryUrl ->
+            try {
+                entries += loadRepository(repositoryUrl)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (firstFailure == null) firstFailure = failure
+            }
+        }
+
+        if (entries.isEmpty()) firstFailure?.let { throw it }
+        entries.distinctBy { it.id to it.url }
     }
 
     suspend fun install(entry: NovelRepositoryEntry, repositoryUrl: String? = null): NovelSourceRuntime =
@@ -147,5 +167,13 @@ class NovelSourceManager(
             "أدخل عنوان URL يبدأ بـ http:// أو https://"
         }
         return normalized
+    }
+
+    private companion object {
+        val DEFAULT_REPOSITORY_URLS = listOf(
+            "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
+            "https://raw.githubusercontent.com/keyferv/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
+            "https://raw.githubusercontent.com/saqlainahsan7/reader_extensions_feed/main/lnreader/.dist/plugins.min.json",
+        )
     }
 }

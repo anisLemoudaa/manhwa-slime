@@ -37,6 +37,9 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.mslime.MslFavoriteItem
+import eu.kanade.tachiyomi.mslime.MslFavoriteKind
+import eu.kanade.tachiyomi.mslime.MslFavorites
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -331,6 +334,27 @@ class MangaViewModel(
         )
     }
 
+    private fun syncFavoriteToCloud(manga: Manga, desired: Boolean) {
+        viewModelScope.launch {
+            if (!MslFavorites.snapshot.value.loaded) MslFavorites.load(context)
+            val remotelyFavorited = MslFavorites.snapshot.value.items.any {
+                it.kind == MslFavoriteKind.MANGA && it.itemKey == manga.url
+            }
+            if (remotelyFavorited == desired) return@launch
+            val failure = MslFavorites.toggle(
+                context,
+                MslFavoriteItem(
+                    kind = MslFavoriteKind.MANGA,
+                    itemKey = manga.url,
+                    title = manga.title,
+                    cover = manga.thumbnailUrl,
+                    sourceId = manga.source.toString(),
+                ),
+            )
+            if (failure != null) snackbarHostState.showSnackbar(failure)
+        }
+    }
+
     /**
      * Update favorite status of manga, (removes / adds) manga (to / from) library.
      */
@@ -349,6 +373,7 @@ class MangaViewModel(
                     if (manga.removeCovers(coverCache) != manga) {
                         updateManga.awaitUpdateCoverLastModified(manga.id)
                     }
+                    syncFavoriteToCloud(manga, false)
                     withUIContext { onRemoved() }
                 }
             } else {
@@ -372,6 +397,7 @@ class MangaViewModel(
                     defaultCategory != null -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launchIO
+                        syncFavoriteToCloud(manga, true)
                         moveMangaToCategory(defaultCategory)
                     }
 
@@ -379,6 +405,7 @@ class MangaViewModel(
                     defaultCategoryId == 0L || categories.isEmpty() -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launchIO
+                        syncFavoriteToCloud(manga, true)
                         moveMangaToCategory(null)
                     }
 
@@ -470,7 +497,7 @@ class MangaViewModel(
         if (manga.favorite) return
 
         viewModelScope.launchIO {
-            updateManga.awaitUpdateFavorite(manga.id, true)
+            if (updateManga.awaitUpdateFavorite(manga.id, true)) syncFavoriteToCloud(manga, true)
         }
     }
 

@@ -4,18 +4,19 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.File
 import eu.kanade.tachiyomi.novel.NovelFavoriteEntry
 import eu.kanade.tachiyomi.novel.NovelFavoritesStore
 import eu.kanade.tachiyomi.novel.NovelPluginStore
 import eu.kanade.tachiyomi.novel.NovelRepositoryEntry
 import eu.kanade.tachiyomi.novel.NovelSourceManager
+import eu.kanade.tachiyomi.util.system.activeNetworkState
 import kotlinx.coroutines.runBlocking
 import mihon.app.di.appGraph
+import org.json.JSONArray
+import org.json.JSONObject
 import tachiyomi.domain.manga.model.Manga
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 /** مزامنة بيانات الحساب التي يجب أن تبقى بعد حذف التطبيق وإعادة تثبيته. */
 object MslCloudSync {
@@ -25,6 +26,7 @@ object MslCloudSync {
         val cover: String?,
         val level: Int,
         val rank: String,
+        val rankXp: Int,
     )
 
     private fun profilePrefs(ctx: Context) =
@@ -37,7 +39,7 @@ object MslCloudSync {
         return runCatching {
             val result = MslSupabase.call(
                 "GET",
-                "/rest/v1/user_profiles?select=display_name,avatar_data,cover_data,level,rank&user_id=eq.$uid&limit=1",
+                "/rest/v1/user_profiles?select=display_name,avatar_data,cover_data,level,rank,rank_xp&user_id=eq.$uid&limit=1",
                 null,
                 token,
             )
@@ -51,6 +53,7 @@ object MslCloudSync {
                 cover = row.optString("cover_data").ifEmpty { null },
                 level = row.optInt("level", 1).coerceAtLeast(1),
                 rank = row.optString("rank", "F"),
+                rankXp = row.optInt("rank_xp", 0).coerceAtLeast(0),
             )
         }.getOrNull()
     }
@@ -61,26 +64,27 @@ object MslCloudSync {
         avatar: String?,
         cover: String?,
         level: Int,
-        rank: String,
     ): Boolean {
         val token = MslSupabase.token(ctx) ?: return false
         val uid = MslSupabase.uid(ctx)
         if (uid.isEmpty()) return false
+        if (!ctx.activeNetworkState().isOnline) return false
         val body = JSONObject()
             .put("user_id", uid)
             .put("display_name", name.trim().ifEmpty { "قارئ السلايم" })
             .put("avatar_data", avatar ?: JSONObject.NULL)
             .put("cover_data", cover ?: JSONObject.NULL)
             .put("level", level.coerceAtLeast(1))
-            .put("rank", rank.ifEmpty { "F" })
-        val result = MslSupabase.call(
-            "POST",
-            "/rest/v1/user_profiles?on_conflict=user_id",
-            body.toString(),
-            token,
-            "resolution=merge-duplicates,return=minimal",
-        )
-        return result.first in 200..299
+        return runCatching {
+            val result = MslSupabase.call(
+                "POST",
+                "/rest/v1/user_profiles?on_conflict=user_id",
+                body.toString(),
+                token,
+                "resolution=merge-duplicates,return=minimal",
+            )
+            result.first in 200..299
+        }.getOrDefault(false)
     }
 
     fun applyProfile(ctx: Context, remote: Profile) {
@@ -101,7 +105,9 @@ object MslCloudSync {
             val scaled = if (bitmap.width > 640 || bitmap.height > 640) {
                 val ratio = minOf(640f / bitmap.width, 640f / bitmap.height)
                 Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
-            } else bitmap
+            } else {
+                bitmap
+            }
             val bytes = ByteArrayOutputStream().also {
                 scaled.compress(Bitmap.CompressFormat.JPEG, 82, it)
             }.toByteArray()
@@ -274,7 +280,6 @@ object MslCloudSync {
             return
         }
         if (local.isEmpty()) return
-        MslSupabase.call("DELETE", "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.manga", null, token)
         val payload = JSONArray()
         local.forEach { item ->
             payload.put(
@@ -288,7 +293,7 @@ object MslCloudSync {
                     .put("added_at", item.favoriteAt ?: System.currentTimeMillis()),
             )
         }
-        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "return=minimal")
+        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "resolution=merge-duplicates,return=minimal")
     }
 
     fun syncSourcesNow(ctx: Context) {
@@ -296,6 +301,7 @@ object MslCloudSync {
     }
 
     fun syncNow(ctx: Context) {
+        if (!ctx.activeNetworkState().isOnline) return
         Thread {
             runCatching {
                 syncSourceSettings(ctx)
@@ -308,6 +314,7 @@ object MslCloudSync {
     fun syncAfterLogin(ctx: Context) {
         Thread {
             runCatching {
+                MslRank.syncPendingChapterRewards(ctx)
                 val remote = profile(ctx)
                 if (remote != null) {
                     applyProfile(ctx, remote)
@@ -319,8 +326,7 @@ object MslCloudSync {
                         p.getString("name", auth.getString("name", "قارئ السلايم")) ?: "قارئ السلايم",
                         imageData(ctx, "msl_avatar.img") ?: auth.getString("picture", null),
                         imageData(ctx, "msl_cover.img"),
-                        p.getInt("cloud_level", 1),
-                        p.getString("cloud_rank", "F") ?: "F",
+                        p.getInt("cloud_level", 1).coerceAtLeast(1),
                     )
                 }
                 syncSourceSettings(ctx)
@@ -361,7 +367,6 @@ object MslCloudSync {
             return
         }
         if (local.isEmpty() && remote.isEmpty()) return
-        MslSupabase.call("DELETE", "/rest/v1/user_favorites?user_id=eq.$uid&item_type=eq.novel", null, token)
         val payload = JSONArray()
         local.forEach { item ->
             payload.put(
@@ -375,7 +380,7 @@ object MslCloudSync {
                     .put("added_at", item.addedAt),
             )
         }
-        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "return=minimal")
+        MslSupabase.call("POST", "/rest/v1/user_favorites", payload.toString(), token, "resolution=merge-duplicates,return=minimal")
     }
 
     fun syncNovelFavoritesNow(ctx: Context) {

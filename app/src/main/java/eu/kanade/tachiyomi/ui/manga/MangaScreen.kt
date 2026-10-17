@@ -3,7 +3,13 @@ package eu.kanade.tachiyomi.ui.manga
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -41,6 +49,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.mslime.ProComicSource
+import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -62,6 +71,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class MangaScreen(
@@ -92,6 +102,17 @@ class MangaScreen(
         }
 
         val successState = state as MangaViewModel.State.Success
+        if (successState.manga.isAdultContent()) {
+            Column(
+                Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("تم حجب هذا العمل لأنه موسوم أو مصنف بمحتوى +18.", color = MslDesignTokens.textPrimary)
+                Button(onClick = { navigator.pop() }, modifier = Modifier.padding(top = 16.dp)) { Text("رجوع") }
+            }
+            return
+        }
         val isHttpSource = remember { successState.source is HttpSource }
         val proComicSource = successState.source as? ProComicSource
 
@@ -117,20 +138,24 @@ class MangaScreen(
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
             onDownloadChapter = { items: List<ChapterList.Item>, action: ChapterDownloadAction ->
-                val chapter = items.singleOrNull()?.chapter
                 if (
                     proComicSource != null &&
-                    chapter != null &&
+                    items.isNotEmpty() &&
                     action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)
                 ) {
+                    val queue = items.map { item ->
+                        Triple(item.chapter.id, proComicSource.baseUrl + item.chapter.url, item.chapter.name)
+                    }
+                    val (chapterId, chapterUrl, chapterTitle) = queue.first()
                     context.startActivity(
                         WebViewActivity.newIntent(
                             context = context,
-                            url = proComicSource.baseUrl + chapter.url,
+                            url = chapterUrl,
                             sourceId = proComicSource.id,
-                            title = chapter.name,
+                            title = chapterTitle,
                             adFreeReader = true,
-                            prepareDownloadChapterId = chapter.id,
+                            prepareDownloadChapterId = chapterId,
+                            prepareDownloadQueue = queue.drop(1),
                         ),
                     )
                 } else {

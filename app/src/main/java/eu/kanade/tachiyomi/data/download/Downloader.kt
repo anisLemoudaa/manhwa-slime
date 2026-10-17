@@ -308,8 +308,24 @@ class Downloader(
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
             logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
-            stop()
+            download.status = Download.State.ERROR
+            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            if (MslWallet.enabled) {
+                val reservationId = download.coinReservationId
+                if (!reservationId.isNullOrBlank()) {
+                    try {
+                        if (MslWallet.refundDownload(context, reservationId)) {
+                            download.coinReservationId = null
+                            store.addAll(listOf(download))
+                        }
+                    } catch (refundError: CancellationException) {
+                        throw refundError
+                    } catch (refundError: Exception) {
+                        logcat(LogPriority.WARN, refundError)
+                    }
+                }
+            }
+            if (areAllDownloadsFinished()) stop()
         }
     }
 

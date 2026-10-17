@@ -64,6 +64,7 @@ import tachiyomi.domain.library.model.sort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
@@ -405,7 +406,7 @@ class LibraryViewModel(
             getLibraryItemPreferencesFlow(),
             downloadCache.changes,
         ) { libraryManga, preferences, _ ->
-            libraryManga.map { manga ->
+            libraryManga.filterNot { it.manga.isAdultContent() }.map { manga ->
                 LibraryItem(
                     libraryManga = manga,
                     downloadCount = downloadManager.getDownloadCount(manga.manga),

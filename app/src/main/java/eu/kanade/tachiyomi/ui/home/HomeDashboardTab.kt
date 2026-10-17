@@ -29,9 +29,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +59,9 @@ import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslReadingTasks
+import eu.kanade.tachiyomi.mslime.MslSupabase
+import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -76,6 +81,9 @@ import mihon.icons.materialsymbols.rounded.Explore
 import mihon.icons.materialsymbols.rounded.LocalLibrary
 import mihon.icons.materialsymbols.rounded.NewReleases
 import mihon.icons.materialsymbols.rounded.Search
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tachiyomi.domain.category.model.Category
 
 /** Home dashboard built only from items already present in the user's library and reading history. */
@@ -125,41 +133,6 @@ private fun HomeDashboardContent() {
             .verticalScroll(rememberScrollState())
             .padding(bottom = 16.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AsyncImage(
-                model = R.drawable.ic_mihon,
-                contentDescription = null,
-                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)),
-            )
-            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "MANHWA",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 0.8.sp,
-                )
-                Text(
-                    text = "SLIME",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    color = MslDesignTokens.accentBright,
-                    letterSpacing = 0.8.sp,
-                )
-            }
-            IconButton(onClick = { navigator.push(GlobalSearchScreen(searchQuery)) }) {
-                Icon(MaterialSymbols.Rounded.Search, contentDescription = "بحث")
-            }
-            IconButton(onClick = { tabNavigator.current = UpdatesTab }) {
-                Icon(MaterialSymbols.Rounded.NewReleases, contentDescription = "آخر التحديثات")
-            }
-        }
-
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -176,6 +149,7 @@ private fun HomeDashboardContent() {
         )
         Spacer(Modifier.height(16.dp))
         eu.kanade.tachiyomi.mslime.MslDailyRewardCard()
+        MslReadingTasksCard()
 
         val heroTitle = latestHistory?.title
             ?: firstLibraryItem?.libraryManga?.manga?.title
@@ -330,6 +304,105 @@ private fun HomeDashboardContent() {
             }
         }
         Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun MslReadingTasksCard() {
+    if (!MslWallet.enabled) return
+    val context = LocalContext.current
+    if (MslSupabase.uid(context).isBlank()) return
+    val scope = rememberCoroutineScope()
+    val refreshVersion by MslReadingTasks.refreshVersion.collectAsStateWithLifecycle()
+    var snapshot by remember { mutableStateOf<MslReadingTasks.Snapshot?>(null) }
+    var claimingTaskId by remember { mutableStateOf<String?>(null) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var claimFailed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(context, refreshVersion) {
+        val loaded = withContext(Dispatchers.IO) { MslReadingTasks.load(context) }
+        snapshot = loaded
+        loadFailed = loaded == null
+    }
+
+    val current = snapshot
+    if (current == null) {
+        if (!loadFailed) return
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = MslDesignTokens.cardShape,
+            colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("تعذر تحميل مهام اليوم؛ تحقق من اتصال الإنترنت.", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = MslReadingTasks::invalidate) { Text("إعادة المحاولة") }
+            }
+        }
+        return
+    }
+    if (current.tasks.isEmpty()) return
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MslDesignTokens.cardShape,
+        colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surface),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("مهام القراءة اليومية", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (claimFailed) {
+                Text("تعذر استلام المكافأة؛ تحقق من الاتصال ثم أعد المحاولة.", color = MslDesignTokens.warning, style = MaterialTheme.typography.bodySmall)
+            }
+            current.tasks.forEach { task ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(task.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            task.description.ifBlank { "أكمل القراءة لتحصل على عملات." },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MslDesignTokens.textSecondary,
+                        )
+                        Text(
+                            "${task.progress}/${task.targetCount} فصول · ${task.rewardCoins} عملة",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MslDesignTokens.accentBright,
+                        )
+                    }
+                    when {
+                        task.claimed -> Text("تم الاستلام", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelMedium)
+                        task.claimable -> TextButton(
+                            enabled = claimingTaskId == null,
+                            onClick = {
+                                claimingTaskId = task.id
+                                claimFailed = false
+                                // The RPC chooses the configured amount and is idempotent per user/day.
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) { MslReadingTasks.claim(context, task.id) }
+                                    if (result != null) {
+                                        if (result.claimed || result.alreadyClaimed) {
+                                            snapshot = snapshot?.let { value ->
+                                                value.copy(tasks = value.tasks.map { item ->
+                                                    if (item.id == task.id) item.copy(claimed = true, claimable = false) else item
+                                                })
+                                            }
+                                        }
+                                        withContext(Dispatchers.IO) { MslWallet.refresh(context) }
+                                    } else {
+                                        claimFailed = true
+                                    }
+                                    claimingTaskId = null
+                                }
+                            },
+                        ) { Text("استلام") }
+                        else -> Text("قيد التقدم", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -497,7 +570,7 @@ private fun CategoryTile(
                     model = cover,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                 )
             }
             Box(

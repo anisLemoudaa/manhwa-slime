@@ -26,6 +26,7 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.domain.source.service.SourceManager
 
 abstract class SearchViewModel(
@@ -170,6 +171,7 @@ abstract class SearchViewModel(
                             .map { it.toDomainManga(source.id) }
                             .distinctBy { it.url }
                             .let { networkToLocalManga(it) }
+                            .filterNot { it.isAdultContent() }
 
                         if (isActive) {
                             updateItem(source, SearchItemResult.Success(titles))
