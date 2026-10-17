@@ -1234,7 +1234,7 @@ class NovelDetailsScreen(
                             else -> true
                         }
                     }
-                    itemsIndexed(visibleChapters) { _, entry ->
+                    itemsIndexed(visibleChapters) { visibleIndex, entry ->
                         val (index, chapter) = entry
                         val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
                         Card(
@@ -1243,7 +1243,17 @@ class NovelDetailsScreen(
                                     if (selectedPaths.isNotEmpty()) {
                                         selectedPaths = if (chapter.path in selectedPaths) selectedPaths - chapter.path else selectedPaths + chapter.path
                                     } else {
-                                        navigator.push(NovelReaderScreen(sourceId, d.path, d.name ?: fallbackName, d.cover, d.chapters.orEmpty(), index))
+                                        navigator.push(
+                                            NovelReaderScreen(
+                                                sourceId = sourceId,
+                                                novelPath = d.path,
+                                                novelName = d.name ?: fallbackName,
+                                                novelCover = d.cover,
+                                                chapters = visibleChapters.map { it.second },
+                                                chapterIndex = visibleIndex,
+                                                sourceChapterIndices = visibleChapters.map { it.first },
+                                            ),
+                                        )
                                     }
                                 },
                                 onLongClick = {
@@ -1367,6 +1377,7 @@ class NovelReaderScreen(
     private val chapterIndex: Int,
     private val offlineOnly: Boolean = false,
     private val novelDescription: String? = null,
+    private val sourceChapterIndices: List<Int> = chapters.indices.toList(),
 ) : Screen() {
 
     @Composable
@@ -1468,7 +1479,7 @@ class NovelReaderScreen(
                         chapterPath = chapter.path,
                         chapterName = chapter.name,
                         chapterNumber = chapter.chapterNumber,
-                        chapterIndex = currentIndex,
+                        chapterIndex = sourceChapterIndices.getOrElse(currentIndex) { currentIndex },
                         totalChapters = chapters.size,
                     ),
                 )

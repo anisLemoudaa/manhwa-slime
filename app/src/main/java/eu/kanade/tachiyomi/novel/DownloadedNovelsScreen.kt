@@ -130,6 +130,7 @@ fun DownloadedNovelsContent() {
                                             chapterIndex = book.chapters.indexOf(chapter),
                                             offlineOnly = true,
                                             novelDescription = book.description,
+                                            sourceChapterIndices = book.chapters.map { it.order },
                                         ),
                                     )
                                 }
