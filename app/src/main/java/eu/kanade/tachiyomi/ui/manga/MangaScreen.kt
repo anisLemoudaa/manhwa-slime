@@ -137,8 +137,13 @@ class MangaScreen(
             chapterSwipeEndAction = viewModel.chapterSwipeEndAction,
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
+            onUnlockChapters = viewModel::unlockChapters,
             onDownloadChapter = { items: List<ChapterList.Item>, action: ChapterDownloadAction ->
-                if (
+                if (items.any { !it.isUnlocked } &&
+                    action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)
+                ) {
+                    viewModel.unlockChapters(items.filter { !it.isUnlocked }.map { it.chapter })
+                } else if (
                     proComicSource != null &&
                     items.isNotEmpty() &&
                     action in setOf(ChapterDownloadAction.START, ChapterDownloadAction.START_NOW)

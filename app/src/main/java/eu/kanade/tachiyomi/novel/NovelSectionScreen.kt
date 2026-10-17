@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -59,8 +60,10 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslAds
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
+import eu.kanade.tachiyomi.mslime.MslChapterAccess
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslFavoriteItem
 import eu.kanade.tachiyomi.mslime.MslFavoriteKind
@@ -1030,6 +1033,7 @@ class NovelDetailsScreen(
         var readKeys by remember { mutableStateOf(emptySet<String>()) }
         var downloadedPaths by remember { mutableStateOf(emptySet<String>()) }
         var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
+        var chapterAccessRevision by remember(sourceId, path) { mutableIntStateOf(0) }
         var downloadingPaths by remember { mutableStateOf(emptySet<String>()) }
         var bulkDownloading by remember { mutableStateOf(false) }
         var chapterOrder by remember(sourceId, path) { mutableStateOf("source") }
@@ -1058,6 +1062,8 @@ class NovelDetailsScreen(
         LaunchedEffect(readStore) { readKeys = withContext(Dispatchers.IO) { readStore.all() } }
         LaunchedEffect(details) {
             val current = details ?: return@LaunchedEffect
+            withContext(Dispatchers.IO) { MslChapterAccess.refresh(context) }
+            chapterAccessRevision++
             downloadedPaths = withContext(Dispatchers.IO) {
                 current.chapters.orEmpty().filter { offlineStore.contains(sourceId, current.path, it.path) }.map { it.path }.toSet()
             }
@@ -1089,6 +1095,7 @@ class NovelDetailsScreen(
                     }
                     if (failure == null) {
                         downloadedPaths = downloadedPaths + chapter.path
+                        chapterAccessRevision++
                         Toast.makeText(context, "تم تحميل ${chapter.name}", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, failure, Toast.LENGTH_LONG).show()
@@ -1205,6 +1212,26 @@ class NovelDetailsScreen(
                                                 var succeeded = 0
                                                 var failed = 0
                                                 try {
+                                                    val keys = selected.mapNotNull { (_, chapter) ->
+                                                        MslChapterAccess.novelKey(sourceId, d.path, chapter.path)
+                                                    }.distinct()
+                                                    if (keys.isEmpty() || keys.size > 100) {
+                                                        Toast.makeText(context, "يمكن فتح 100 فصل كحد أقصى في العملية الواحدة.", Toast.LENGTH_LONG).show()
+                                                        return@launch
+                                                    }
+                                                    val unlock = withContext(Dispatchers.IO) {
+                                                        MslChapterAccess.unlock(context, keys)
+                                                    }
+                                                    if (unlock == null || !unlock.allowed) {
+                                                        val message = if (unlock?.status == "insufficient") {
+                                                            "الرصيد غير كافٍ. الرصيد: ${unlock.balance ?: 0}، المطلوب: ${unlock.required} عملة."
+                                                        } else {
+                                                            "تعذّر فتح الفصول. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+                                                        }
+                                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                                        return@launch
+                                                    }
+                                                    chapterAccessRevision++
                                                     selected.forEach { (chapterIndex, chapter) ->
                                                         if (chapter.path in downloadedPaths) {
                                                             succeeded++
@@ -1236,7 +1263,7 @@ class NovelDetailsScreen(
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = MslDesignTokens.accent),
-                                    ) { Text(if (bulkDownloading) "جارٍ التحميل…" else "تحميل المحدد (${selectedPaths.size})") }
+                                    ) { Text(if (bulkDownloading) "جارٍ الفتح والتحميل…" else "فتح/تحميل المحدد (${selectedPaths.size})") }
                                 }
                             }
                         }
@@ -1283,6 +1310,10 @@ class NovelDetailsScreen(
                     ) { visibleIndex, entry ->
                         val (index, chapter) = entry
                         val isRead = novelReadMarkerKey(sourceId, d.path, chapter.path) in readKeys
+                        val accessKey = MslChapterAccess.novelKey(sourceId, d.path, chapter.path)
+                        val chapterUnlocked = remember(chapterAccessRevision, chapter.path) {
+                            !MslWallet.enabled || accessKey?.let { MslChapterAccess.isUnlocked(context, it) } == true
+                        }
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).combinedClickable(
                                 onClick = {
@@ -1329,6 +1360,32 @@ class NovelDetailsScreen(
                                 if (isRead) {
                                     Text("مقروء ✓", color = MslDesignTokens.accentBright, style = MaterialTheme.typography.labelMedium)
                                 }
+                                if (!chapterUnlocked) {
+                                    IconButton(
+                                        onClick = {
+                                            val key = accessKey ?: return@IconButton
+                                            detailsScope.launch {
+                                                val result = withContext(Dispatchers.IO) {
+                                                    MslChapterAccess.unlock(context, listOf(key))
+                                                }
+                                                if (result?.allowed == true) {
+                                                    chapterAccessRevision++
+                                                    Toast.makeText(context, "تم فتح الفصل مقابل ${result.charged} عملة", Toast.LENGTH_SHORT).show()
+                                                } else if (result?.status == "insufficient") {
+                                                    Toast.makeText(context, "الرصيد غير كافٍ. المطلوب ${result.required} عملة.", Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    Toast.makeText(context, "تعذّر التحقق من المحفظة. تحقق من الاتصال.", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_chapter_lock_24dp),
+                                            contentDescription = "مقفل — فتح مقابل عملة واحدة",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
@@ -1370,22 +1427,21 @@ private suspend fun saveNovelOfflineChapter(
 ): String? {
     if (!MslWallet.enabled) return "تنزيل الفصول غير متاح حاليًا."
     if (store.contains(sourceId, details.path, chapter.path)) return null
-    val reservationId = UUID.randomUUID().toString()
-    val reservation = try {
+    val key = MslChapterAccess.novelKey(sourceId, details.path, chapter.path)
+        ?: return "تعذّر إنشاء هوية ثابتة للفصل."
+    val unlock = try {
         withContext(Dispatchers.IO) {
-            MslWallet.reserveDownload(context, reservationId, "novel:$sourceId:${details.path}:${chapter.path}")
+            MslChapterAccess.unlock(context, listOf(key))
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
-        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
-        return failure.message ?: "تعذّر التحقق من رصيد التنزيل."
+        return failure.message ?: "تعذّر التحقق من صلاحية الفصل."
     }
-    if (reservation == null) {
-        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
-        return "تعذّر التحقق من رصيد التنزيل."
+    if (unlock == null) {
+        return "تعذّر التحقق من صلاحية الفصل. تحقق من الاتصال ثم أعد المحاولة."
     }
-    if (!reservation.allowed) return context.stringResource(MR.strings.coin_download_no_balance)
+    if (!unlock.allowed) return "الرصيد غير كافٍ. المطلوب ${unlock.required} عملة."
     val saved = try {
         val content = withContext(Dispatchers.IO) {
             manager.ensureLoaded()
@@ -1412,10 +1468,8 @@ private suspend fun saveNovelOfflineChapter(
         Result.failure(failure)
     }
     if (saved.isFailure) {
-        runCatching { withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) } }
         return saved.exceptionOrNull()?.message ?: "تعذّر تحميل الفصل."
     }
-    runCatching { withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) } }
     return null
 }
 
@@ -1493,10 +1547,12 @@ class NovelReaderScreen(
         var readerWebView by remember { mutableStateOf<WebView?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
         var loading by remember { mutableStateOf(true) }
+        var locked by remember { mutableStateOf(false) }
+        var accessVersion by remember { mutableIntStateOf(0) }
         var offlineSaved by remember { mutableStateOf(false) }
         var offlineSaving by remember { mutableStateOf(false) }
 
-        LaunchedEffect(currentIndex, sourceId, novelPath, offlineOnly, chapters.getOrNull(currentIndex)?.path) {
+        LaunchedEffect(currentIndex, sourceId, novelPath, offlineOnly, accessVersion, chapters.getOrNull(currentIndex)?.path) {
             val chapter = chapters.getOrNull(currentIndex)
 
             if (chapter == null) {
@@ -1508,6 +1564,13 @@ class NovelReaderScreen(
             loading = true
             html = null
             error = null
+            locked = false
+            val accessKey = MslChapterAccess.novelKey(sourceId, novelPath, chapter.path)
+            if (!withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, accessKey) }) {
+                locked = true
+                loading = false
+                return@LaunchedEffect
+            }
             val cachedContent = runCatchingCancellable {
                 withContext(Dispatchers.IO) { offlineStore.read(sourceId, novelPath, chapter.path) }
             }.getOrNull()
@@ -1547,6 +1610,7 @@ class NovelReaderScreen(
         val hasNext = currentIndex < chapters.lastIndex
         var currentChapterMarkedRead by remember(currentIndex) { mutableStateOf(false) }
         fun markCurrentChapterRead() {
+            if (locked || html == null) return
             if (currentChapterMarkedRead) return
             val chapter = chapters.getOrNull(currentIndex) ?: return
             currentChapterMarkedRead = true
@@ -1593,31 +1657,12 @@ class NovelReaderScreen(
                                 scope.launch {
                                     offlineSaving = true
                                     try {
-                                        val reservationId = UUID.randomUUID().toString()
-                                        val reservation = runCatching {
-                                            withContext(Dispatchers.IO) {
-                                                MslWallet.reserveDownload(
-                                                    context,
-                                                    reservationId,
-                                                    "novel:$sourceId:$novelPath:${chapter.path}",
-                                                )
-                                            }
-                                        }.getOrNull()
-                                        if (reservation == null) {
-                                            runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    MslWallet.refundDownload(context, reservationId)
-                                                }
-                                            }
-                                            snackbarHostState.showSnackbar(
-                                                context.stringResource(MR.strings.coin_download_balance_check_failed),
-                                            )
-                                            return@launch
+                                        val key = MslChapterAccess.novelKey(sourceId, novelPath, chapter.path)
+                                        val hasAccess = withContext(Dispatchers.IO) {
+                                            MslChapterAccess.hasAccess(context, key)
                                         }
-                                        if (!reservation.allowed) {
-                                            snackbarHostState.showSnackbar(
-                                                context.stringResource(MR.strings.coin_download_no_balance),
-                                            )
+                                        if (!hasAccess) {
+                                            snackbarHostState.showSnackbar("الفصل مقفل أو تعذّر التحقق من صلاحية القراءة.")
                                             return@launch
                                         }
                                         val saved = runCatching {
@@ -1637,20 +1682,10 @@ class NovelReaderScreen(
                                             }
                                         }
                                         if (saved.isFailure) {
-                                            runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    MslWallet.refundDownload(context, reservationId)
-                                                }
-                                            }
                                             snackbarHostState.showSnackbar(
                                                 context.stringResource(MR.strings.coin_download_save_failed),
                                             )
                                             return@launch
-                                        }
-                                        runCatching {
-                                            withContext(Dispatchers.IO) {
-                                                MslWallet.commitDownload(context, reservationId)
-                                            }
                                         }
                                         offlineSaved = true
                                         snackbarHostState.showSnackbar(
@@ -1715,7 +1750,7 @@ class NovelReaderScreen(
                             text = "${currentIndex + 1}/${chapters.size}",
                             fontWeight = FontWeight.Bold,
                         )
-                        TextButton(onClick = { markCurrentChapterRead() }) {
+                        TextButton(enabled = html != null && !locked, onClick = { markCurrentChapterRead() }) {
                             Text(
                                 if (currentChapterMarkedRead) "مقروء ✓" else "تمت القراءة",
                                 color = if (currentChapterMarkedRead) MslDesignTokens.accentBright else MslDesignTokens.textMuted,
@@ -1762,6 +1797,43 @@ class NovelReaderScreen(
                             .wrapContentSize(Alignment.Center),
                     ) {
                         CircularProgressIndicator()
+                    }
+                }
+
+                locked -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(24.dp)
+                            .wrapContentSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text("هذا الفصل مقفل", style = MaterialTheme.typography.titleLarge)
+                        Text("فتح الفصل يكلف عملة واحدة. لا يُحمّل النص قبل نجاح العملية.")
+                        Button(
+                            onClick = {
+                                val chapter = chapters.getOrNull(currentIndex) ?: return@Button
+                                val key = MslChapterAccess.novelKey(sourceId, novelPath, chapter.path)
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        MslChapterAccess.unlock(context, listOfNotNull(key))
+                                    }
+                                    if (result?.allowed == true) {
+                                        accessVersion++
+                                    } else if (result?.status == "insufficient") {
+                                        snackbarHostState.showSnackbar(
+                                            "الرصيد غير كافٍ. الرصيد: ${result.balance ?: 0}، المطلوب: ${result.required} عملة.",
+                                        )
+                                    } else {
+                                        snackbarHostState.showSnackbar("تعذّر التحقق من المحفظة. تحقق من الاتصال ثم أعد المحاولة.")
+                                    }
+                                }
+                            },
+                        ) {
+                            Text("فتح مقابل عملة واحدة")
+                        }
                     }
                 }
 

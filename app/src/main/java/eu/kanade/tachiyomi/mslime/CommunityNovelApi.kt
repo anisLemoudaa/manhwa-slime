@@ -4,6 +4,7 @@ import android.content.Context
 import eu.kanade.tachiyomi.novel.hasAdultContentMarker
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 /** Data access for user-published Community Novels. Uses the existing Supabase session and RLS. */
 object CommunityNovelApi {
@@ -150,12 +151,63 @@ object CommunityNovelApi {
     }
 
     fun chapters(ctx: Context, novelId: String, includeDrafts: Boolean = false): List<Chapter> {
-        val extra = if (includeDrafts) "" else "&status=eq.published"
-        val rows = get(ctx, "/rest/v1/community_novel_chapters?select=*&novel_id=eq.$novelId$extra&order=chapter_number.asc&limit=200") ?: return emptyList()
+        val rows = if (includeDrafts) {
+            get(ctx, "/rest/v1/community_novel_chapters?select=*&novel_id=eq.$novelId&order=chapter_number.asc&limit=200")
+        } else {
+            runCatching {
+                val tok = token(ctx) ?: return emptyList()
+                val response = MslSupabase.call(
+                    "POST",
+                    "/rest/v1/rpc/list_community_chapter_metadata",
+                    JSONObject().put("p_novel_id", novelId).toString(),
+                    tok,
+                )
+                if (response.first in 200..299) JSONArray(response.second) else null
+            }.getOrNull()
+        } ?: return emptyList()
         return List(rows.length()) { i ->
             val o = rows.getJSONObject(i)
             Chapter(o.getString("id"), o.getString("novel_id"), o.optInt("chapter_number"), o.optString("title"), o.optString("content"), o.optString("status"))
         }.filterNot { hasAdultContentMarker(it.title, it.content) }
+    }
+
+    /** Fetches a single chapter only after the database confirms its entitlement. */
+    fun chapterContent(ctx: Context, novelId: String, chapterId: String): String? = runCatching {
+        val tok = token(ctx) ?: return null
+        val response = MslSupabase.call(
+            "POST",
+            "/rest/v1/rpc/read_community_chapter",
+            JSONObject().put("p_novel_id", novelId).put("p_chapter_id", chapterId).toString(),
+            tok,
+        )
+        if (response.first !in 200..299) return null
+        val result = runCatching { JSONArray("[${response.second}]").optString(0) }
+            .getOrElse { response.second.trim().trim('"') }
+        result.takeIf(String::isNotBlank)
+    }.getOrNull()
+
+    fun comments(ctx: Context, novelId: String, chapterId: String?): List<Comment> = runCatching {
+        val chapterFilter = if (chapterId == null) "chapter_id=is.null" else "chapter_id=eq.$chapterId"
+        val rows = get(
+            ctx,
+            "/rest/v1/community_comments?select=id,user_id,content,created_at&novel_id=eq.$novelId&$chapterFilter&status=eq.visible&order=created_at.asc&limit=100",
+        ) ?: return emptyList()
+        List(rows.length()) { index ->
+            val row = rows.getJSONObject(index)
+            Comment(row.optString("id"), row.optString("user_id"), row.optString("content"), row.optString("created_at"))
+        }
+    }.getOrDefault(emptyList())
+
+    fun addComment(ctx: Context, novelId: String, chapterId: String?, content: String): Boolean {
+        val bodyText = content.trim()
+        if (bodyText.isEmpty() || bodyText.length > 1000) return false
+        val tok = token(ctx) ?: return false
+        val body = JSONObject()
+            .put("p_novel_id", novelId)
+            .put("p_chapter_id", chapterId)
+            .put("p_content", bodyText)
+            .put("p_request_id", UUID.randomUUID().toString())
+        return MslSupabase.call("POST", "/rest/v1/rpc/add_community_comment", body.toString(), tok).first in 200..299
     }
 
     fun nextChapterNumber(ctx: Context, novelId: String): Int {

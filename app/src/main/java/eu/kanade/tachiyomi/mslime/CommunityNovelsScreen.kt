@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +45,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.novel.NovelOfflineStore
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
@@ -256,22 +258,27 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     val store = NovelOfflineStore(context)
     if (!MslWallet.enabled) return "تنزيل الفصول غير متاح حاليًا."
     if (store.contains("community", novel.id, chapter.id)) return null
-    val reservationId = UUID.randomUUID().toString()
-    val reservation = withContext(Dispatchers.IO) {
-        MslWallet.reserveDownload(context, reservationId, "community-novel:${novel.id}:${chapter.id}")
+    val key = MslChapterAccess.communityKey(novel.id, chapter.id) ?: return "هوية الفصل غير صالحة."
+    val isOwner = novel.authorId == MslSupabase.uid(context)
+    val unlock = withContext(Dispatchers.IO) { MslChapterAccess.unlock(context, listOf(key)) }
+        ?: return "تعذّر التحقق من صلاحية الفصل. تحقق من الاتصال."
+    if (!unlock.allowed) return "الرصيد غير كافٍ. المطلوب ${unlock.required} عملة."
+    val content = if (isOwner && chapter.content.isNotBlank()) {
+        chapter.content
+    } else {
+        withContext(Dispatchers.IO) { CommunityNovelApi.chapterContent(context, novel.id, chapter.id) }
+            ?: return "تعذّر تحميل محتوى الفصل بعد التحقق من فتحه."
     }
-    if (reservation == null) {
-        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
-        return "تعذّر التحقق من رصيد التنزيل."
+    if (eu.kanade.tachiyomi.novel.hasAdultContentMarker(chapter.title, content)) {
+        return "تم حجب هذا الفصل لأنه يتضمن محتوى غير مسموح."
     }
-    if (!reservation.allowed) return "رصيدك غير كافٍ لتنزيل هذا الفصل."
     val saved = runCatching {
         withContext(Dispatchers.IO) {
             store.save(
                 sourceId = "community",
                 novelPath = novel.id,
                 chapterPath = chapter.id,
-                html = chapter.content,
+                html = content,
                 title = novel.title,
                 cover = novel.coverPath,
                 description = novel.description,
@@ -283,11 +290,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
             )
         }
     }
-    if (saved.isFailure) {
-        withContext(Dispatchers.IO) { MslWallet.refundDownload(context, reservationId) }
-        return saved.exceptionOrNull()?.message ?: "تعذّر حفظ الفصل على الجهاز."
-    }
-    withContext(Dispatchers.IO) { MslWallet.commitDownload(context, reservationId) }
+    if (saved.isFailure) return saved.exceptionOrNull()?.message ?: "تعذّر حفظ الفصل على الجهاز."
     return null
 }
 
@@ -314,11 +317,14 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     var reportDescription by remember(novel.id) { mutableStateOf("") }
     var reportBusy by remember(novel.id) { mutableStateOf(false) }
     val isOwner = novel.authorId == MslSupabase.uid(context)
+    var chapterAccessRevision by remember(novel.id) { mutableIntStateOf(0) }
     var following by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     var downloadedIds by remember(novel.id) { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(novel.id) {
         chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, isOwner) }
+        withContext(Dispatchers.IO) { MslChapterAccess.refresh(context) }
+        chapterAccessRevision++
         val likes = withContext(Dispatchers.IO) { CommunityNovelApi.likeSummary(context, novel.id) }
         liked = likes.liked
         likeCount = likes.count
@@ -396,6 +402,10 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         Text("الفصول المنشورة (${chapters.count { it.status == "published" }})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(vertical = 8.dp))
         val visibleChapters = chapters.filter { if (isOwner) it.status != "hidden" else it.status == "published" }
         LazyColumn { itemsIndexed(visibleChapters, key = { _, c -> c.id }) { index, chapter ->
+            val accessKey = MslChapterAccess.communityKey(novel.id, chapter.id)
+            val chapterUnlocked = remember(chapterAccessRevision, chapter.id) {
+                isOwner || MslChapterAccess.isUnlocked(context, accessKey.orEmpty())
+            }
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${chapter.number}", color = PdfMuted, fontSize = 12.sp, modifier = Modifier.width(25.dp))
                 Text(
@@ -405,10 +415,26 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                     modifier = Modifier.weight(1f).clickable(enabled = chapter.status == "published") { onRead(chapter) }.padding(vertical = 10.dp),
                 )
                 if (isOwner) IconButton(onClick = { onEditChapter(chapter) }, modifier = Modifier.size(42.dp).semantics { contentDescription = "تعديل الفصل ${chapter.number}" }) { Text("✎", color = PdfPurpleSoft) }
+                if (!chapterUnlocked) IconButton(
+                    onClick = {
+                        val key = accessKey ?: return@IconButton
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) { MslChapterAccess.unlock(context, listOf(key)) }
+                            if (result?.allowed == true) {
+                                chapterAccessRevision++
+                                Toast.makeText(context, "تم فتح الفصل مقابل ${result.charged} عملة", Toast.LENGTH_SHORT).show()
+                            } else if (result?.status == "insufficient") {
+                                Toast.makeText(context, "الرصيد غير كافٍ. المطلوب ${result.required} عملة.", Toast.LENGTH_LONG).show()
+                            } else Toast.makeText(context, "تعذّر التحقق من المحفظة. تحقق من الاتصال.", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.size(42.dp).semantics { contentDescription = "الفصل مقفل، فتح مقابل عملة واحدة" },
+                ) { Icon(painterResource(R.drawable.ic_chapter_lock_24dp), contentDescription = "الفصل مقفل، فتح مقابل عملة واحدة", tint = Color(0xFFFF7070)) }
                 IconButton(
                     onClick = {
                         if (chapter.id !in downloadedIds) scope.launch {
                             val failure = downloadCommunityNovelChapter(context, novel, chapter, index)
+                            chapterAccessRevision++
                             if (failure == null) {
                                 downloadedIds = downloadedIds + chapter.id
                                 Toast.makeText(context, "تم تحميل الفصل إلى قائمة الروايات المحملة", Toast.LENGTH_SHORT).show()
@@ -499,6 +525,16 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     var settings by remember { mutableStateOf(false) }
     var indexSheet by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(novel.liked) }
+    var chapterText by remember { mutableStateOf<String?>(null) }
+    var chapterLocked by remember { mutableStateOf(false) }
+    var chapterLoading by remember { mutableStateOf(true) }
+    var chapterLoadError by remember { mutableStateOf<String?>(null) }
+    var chapterAccessRevision by remember { mutableIntStateOf(0) }
+    var commentsVisible by remember { mutableStateOf(false) }
+    var chapterComments by remember { mutableStateOf(emptyList<CommunityNovelApi.Comment>()) }
+    var commentDraft by remember { mutableStateOf("") }
+    var commentSending by remember { mutableStateOf(false) }
+    val isOwner = novel.authorId == MslSupabase.uid(context)
     DisposableEffect(fullscreen) {
         val window = context.findCommunityActivity()?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
@@ -508,8 +544,35 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         }
         onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
-    LaunchedEffect(novel.id) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id) }; index = chapters.indexOfFirst { it.id == initial?.id }.coerceAtLeast(0) }
+    LaunchedEffect(novel.id, isOwner) { chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, isOwner) }; index = chapters.indexOfFirst { it.id == initial?.id }.coerceAtLeast(0) }
     val chapter = chapters.getOrNull(index)
+    LaunchedEffect(novel.id, chapter?.id, chapterAccessRevision) {
+        chapterText = null
+        chapterLocked = false
+        chapterLoadError = null
+        val current = chapter ?: run { chapterLoading = false; return@LaunchedEffect }
+        chapterLoading = true
+        val key = MslChapterAccess.communityKey(novel.id, current.id)
+        val allowed = isOwner || withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, key) }
+        if (!allowed) {
+            chapterLocked = true
+            chapterLoading = false
+            return@LaunchedEffect
+        }
+        val text = withContext(Dispatchers.IO) {
+            val cached = NovelOfflineStore(context).read("community", novel.id, current.id)
+            cached ?: if (isOwner && current.content.isNotBlank()) current.content
+            else CommunityNovelApi.chapterContent(context, novel.id, current.id)
+        }
+        if (text.isNullOrBlank()) {
+            chapterLoadError = "تعذّر تحميل محتوى الفصل. تحقق من الاتصال ثم أعد المحاولة."
+        } else if (eu.kanade.tachiyomi.novel.hasAdultContentMarker(current.title, text)) {
+            chapterLoadError = "تم حجب هذا الفصل بسبب تصنيفه."
+        } else {
+            chapterText = text
+        }
+        chapterLoading = false
+    }
     val readerBg = if (paper) Color(0xFFF4ECD8) else PdfBg
     val readerText = if (paper) Color(0xFF26201A) else Color(0xFFE6E8EC)
     Box(Modifier.fillMaxSize().background(readerBg)) {
@@ -527,7 +590,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                 }
                 HorizontalDivider(color = if (paper) Color(0xFFCCC2AE) else PdfLine)
             }
-            if (chapter == null) {
+            if (chapter == null || chapterLoading) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PdfPurpleSoft) }
             } else {
                 LazyColumn(
@@ -537,33 +600,58 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                     contentPadding = PaddingValues(vertical = 24.dp),
                 ) {
                     item {
-                        Text(
-                            chapter.title,
-                            color = if (paper) Color.DarkGray else Color.White,
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = if (amiri) MslUiFont else null,
-                            modifier = Modifier.padding(horizontal = readingMargin.dp),
-                        )
-                        Text(
-                            novel.authorName.ifBlank { "قارئ السلايم" },
-                            color = if (paper) Color.Gray else PdfMuted,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 6.dp),
-                        )
-                        Text(
-                            chapter.content,
-                            color = readerText,
-                            fontSize = fontSize.sp,
-                            lineHeight = (fontSize * lineSpacing).sp,
-                            fontFamily = if (amiri) MslUiFont else null,
-                            textAlign = when (textAlignment) {
-                                "center" -> TextAlign.Center
-                                "justify" -> TextAlign.Justify
-                                else -> TextAlign.Right
-                            },
-                            modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 24.dp),
-                        )
+                        if (chapterLocked) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Text("هذا الفصل مقفل", color = if (paper) Color.DarkGray else Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text("فتح الفصل يكلف عملة واحدة. لن يُحمّل النص قبل تأكيد الاستحقاق.", color = readerText)
+                                PdfButton("فتح مقابل عملة واحدة", {
+                                    val key = MslChapterAccess.communityKey(novel.id, chapter.id)
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            MslChapterAccess.unlock(context, listOfNotNull(key))
+                                        }
+                                        if (result?.allowed == true) chapterAccessRevision++
+                                        else if (result?.status == "insufficient") {
+                                            Toast.makeText(context, "الرصيد غير كافٍ. المطلوب ${result.required} عملة.", Toast.LENGTH_LONG).show()
+                                        } else Toast.makeText(context, "تعذّر التحقق من المحفظة. تحقق من الاتصال.", Toast.LENGTH_LONG).show()
+                                    }
+                                }, true, compact = true)
+                            }
+                        } else if (chapterLoadError != null) {
+                            Text(chapterLoadError.orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(24.dp))
+                        } else {
+                            Text(
+                                chapter.title,
+                                color = if (paper) Color.DarkGray else Color.White,
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = if (amiri) MslUiFont else null,
+                                modifier = Modifier.padding(horizontal = readingMargin.dp),
+                            )
+                            Text(
+                                novel.authorName.ifBlank { "قارئ السلايم" },
+                                color = if (paper) Color.Gray else PdfMuted,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 6.dp),
+                            )
+                            Text(
+                                chapterText.orEmpty(),
+                                color = readerText,
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * lineSpacing).sp,
+                                fontFamily = if (amiri) MslUiFont else null,
+                                textAlign = when (textAlignment) {
+                                    "center" -> TextAlign.Center
+                                    "justify" -> TextAlign.Justify
+                                    else -> TextAlign.Right
+                                },
+                                modifier = Modifier.padding(horizontal = readingMargin.dp).padding(top = 24.dp),
+                            )
+                        }
                     }
                 }
                 if (!fullscreen) {
@@ -578,6 +666,19 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                             }
                         }, compact = true)
                         CommunityFavoriteButton(novel)
+                        if (!chapterLocked) PdfButton(
+                            "تعليقات",
+                            {
+                                commentsVisible = true
+                                val chapterId = chapter.id
+                                scope.launch {
+                                    chapterComments = withContext(Dispatchers.IO) {
+                                        CommunityNovelApi.comments(context, novel.id, chapterId)
+                                    }
+                                }
+                            },
+                            compact = true,
+                        )
                         PdfButton("التالي ›", { if (index < chapters.lastIndex) { index++; scope.launch { withContext(Dispatchers.IO) { CommunityNovelApi.saveProgress(context, novel.id, chapters[index].id, 0) } } } }, primary = true, modifier = Modifier.weight(1f), compact = true)
                     }
                 }
@@ -596,6 +697,52 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
             }
         }
         if (indexSheet) ModalBottomSheet(onDismissRequest = { indexSheet = false }, containerColor = PdfSurface) { Column(Modifier.padding(20.dp)) { Text("فهرس الفصول", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp); chapters.forEachIndexed { i, ch -> Text("${ch.number}. ${ch.title}", color = if (i == index) PdfPurpleSoft else Color.White, modifier = Modifier.fillMaxWidth().clickable { index = i; indexSheet = false }.padding(vertical = 12.dp)) } } }
+        if (commentsVisible && chapter != null) ModalBottomSheet(onDismissRequest = { commentsVisible = false }, containerColor = PdfSurface) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("تعليقات الفصل ${chapter.number}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (chapterComments.isEmpty()) Text("لا توجد تعليقات بعد.", color = PdfMuted)
+                else LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                    items(chapterComments, key = { it.id }) { comment ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                            Text("قارئ ${comment.userId.take(8)}", color = PdfPurpleSoft, fontSize = 11.sp)
+                            Text(comment.content, color = Color.White, fontSize = 14.sp)
+                            HorizontalDivider(color = PdfLine, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = commentDraft,
+                    onValueChange = { commentDraft = it.take(1000) },
+                    enabled = !chapterLocked && !commentSending,
+                    label = { Text("اكتب تعليقًا (1000 حرف كحد أقصى)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                )
+                Button(
+                    enabled = !chapterLocked && !commentSending && commentDraft.isNotBlank(),
+                    onClick = {
+                        val chapterId = chapter.id
+                        commentSending = true
+                        scope.launch {
+                            try {
+                                val saved = withContext(Dispatchers.IO) {
+                                    CommunityNovelApi.addComment(context, novel.id, chapterId, commentDraft)
+                                }
+                                if (saved) {
+                                    commentDraft = ""
+                                    chapterComments = withContext(Dispatchers.IO) {
+                                        CommunityNovelApi.comments(context, novel.id, chapterId)
+                                    }
+                                } else Toast.makeText(context, "تعذّر نشر التعليق. تحقق من فتح الفصل والاتصال.", Toast.LENGTH_LONG).show()
+                            } finally {
+                                commentSending = false
+                            }
+                        }
+                    },
+                ) { Text(if (commentSending) "جارٍ الإرسال…" else "إرسال التعليق") }
+            }
+        }
     }
 }
 

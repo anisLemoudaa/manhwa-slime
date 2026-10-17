@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.mslime
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -40,6 +43,7 @@ import eu.kanade.tachiyomi.novel.OfflineNovelBook
 import eu.kanade.tachiyomi.novel.OfflineNovelChapter
 import eu.kanade.tachiyomi.novel.NovelOfflineStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class CommunityOfflineReaderScreen(
@@ -50,9 +54,13 @@ class CommunityOfflineReaderScreen(
     override fun Content() {
         val context = androidx.compose.ui.platform.LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
         val prefs = remember { context.getSharedPreferences("manhwa_slime_reader_prefs", android.content.Context.MODE_PRIVATE) }
         var index by remember { mutableIntStateOf(book.chapters.indexOf(initialChapter).coerceAtLeast(0)) }
         var content by remember { mutableStateOf("") }
+        var locked by remember { mutableStateOf(false) }
+        var loading by remember { mutableStateOf(true) }
+        var accessRevision by remember { mutableIntStateOf(0) }
         var fontSize by remember { mutableFloatStateOf(prefs.getFloat("font_size", 20f).coerceIn(14f, 32f)) }
         var lineSpacing by remember { mutableFloatStateOf(prefs.getFloat("line_spacing", 1.8f).coerceIn(1.2f, 3f)) }
         var paper by remember { mutableStateOf(prefs.getBoolean("community_paper", false)) }
@@ -72,8 +80,19 @@ class CommunityOfflineReaderScreen(
             } else android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             onDispose { decor?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE }
         }
-        LaunchedEffect(chapter?.path) {
-            content = chapter?.let { withContext(Dispatchers.IO) { store.read(book.sourceId, book.novelPath, it.path) } }.orEmpty()
+        LaunchedEffect(chapter?.path, accessRevision) {
+            content = ""
+            locked = false
+            val current = chapter ?: run { loading = false; return@LaunchedEffect }
+            loading = true
+            val key = MslChapterAccess.communityKey(book.novelPath, current.path)
+            if (!withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, key) }) {
+                locked = true
+                loading = false
+                return@LaunchedEffect
+            }
+            content = withContext(Dispatchers.IO) { store.read(book.sourceId, book.novelPath, current.path) }.orEmpty()
+            loading = false
         }
 
         Column(Modifier.fillMaxSize().background(background).padding(horizontal = 14.dp)) {
@@ -89,7 +108,24 @@ class CommunityOfflineReaderScreen(
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 18.dp)) {
                 item {
                     Text(chapter?.title.orEmpty(), color = foreground, fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = if (amiri) MslUiFont else null)
-                    Text(content.ifBlank { "تعذّر العثور على النسخة المحفوظة لهذا الفصل." }, color = foreground, fontSize = fontSize.sp, lineHeight = (fontSize * lineSpacing).sp, fontFamily = if (amiri) MslUiFont else null, modifier = Modifier.padding(top = 22.dp))
+                    when {
+                        loading -> CircularProgressIndicator(color = Color(0xFFBD75F7), modifier = Modifier.padding(top = 22.dp))
+                        locked -> Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 22.dp)) {
+                            Text("هذا الفصل مقفل، حتى لو كانت له نسخة محفوظة على الجهاز.", color = foreground)
+                            Button(onClick = {
+                                val current = chapter ?: return@Button
+                                val key = MslChapterAccess.communityKey(book.novelPath, current.path)
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        MslChapterAccess.unlock(context, listOfNotNull(key))
+                                    }
+                                    if (result?.allowed == true) accessRevision++
+                                    else Toast.makeText(context, "تعذّر فتح الفصل أو أن الرصيد غير كافٍ. تحقق من الاتصال والمحفظة.", Toast.LENGTH_LONG).show()
+                                }
+                            }) { Text("فتح مقابل عملة واحدة") }
+                        }
+                        else -> Text(content.ifBlank { "تعذّر العثور على النسخة المحفوظة لهذا الفصل." }, color = foreground, fontSize = fontSize.sp, lineHeight = (fontSize * lineSpacing).sp, fontFamily = if (amiri) MslUiFont else null, modifier = Modifier.padding(top = 22.dp))
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

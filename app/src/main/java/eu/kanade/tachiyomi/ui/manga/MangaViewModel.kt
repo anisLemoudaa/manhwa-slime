@@ -37,6 +37,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.mslime.MslChapterAccess
 import eu.kanade.tachiyomi.mslime.MslFavoriteItem
 import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavorites
@@ -169,6 +170,7 @@ class MangaViewModel(
 
     private val selectedPositions: Array<Int> = arrayOf(-1, -1) // first and last selected index in list
     private val selectedChapterIds: HashSet<Long> = HashSet()
+    private var chapterUnlockMirrorInitialized = false
 
     /**
      * Helper function to update the UI state only if it's currently in success state
@@ -190,6 +192,10 @@ class MangaViewModel(
                 downloadManager.queueState,
             ) { mangaAndChapters, _, _ -> mangaAndChapters }
                 .collectLatest { (manga, chapters) ->
+                    if (!chapterUnlockMirrorInitialized) {
+                        MslChapterAccess.refresh(context)
+                        chapterUnlockMirrorInitialized = true
+                    }
                     updateSuccessState {
                         it.copy(
                             manga = manga,
@@ -570,6 +576,7 @@ class MangaViewModel(
 
     private fun List<Chapter>.toChapterListItems(manga: Manga): List<ChapterList.Item> {
         val isLocal = manga.isLocal()
+        val unlockedKeys = MslChapterAccess.cachedKeys(context)
         return map { chapter ->
             val activeDownload = if (isLocal) {
                 null
@@ -598,7 +605,50 @@ class MangaViewModel(
                 downloadState = downloadState,
                 downloadProgress = activeDownload?.progress ?: 0,
                 selected = chapter.id in selectedChapterIds,
+                isUnlocked = isLocal ||
+                    MslChapterAccess.mangaKey(manga.source, manga.url, chapter.url)?.let { it in unlockedKeys } == true,
             )
+        }
+    }
+
+    /** Unlock selected chapters with the server-owned one-coin price; the server commits the batch atomically. */
+    fun unlockChapters(chapters: List<Chapter>) {
+        val manga = successState?.manga ?: return
+        val keys = chapters.mapNotNull { chapter ->
+            MslChapterAccess.mangaKey(manga.source, manga.url, chapter.url)
+        }.distinct()
+        if (keys.isEmpty()) return
+        if (keys.size > 100) {
+            viewModelScope.launch { snackbarHostState.showSnackbar("يمكن فتح 100 فصل كحد أقصى في العملية الواحدة.") }
+            return
+        }
+
+        viewModelScope.launchIO {
+            val result = MslChapterAccess.unlock(context, keys)
+            val message = when {
+                result == null -> "تعذر التحقق من المحفظة. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+                result.allowed -> {
+                    val charged = result.charged
+                    val opened = keys.size
+                    val noun = if (opened == 1) "فصل" else "فصول"
+                    "تم فتح $opened $noun مقابل $charged عملة."
+                }
+                result.status == "insufficient" ->
+                    "الرصيد غير كافٍ. الرصيد: ${result.balance ?: 0}، المطلوب: ${result.required} عملة."
+                else -> "تعذر فتح الفصول. أعد المحاولة لاحقًا."
+            }
+            if (result?.allowed == true) {
+                val unlockedKeys = MslChapterAccess.cachedKeys(context)
+                updateSuccessState { current ->
+                    current.copy(
+                        chapters = current.chapters.map { item ->
+                            val key = MslChapterAccess.mangaKey(manga.source, manga.url, item.chapter.url)
+                            item.copy(isUnlocked = key?.let { it in unlockedKeys } == true)
+                        },
+                    )
+                }
+            }
+            withUIContext { snackbarHostState.showSnackbar(message) }
         }
     }
 
@@ -1233,6 +1283,7 @@ sealed class ChapterList {
         val downloadState: Download.State,
         val downloadProgress: Int,
         val selected: Boolean = false,
+        val isUnlocked: Boolean = false,
     ) : ChapterList() {
         val id = chapter.id
         val isDownloaded = downloadState == Download.State.DOWNLOADED

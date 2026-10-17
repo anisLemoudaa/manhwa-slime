@@ -36,6 +36,7 @@ import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.MslChapterAccess
 import eu.kanade.tachiyomi.mslime.MslRank
 import eu.kanade.tachiyomi.mslime.MslReadingTasks
 import eu.kanade.tachiyomi.mslime.MslWallet
@@ -343,8 +344,11 @@ class ReaderViewModel(
                 mutableState.update { it.copy(manga = manga, source = source) }
                 if (chapterId == -1L) chapterId = initialChapterId
 
+                val initialChapter = chapterList.first { it.chapter.id == chapterId }
+                check(hasChapterAccess(initialChapter)) { "الفصل مقفل. افتحه أولًا من قائمة الفصول." }
+
                 if (source is ProComicSource) {
-                    val chapter = chapterList.first { it.chapter.id == chapterId }.chapter
+                    val chapter = initialChapter.chapter
                     val downloaded = downloadManager.isChapterDownloaded(
                         chapter.name,
                         chapter.scanlator,
@@ -384,6 +388,7 @@ class ReaderViewModel(
         loader: ChapterLoader,
         chapter: ReaderChapter,
     ): ViewerChapters {
+        check(hasChapterAccess(chapter)) { "الفصل مقفل. افتحه أولًا من قائمة الفصول." }
         loader.loadChapter(chapter)
 
         val chapterPos = chapterList.indexOf(chapter)
@@ -449,6 +454,13 @@ class ReaderViewModel(
         MslReadingTasks.canonicalChapterKey(currentManga.source, currentManga.url, chapter.chapter.url)
     }
 
+    private suspend fun hasChapterAccess(chapter: ReaderChapter): Boolean = withIOContext {
+        val currentManga = manga ?: return@withIOContext false
+        if (!MslWallet.enabled || currentManga.isLocal()) return@withIOContext true
+        val key = MslChapterAccess.mangaKey(currentManga.source, currentManga.url, chapter.chapter.url)
+        MslChapterAccess.hasAccess(context, key)
+    }
+
     /**
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
      * It's used only to set this chapter as active.
@@ -501,6 +513,7 @@ class ReaderViewModel(
      * that the user doesn't have to wait too long to continue reading.
      */
     suspend fun preload(chapter: ReaderChapter) {
+        if (!hasChapterAccess(chapter)) return
         if (chapter.state is ReaderChapter.State.Loaded || chapter.state == ReaderChapter.State.Loading) {
             return
         }

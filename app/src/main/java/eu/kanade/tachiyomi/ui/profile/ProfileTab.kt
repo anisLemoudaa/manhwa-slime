@@ -92,7 +92,10 @@ import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslCloudSync
+import eu.kanade.tachiyomi.mslime.MslAchievements
+import eu.kanade.tachiyomi.mslime.MslAchievementsScreen
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
+import eu.kanade.tachiyomi.mslime.MslSupabase
 import eu.kanade.tachiyomi.mslime.MslShopScreen
 import eu.kanade.tachiyomi.mslime.MslWalletScreen
 import eu.kanade.tachiyomi.novel.NovelHistoryEntry
@@ -650,6 +653,7 @@ data object ProfileTab : Tab {
     @Composable
     private fun ProfileContent() {
         val ctx = LocalContext.current
+        val profileUserId = MslSupabase.uid(ctx)
         val navigator = LocalNavigator.currentOrThrow
         val tabNavigator = LocalTabNavigator.current
         val scope = rememberCoroutineScope()
@@ -666,6 +670,8 @@ data object ProfileTab : Tab {
         var cloudRank by remember { mutableStateOf<String?>(null) }
         var cloudLoaded by remember { mutableStateOf(false) }
         var adminRole by remember { mutableStateOf<String?>(null) }
+        val cachedEquippedTitle = remember(ctx, profileUserId) { MslAchievements.cachedTitle(ctx) }
+        val equippedTitle by MslAchievements.equippedTitleState.collectAsState(initial = cachedEquippedTitle)
         val equippedFrameId by eu.kanade.tachiyomi.mslime.MslShop.equippedFrameState.collectAsState()
         var socialProfile by remember { mutableStateOf<eu.kanade.tachiyomi.mslime.MslFollowGraph.Profile?>(null) }
         val socialRevision by eu.kanade.tachiyomi.mslime.MslFollowGraph.revision.collectAsState()
@@ -681,8 +687,9 @@ data object ProfileTab : Tab {
             }
             j
         }
-        LaunchedEffect(ctx) {
+        LaunchedEffect(ctx, profileUserId) {
             novelHistory = withContext(Dispatchers.IO) { NovelHistoryStore(ctx).all() }
+            withContext(Dispatchers.IO) { MslAchievements.refresh(ctx) }
             val remoteProfile = withContext(Dispatchers.IO) {
                 MslCloudSync.profile(ctx)?.also { MslCloudSync.applyProfile(ctx, it) }
             }
@@ -692,7 +699,7 @@ data object ProfileTab : Tab {
                 cloudRank = remote.rank
                 rev++
             }
-            val userId = eu.kanade.tachiyomi.mslime.MslSupabase.uid(ctx)
+            val userId = profileUserId
             if (userId.isNotBlank()) {
                 socialProfile = withContext(Dispatchers.IO) {
                     eu.kanade.tachiyomi.mslime.MslFollowGraph.profile(ctx, userId)
@@ -941,6 +948,16 @@ data object ProfileTab : Tab {
                             )
                         }
                     }
+                    equippedTitle?.takeIf(String::isNotBlank)?.let { title ->
+                        Surface(shape = MslDesignTokens.pillShape, color = MslDesignTokens.warning.copy(alpha = 0.16f)) {
+                            Text(
+                                text = "اللقب: $title",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MslDesignTokens.warning,
+                            )
+                        }
+                    }
                     Text(
                         text = joinedText(joined),
                         modifier = Modifier.fillMaxWidth(),
@@ -1039,6 +1056,13 @@ data object ProfileTab : Tab {
                         onClick = { tabNavigator.current = MoreTab },
                     )
                 }
+                ProfileActionCard(
+                    title = "الإنجازات والألقاب",
+                    subtitle = equippedTitle?.let { "اللقب المجهز: $it" } ?: "إنجازات القراءة وتجهيز الألقاب",
+                    icon = MaterialSymbols.Rounded.AttachMoney,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = { navigator.push(MslAchievementsScreen()) },
+                )
                 ProfileActionCard(
                     title = "المحفظة",
                     subtitle = "رصيد العملات وسجل المعاملات",
