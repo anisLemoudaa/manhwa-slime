@@ -477,6 +477,7 @@ fun MangaScreenLargeImpl(
     chapterSwipeEndAction: LibraryPreferences.ChapterSwipeAction,
     navigateUp: () -> Unit,
     onChapterClicked: (Chapter) -> Unit,
+    onUnlockChapters: (List<Chapter>) -> Unit,
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
