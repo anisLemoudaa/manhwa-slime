@@ -91,6 +91,7 @@ import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.util.system.activeNetworkState
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isBenchmarkBuildType
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
@@ -170,8 +171,6 @@ class MainActivity : BaseActivity() {
             return
         }
 
-        MslAds.requestConsentAndInitialize(this)
-
         setComposeContent {
             val context = LocalContext.current
 
@@ -206,7 +205,7 @@ class MainActivity : BaseActivity() {
 
                     if (isLaunch) {
                         // Set start screen
-                        handleIntentAction(intent, navigator)
+                        if (!handleIntentAction(intent, navigator)) ready = true
 
                         // Reset Incognito Mode on relaunch
                         preferences.incognitoMode.set(false)
@@ -295,6 +294,17 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (activeNetworkState().isOnline) {
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed && activeNetworkState().isOnline) {
+                    MslAds.requestConsentAndInitialize(this)
+                }
+            }
+        }
+    }
+
     override fun onProvideAssistContent(outContent: AssistContent) {
         super.onProvideAssistContent(outContent)
         when (val screen = navigator?.lastItem) {
@@ -324,6 +334,7 @@ class MainActivity : BaseActivity() {
 
         // App updates
         LaunchedEffect(Unit) {
+            if (!context.activeNetworkState().isOnline) return@LaunchedEffect
             if (updaterEnabled) {
                 try {
                     val result = context.appGraph.updateChecker.checkForUpdate()
@@ -345,6 +356,7 @@ class MainActivity : BaseActivity() {
 
         // Extensions updates
         LaunchedEffect(Unit) {
+            if (!context.activeNetworkState().isOnline) return@LaunchedEffect
             try {
                 extensionManager.checkForUpdates()
             } catch (e: Exception) {

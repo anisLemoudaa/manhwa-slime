@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.novel.NovelFavoritesStore
 import eu.kanade.tachiyomi.novel.NovelPluginStore
 import eu.kanade.tachiyomi.novel.NovelRepositoryEntry
 import eu.kanade.tachiyomi.novel.NovelSourceManager
+import eu.kanade.tachiyomi.util.system.activeNetworkState
 import kotlinx.coroutines.runBlocking
 import mihon.app.di.appGraph
 import org.json.JSONArray
@@ -297,6 +298,7 @@ object MslCloudSync {
     }
 
     fun syncNow(ctx: Context) {
+        if (!ctx.activeNetworkState().isOnline) return
         Thread {
             runCatching {
                 syncSourceSettings(ctx)

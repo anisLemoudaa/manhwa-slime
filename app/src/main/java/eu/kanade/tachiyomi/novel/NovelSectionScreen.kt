@@ -67,8 +67,8 @@ import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavorites
 import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.mslime.MslTranslate
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -80,6 +80,15 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import java.util.UUID
+
+internal suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
+    }
 
 private data class NovelUiState(
     val sources: List<NovelSourceRuntime> = emptyList(),
@@ -1445,7 +1454,7 @@ class NovelReaderScreen(
         var offlineSaved by remember { mutableStateOf(false) }
         var offlineSaving by remember { mutableStateOf(false) }
 
-        LaunchedEffect(currentIndex, sourceId) {
+        LaunchedEffect(currentIndex, sourceId, novelPath, offlineOnly, chapters.getOrNull(currentIndex)?.path) {
             val chapter = chapters.getOrNull(currentIndex)
 
             if (chapter == null) {
@@ -1457,12 +1466,12 @@ class NovelReaderScreen(
             loading = true
             html = null
             error = null
-            val cachedContent = runCatching {
+            val cachedContent = runCatchingCancellable {
                 withContext(Dispatchers.IO) { offlineStore.read(sourceId, novelPath, chapter.path) }
             }.getOrNull()
             offlineSaved = cachedContent != null
 
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 if (offlineOnly) cachedContent ?: error("هذا الفصل غير محفوظ على الجهاز.")
                 else cachedContent ?: manager.chapter(sourceId, chapter.path)
             }

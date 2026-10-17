@@ -53,6 +53,7 @@ import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.novel.NovelFavoriteEntry
 import eu.kanade.tachiyomi.novel.NovelFavoritesStore
 import eu.kanade.tachiyomi.novel.hasAdultContentMarker
+import eu.kanade.tachiyomi.util.system.activeNetworkState
 import mihon.app.di.appGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,6 +106,14 @@ object MslFavorites {
             mutableSnapshot.value = mutableSnapshot.value.copy(loading = true, error = null, loginRequired = false)
             withContext(Dispatchers.IO) {
                 try {
+                    if (!context.activeNetworkState().isOnline) {
+                        mutableSnapshot.value = mutableSnapshot.value.copy(
+                            loading = false,
+                            loaded = true,
+                            error = "لا يوجد اتصال بالإنترنت؛ حاول تحديث المفضلة بعد عودة الاتصال.",
+                        )
+                        return@withContext
+                    }
                     if (MslAuth.email(context).isBlank()) {
                         mutableSnapshot.value = mutableSnapshot.value.copy(
                             loading = false,

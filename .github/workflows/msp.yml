@@ -36,8 +36,12 @@ jobs:
       - name: Install Android SDK 37.2
         run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
       - uses: gradle/actions/setup-gradle@v6
+      - name: Test novel async request bridge
+        run: node --test scripts/tests/novel-request-bridge.test.cjs
+      - name: Run unit tests
+        run: chmod +x gradlew && ./gradlew --no-daemon test
       - name: Build Debug APK
-        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
       - uses: actions/upload-artifact@v7
         with:
           name: ManhwaSlime-debug
@@ -58,6 +62,8 @@ jobs:
       - name: Install Android SDK 37.2
         run: sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
       - uses: gradle/actions/setup-gradle@v6
+      - name: Test novel async request bridge
+        run: node --test scripts/tests/novel-request-bridge.test.cjs
       - name: Run unit tests
         run: chmod +x gradlew && ./gradlew --no-daemon test
       - name: Validate and restore release keystore
