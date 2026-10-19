@@ -97,7 +97,6 @@ import mihon.icons.materialsymbols.rounded.Person
 import soup.compose.material.motion.animation.materialFadeThroughIn
 import soup.compose.material.motion.animation.materialFadeThroughOut
 import mihon.app.di.appGraph
-import mihon.domain.extension.model.ContentWarning
 
 object HomeScreen : Screen() {
     private val librarySearchEvent = Channel<String>()
@@ -118,8 +117,6 @@ object HomeScreen : Screen() {
                 val favorites by MslFavorites.snapshot.collectAsState()
                 LaunchedEffect(Unit) {
                     MslFavorites.load(context)
-                    context.appGraph.sourcePreferences.enabledContentWarnings.set(setOf(ContentWarning.SAFE))
-                    context.appGraph.sourcePreferences.applyContentWarningsToInstalled.set(true)
                 }
 
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {

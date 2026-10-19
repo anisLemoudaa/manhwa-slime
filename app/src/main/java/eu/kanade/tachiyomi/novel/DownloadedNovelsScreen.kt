@@ -44,6 +44,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.mslime.MslAdultContentFilter
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.CommunityOfflineReaderScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
@@ -68,9 +69,12 @@ fun DownloadedNovelsContent() {
             scope.launch {
                 books = withContext(Dispatchers.IO) {
                     store.migrateFromHistory(NovelHistoryStore(context).all())
+                    val hideAdultContent = MslAdultContentFilter.isEnabled(context)
                     store.downloadedNovels().filterNot { book ->
-                        book.contentNotice.lowercase() in setOf("mature", "adult", "nsfw", "18+", "18plus") ||
-                            hasAdultContentMarker(book.title, book.description)
+                        hideAdultContent && (
+                            book.contentNotice.lowercase() in setOf("mature", "adult", "nsfw", "18+", "18plus") ||
+                                hasAdultContentMarker(book.title, book.description)
+                            )
                     }
                 }
             }

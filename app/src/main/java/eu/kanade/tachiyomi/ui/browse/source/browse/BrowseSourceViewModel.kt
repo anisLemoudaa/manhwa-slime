@@ -21,6 +21,7 @@ import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metrox.viewmodel.ManualViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ManualViewModelAssistedFactoryKey
 import eu.kanade.core.preference.asState
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.service.SourcePreferences
@@ -30,6 +31,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.WhileSubscribed
@@ -67,6 +69,7 @@ class BrowseSourceViewModel(
     @Assisted listingQuery: String?,
     private val sourceManager: SourceManager,
     sourcePreferences: SourcePreferences,
+    private val basePreferences: BasePreferences,
     private val libraryPreferences: LibraryPreferences,
     private val coverCache: CoverCache,
     private val getRemoteManga: GetRemoteManga,
@@ -125,11 +128,14 @@ class BrowseSourceViewModel(
      * Flow of Pager flow tied to [State.listing]
      */
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems.get()
-    val mangaPagerFlowFlow = state.map { it.source to it.listing }
-        .filter { (source, _) -> source != null }
-        .map { (_, listing) -> listing }
-        .distinctUntilChanged()
-        .map { listing ->
+    val mangaPagerFlowFlow = combine(
+        state.map { it.source to it.listing }
+            .filter { (source, _) -> source != null }
+            .map { (_, listing) -> listing }
+            .distinctUntilChanged(),
+        basePreferences.hideAdultContent.changes().distinctUntilChanged(),
+    ) { listing, hideAdultContent -> listing to hideAdultContent }
+        .map { (listing, hideAdultContent) ->
             Pager(PagingConfig(pageSize = 25)) {
                 getRemoteManga(sourceId, listing.query ?: "", listing.filters)
             }.flow.map { pagingData ->
@@ -138,7 +144,7 @@ class BrowseSourceViewModel(
                         .map { it ?: manga }
                         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), manga)
                 }
-                    .filter { !it.value.isAdultContent() && (!hideInLibraryItems || !it.value.favorite) }
+                    .filter { (!hideAdultContent || !it.value.isAdultContent()) && (!hideInLibraryItems || !it.value.favorite) }
             }
                 .cachedIn(viewModelScope)
         }

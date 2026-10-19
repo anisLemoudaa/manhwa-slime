@@ -10,6 +10,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import eu.kanade.core.util.insertSeparators
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.history.HistoryUiModel
@@ -71,6 +72,7 @@ class HistoryViewModel(
     private val setMangaCategories: SetMangaCategories,
     private val updateManga: UpdateManga,
     private val sourceManager: SourceManager,
+    private val basePreferences: BasePreferences,
 ) : ViewModel() {
 
     val snackbarHostState: SnackbarHostState = SnackbarHostState()
@@ -82,8 +84,10 @@ class HistoryViewModel(
 
     private val dialog = MutableStateFlow<Dialog?>(null)
 
-    private val history = searchQuery
-        .flatMapLatest { query ->
+    private val history = combine(searchQuery, basePreferences.hideAdultContent.changes()) { query, hideAdult ->
+        query to hideAdult
+    }
+        .flatMapLatest { (query, hideAdult) ->
             getHistory.subscribe(query ?: "")
                 .distinctUntilChanged()
                 .catch { error ->
@@ -91,7 +95,7 @@ class HistoryViewModel(
                     _events.send(Event.InternalError)
                 }
                 .map { entries ->
-                    entries.filterNot { getManga.await(it.mangaId)?.isAdultContent() == true }.toHistoryUiModels()
+                    entries.filterNot { hideAdult && getManga.await(it.mangaId)?.isAdultContent() == true }.toHistoryUiModels()
                 }
                 .flowOn(Dispatchers.IO)
         }

@@ -151,8 +151,10 @@ object MslFavorites {
                             )
                         }
                     }.toMutableList()
-                    items += loadCommunityLibrary(token, uid)
+                    val hideAdultContent = MslAdultContentFilter.isEnabled(context)
+                    items += loadCommunityLibrary(token, uid, hideAdultContent)
                     val safeItems = items.filterNot { item ->
+                        if (!hideAdultContent) return@filterNot false
                         if (item.kind == MslFavoriteKind.COMMUNITY) return@filterNot hasAdultContentMarker(item.title)
                         if (item.kind != MslFavoriteKind.MANGA) return@filterNot false
                         if (hasAdultContentMarker(item.title)) return@filterNot true
@@ -267,7 +269,7 @@ object MslFavorites {
         }
     }
 
-    private fun loadCommunityLibrary(token: String, uid: String): List<MslFavoriteItem> {
+    private fun loadCommunityLibrary(token: String, uid: String, hideAdultContent: Boolean): List<MslFavoriteItem> {
         val saved = requestRows(
             token,
             "/rest/v1/community_novel_library?select=novel_id&user_id=eq.$uid&limit=5000",
@@ -286,7 +288,7 @@ object MslFavorites {
                 val row = novels.getJSONObject(i)
                 val title = row.optString("title").ifBlank { "رواية مجتمع" }
                 val notice = row.optString("content_notice", "general").lowercase()
-                if (notice in setOf("mature", "adult", "nsfw", "18+", "18plus") || hasAdultContentMarker(title)) continue
+                if (hideAdultContent && (notice in setOf("mature", "adult", "nsfw", "18+", "18plus") || hasAdultContentMarker(title))) continue
                 add(
                     MslFavoriteItem(
                         kind = MslFavoriteKind.COMMUNITY,

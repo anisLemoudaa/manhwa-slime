@@ -269,7 +269,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         withContext(Dispatchers.IO) { CommunityNovelApi.chapterContent(context, novel.id, chapter.id) }
             ?: return "تعذّر تحميل محتوى الفصل بعد التحقق من فتحه."
     }
-    if (eu.kanade.tachiyomi.novel.hasAdultContentMarker(chapter.title, content)) {
+    if (MslAdultContentFilter.isEnabled(context) && eu.kanade.tachiyomi.novel.hasAdultContentMarker(chapter.title, content)) {
         return "تم حجب هذا الفصل لأنه يتضمن محتوى غير مسموح."
     }
     val saved = runCatching {
@@ -566,7 +566,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         }
         if (text.isNullOrBlank()) {
             chapterLoadError = "تعذّر تحميل محتوى الفصل. تحقق من الاتصال ثم أعد المحاولة."
-        } else if (eu.kanade.tachiyomi.novel.hasAdultContentMarker(current.title, text)) {
+        } else if (MslAdultContentFilter.isEnabled(context) && eu.kanade.tachiyomi.novel.hasAdultContentMarker(current.title, text)) {
             chapterLoadError = "تم حجب هذا الفصل بسبب تصنيفه."
         } else {
             chapterText = text

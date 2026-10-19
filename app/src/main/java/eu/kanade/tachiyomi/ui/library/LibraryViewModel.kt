@@ -382,6 +382,7 @@ class LibraryViewModel(
             libraryPreferences.filterBookmarked.changes(),
             libraryPreferences.filterCompleted.changes(),
             libraryPreferences.filterIntervalCustom.changes(),
+            preferences.hideAdultContent.changes(),
         ) {
             ItemPreferences(
                 downloadBadge = it[0] as Boolean,
@@ -396,6 +397,7 @@ class LibraryViewModel(
                 filterBookmarked = it[9] as TriState,
                 filterCompleted = it[10] as TriState,
                 filterIntervalCustom = it[11] as TriState,
+                hideAdultContent = it[12] as Boolean,
             )
         }
     }
@@ -406,7 +408,7 @@ class LibraryViewModel(
             getLibraryItemPreferencesFlow(),
             downloadCache.changes,
         ) { libraryManga, preferences, _ ->
-            libraryManga.filterNot { it.manga.isAdultContent() }.map { manga ->
+            libraryManga.filterNot { preferences.hideAdultContent && it.manga.isAdultContent() }.map { manga ->
                 LibraryItem(
                     libraryManga = manga,
                     downloadCount = downloadManager.getDownloadCount(manga.manga),
@@ -763,6 +765,7 @@ class LibraryViewModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val hideAdultContent: Boolean,
     )
 
     @Immutable

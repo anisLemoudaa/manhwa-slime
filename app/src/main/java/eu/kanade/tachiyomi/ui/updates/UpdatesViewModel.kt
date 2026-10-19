@@ -13,6 +13,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import eu.kanade.core.preference.asState
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
@@ -79,6 +80,7 @@ class UpdatesViewModel(
     private val getChapter: GetChapter,
     private val libraryPreferences: LibraryPreferences,
     private val updatesPreferences: UpdatesPreferences,
+    private val basePreferences: BasePreferences,
 ) : ViewModel() {
 
     val snackbarHostState: SnackbarHostState = SnackbarHostState()
@@ -127,6 +129,7 @@ class UpdatesViewModel(
             )
                 .any { it != TriState.DISABLED } ||
                 prefs.filterExcludedScanlators ||
+                prefs.hideAdultContent ||
                 listOf(
                     prefs.filterIncludedCategories,
                     prefs.filterExcludedCategories,
@@ -158,7 +161,7 @@ class UpdatesViewModel(
         },
     ) { updates, _, _, itemPreferences ->
         updates
-            .toUpdateItems()
+            .toUpdateItems(itemPreferences.hideAdultContent)
             .applyFilters(itemPreferences)
     }
         .flowOn(Dispatchers.IO)
@@ -211,10 +214,10 @@ class UpdatesViewModel(
         }
     }
 
-    private suspend fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
+    private suspend fun List<UpdatesWithRelations>.toUpdateItems(hideAdultContent: Boolean): List<UpdatesItem> {
         return this
             .mapNotNull { update ->
-                if (getManga.await(update.mangaId)?.isAdultContent() == true) return@mapNotNull null
+                if (hideAdultContent && getManga.await(update.mangaId)?.isAdultContent() == true) return@mapNotNull null
                 val activeDownload = downloadManager.getQueuedDownloadOrNull(update.chapterId)
                 val downloaded = downloadManager.isChapterDownloaded(
                     update.chapterName,
@@ -447,6 +450,7 @@ class UpdatesViewModel(
             updatesPreferences.filterExcludedScanlators.changes(),
             updatesPreferences.filterIncludedCategories.changes(),
             updatesPreferences.filterExcludedCategories.changes(),
+            basePreferences.hideAdultContent.changes(),
         ) {
             @Suppress("UNCHECKED_CAST")
             ItemPreferences(
@@ -457,6 +461,7 @@ class UpdatesViewModel(
                 filterExcludedScanlators = it[4] as Boolean,
                 filterIncludedCategories = it[5] as List<Long>,
                 filterExcludedCategories = it[6] as List<Long>,
+                hideAdultContent = it[7] as Boolean,
             )
         }
     }
@@ -474,6 +479,7 @@ class UpdatesViewModel(
         val filterExcludedScanlators: Boolean,
         val filterIncludedCategories: List<Long>,
         val filterExcludedCategories: List<Long>,
+        val hideAdultContent: Boolean,
     )
 
     private data class DownloadProgress(val status: Download.State, val progress: Int)

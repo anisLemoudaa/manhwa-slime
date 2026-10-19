@@ -71,18 +71,18 @@ object CommunityNovelApi {
             else -> "updated_at.desc"
         }
         val rows = get(ctx, "/rest/v1/community_novels?select=*&${clauses.joinToString("&")}&order=$order&limit=40") ?: return emptyList()
-        return parseNovels(rows).filterNot(::isAdult)
+        return parseNovels(rows).filterNot { MslAdultContentFilter.isEnabled(ctx) && isAdult(it) }
     }
 
     fun mine(ctx: Context): List<Novel> {
         val id = uid(ctx).takeIf { it.isNotBlank() } ?: return emptyList()
         val rows = get(ctx, "/rest/v1/community_novels?select=*&author_id=eq.$id&order=updated_at.desc&limit=50") ?: return emptyList()
-        return parseNovels(rows).filterNot(::isAdult)
+        return parseNovels(rows).filterNot { MslAdultContentFilter.isEnabled(ctx) && isAdult(it) }
     }
 
     fun details(ctx: Context, id: String): Novel? {
         val rows = get(ctx, "/rest/v1/community_novels?select=*&id=eq.$id&limit=1") ?: return null
-        val novel = parseNovels(rows).firstOrNull()?.takeUnless(::isAdult) ?: return null
+        val novel = parseNovels(rows).firstOrNull()?.takeUnless { MslAdultContentFilter.isEnabled(ctx) && isAdult(it) } ?: return null
         val saved = get(ctx, "/rest/v1/community_novel_library?select=novel_id&user_id=eq.${uid(ctx)}&novel_id=eq.$id&limit=1")?.length() == 1
         val likes = likeSummary(ctx, id)
         val rating = ratingSummary(ctx, id)
@@ -168,7 +168,7 @@ object CommunityNovelApi {
         return List(rows.length()) { i ->
             val o = rows.getJSONObject(i)
             Chapter(o.getString("id"), o.getString("novel_id"), o.optInt("chapter_number"), o.optString("title"), o.optString("content"), o.optString("status"))
-        }.filterNot { hasAdultContentMarker(it.title, it.content) }
+        }.filterNot { MslAdultContentFilter.isEnabled(ctx) && hasAdultContentMarker(it.title, it.content) }
     }
 
     /** Fetches a single chapter only after the database confirms its entitlement. */

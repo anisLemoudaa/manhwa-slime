@@ -49,6 +49,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.mslime.ProComicSource
+import eu.kanade.tachiyomi.mslime.MslAdultContentFilter
 import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
@@ -102,7 +103,7 @@ class MangaScreen(
         }
 
         val successState = state as MangaViewModel.State.Success
-        if (successState.manga.isAdultContent()) {
+        if (MslAdultContentFilter.isEnabled(context) && successState.manga.isAdultContent()) {
             Column(
                 Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

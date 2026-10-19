@@ -61,6 +61,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.mslime.MslAdultContentFilter
 import eu.kanade.tachiyomi.mslime.MslAds
 import eu.kanade.tachiyomi.mslime.MslCommentsDialog
 import eu.kanade.tachiyomi.mslime.MslChapterAccess
@@ -234,7 +235,7 @@ fun NovelSectionContent() {
                 }
             }.awaitAll()
             val novels = responses.flatMap { it.first }
-                .filterNot { it.isAdultContent() }
+                .filterNot { MslAdultContentFilter.isEnabled(context) && it.isAdultContent() }
                 .distinctBy { "${it.sourceId}:${it.path}" }
                 .let { items -> if (sortMode == "rating") items.sortedByDescending { it.ratingValue() ?: -1.0 } else items }
             if (state.query.trim() == querySnapshot && state.selectedSource == sid && state.allSources == allSources) {
@@ -1051,7 +1052,7 @@ class NovelDetailsScreen(
                 }
             }
             val fetched = r.getOrNull()
-            if (fetched?.isAdultContent() == true) {
+            if (MslAdultContentFilter.isEnabled(context) && fetched?.isAdultContent() == true) {
                 details = null
                 error = "تم حجب هذا العمل لأنه مصنّف أو موسوم بمحتوى +18."
             } else {
