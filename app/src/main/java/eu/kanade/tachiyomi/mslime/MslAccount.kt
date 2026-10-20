@@ -139,7 +139,7 @@ fun MslAccountCard() {
                     Text("لدي حساب سابق")
                 }
             }
-            if (MslAds.privacyOptionsRequired) {
+            if (MslAds.privacyOptionsAvailable) {
                 TextButton(onClick = { ctx.findActivity()?.let(MslAds::showPrivacyOptions) }) {
                     Icon(MaterialSymbols.Rounded.Settings, null)
                     Text("  خيارات الخصوصية والإعلانات")

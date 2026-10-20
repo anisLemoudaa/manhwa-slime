@@ -452,7 +452,6 @@ private fun MslCoinStoreDialog(
                             }
                             MslAds.showRewardedWhenReady(
                                 host,
-                                session.userId,
                                 session.id,
                                 onRewardEarned = {
                                     rewardEarned = true
