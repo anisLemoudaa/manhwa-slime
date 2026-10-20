@@ -516,6 +516,13 @@ private fun MslCoinStoreDialog(
                         },
                     )
                 }
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
+                if (busy) {
+                    CircularProgressIndicator(
+                        color = MslDesignTokens.accentBright,
+                        trackColor = MslDesignTokens.border,
+                    )
+                }
                 if (!vipActive) {
                     Text(
                         stringResource(MR.strings.coin_reward_unlimited),
@@ -557,13 +564,6 @@ private fun MslCoinStoreDialog(
                     style = MaterialTheme.typography.labelSmall,
                     color = MslDesignTokens.textMuted,
                 )
-                Text(message, style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
-                if (busy) {
-                    CircularProgressIndicator(
-                        color = MslDesignTokens.accentBright,
-                        trackColor = MslDesignTokens.border,
-                    )
-                }
             }
         },
         confirmButton = {
