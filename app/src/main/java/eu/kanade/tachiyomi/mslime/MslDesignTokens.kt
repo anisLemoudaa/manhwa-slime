@@ -10,26 +10,28 @@ import androidx.compose.ui.unit.dp
  * every screen can share the same palette without introducing placeholder content.
  */
 object MslDesignTokens {
-    val background = Color(0xFF050C1B)
-    val backgroundRaised = Color(0xFF08142A)
-    val surface = Color(0xFF0D1A35)
-    val surfaceRaised = Color(0xFF122344)
-    val surfaceHighest = Color(0xFF192B50)
-    val border = Color(0xFF2B416B)
+    val background = Color(0xFF000000)
+    val backgroundRaised = Color(0xFF0B1124)
+    val surface = Color(0xFF0F1B3D)
+    val surfaceRaised = Color(0xFF15204A)
+    val surfaceHighest = Color(0xFF15204A)
+    val border = Color(0xFF26335F)
 
-    val accent = Color(0xFF8652FF)
-    val accentBright = Color(0xFFA65BFF)
-    val accentBlue = Color(0xFF456EFF)
-    val cyan = Color(0xFF35D7C6)
+    val accent = Color(0xFF6F42F5)
+    val accentBright = Color(0xFFA78BFA)
+    val accentBlue = Color(0xFF526FFF)
+    val cyan = Color(0xFF38BDF8)
+    val rose = Color(0xFFFF5D8F)
+    val gold = Color(0xFFFBBF24)
     val success = Color(0xFF51DDAF)
     val warning = Color(0xFFFFC55C)
     val danger = Color(0xFFFF6484)
 
-    val textPrimary = Color(0xFFF5F6FF)
-    val textSecondary = Color(0xFFB6C2DE)
-    val textMuted = Color(0xFF8393B7)
+    val textPrimary = Color(0xFFFFFFFF)
+    val textSecondary = Color(0xFFAEB3C7)
+    val textMuted = Color(0xFF8E96B8)
 
-    val accentGradient = Brush.horizontalGradient(listOf(accentBlue, accent, accentBright))
+    val accentGradient = Brush.horizontalGradient(listOf(accentBlue, accent, rose, accentBright))
     val heroGradient = Brush.verticalGradient(
         listOf(Color.Transparent, background.copy(alpha = 0.12f), background),
     )

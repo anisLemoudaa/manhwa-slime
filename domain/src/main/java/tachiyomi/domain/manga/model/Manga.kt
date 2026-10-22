@@ -141,11 +141,21 @@ data class Manga(
         return JavaToKotlinXSerializable(Json.encodeToString<Manga>(this))
     }
 
-    class JavaToKotlinXSerializable(private val data: String) : JavaSerializable {
+class JavaToKotlinXSerializable(private val data: String) : JavaSerializable {
 
         @Throws(ObjectStreamException::class)
         private fun readResolve(): Any {
             return Json.decodeFromString<Manga>(data)
         }
     }
+}
+
+/** Best-effort filter for mature manga explicitly tagged by a source. */
+fun Manga.isAdultContent(): Boolean {
+    val metadata = listOfNotNull(title, url, description, author, artist).joinToString(" ") + " " + genre.orEmpty().joinToString(" ")
+    val normalized = metadata.lowercase()
+    return listOf(
+        "18+", "18 +", "r18", "nsfw", "adult", "mature", "explicit", "erotica", "erotic", "hentai", "smut", "porn", "ecchi",
+        "للكبار", "للبالغين", "محتوى للبالغين", "محتوى للكبار", "محتوى جنسي", "إباحي", "اباحي", "جنس صريح", "١٨+", "١٨ +", "+١٨",
+    ).any { marker -> normalized.contains(marker) }
 }

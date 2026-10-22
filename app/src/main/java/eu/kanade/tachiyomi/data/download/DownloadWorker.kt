@@ -4,9 +4,12 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.lifecycle.asFlow
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -61,7 +64,7 @@ class DownloadWorker(context: Context, workerParams: WorkerParameters) : Corouti
         var networkIssue = networkIssue()
         if (networkIssue != null) {
             downloader.stop(networkIssue)
-            return Result.failure()
+            return Result.retry()
         }
 
         if (!downloader.start()) return Result.failure()
@@ -77,7 +80,7 @@ class DownloadWorker(context: Context, workerParams: WorkerParameters) : Corouti
             if (downloader.isRunning && (networkIssue != null || isStopped)) downloader.stop(networkIssue)
         }
 
-        return Result.success()
+        return if (networkIssue != null) Result.retry() else Result.success()
     }
 
     private fun networkIssue(): String? {
@@ -95,6 +98,12 @@ class DownloadWorker(context: Context, workerParams: WorkerParameters) : Corouti
 
         fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
                 .addTag(TAG)
                 .build()
             WorkManager.getInstance(context)

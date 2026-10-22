@@ -279,19 +279,26 @@ object MslWallet {
 }
 
 @Composable
-fun MslCoinWalletHeader() {
+fun MslCoinWalletHeader(openStoreInitially: Boolean = false) {
     if (!MslWallet.enabled) return
     val context = LocalContext.current
     val walletBalance by MslWallet.balance.collectAsState()
     var balance by remember { mutableStateOf<Int?>(null) }
     var balanceLoading by remember { mutableStateOf(true) }
-    var storeVisible by remember { mutableStateOf(false) }
+    var welcomeBonusReceived by remember { mutableStateOf(false) }
+    var storeVisible by remember(openStoreInitially) { mutableStateOf(openStoreInitially) }
 
     LaunchedEffect(walletBalance) { balance = walletBalance }
 
     LaunchedEffect(context) {
         balanceLoading = true
-        balance = withContext(Dispatchers.IO) { MslWallet.refresh(context) }
+        val walletState = withContext(Dispatchers.IO) {
+            val refreshedBalance = MslWallet.refresh(context)
+            val hasWelcomeBonus = MslWallet.transactions(context)?.any { it.kind == "welcome_bonus" && it.delta == 500 } == true
+            refreshedBalance to hasWelcomeBonus
+        }
+        balance = walletState.first
+        welcomeBonusReceived = walletState.second
         balanceLoading = false
     }
 
@@ -319,6 +326,13 @@ fun MslCoinWalletHeader() {
                     fontWeight = FontWeight.Bold,
                     color = MslDesignTokens.accentBright,
                 )
+                if (welcomeBonusReceived) {
+                    Text(
+                        "🎁 وصلت هدية التسجيل: 500 عملة — تكفي شهرًا من VIP.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MslDesignTokens.warning,
+                    )
+                }
             }
             TextButton(
                 onClick = { storeVisible = true },
@@ -438,7 +452,6 @@ private fun MslCoinStoreDialog(
                             }
                             MslAds.showRewardedWhenReady(
                                 host,
-                                session.userId,
                                 session.id,
                                 onRewardEarned = {
                                     rewardEarned = true
@@ -503,6 +516,13 @@ private fun MslCoinStoreDialog(
                         },
                     )
                 }
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
+                if (busy) {
+                    CircularProgressIndicator(
+                        color = MslDesignTokens.accentBright,
+                        trackColor = MslDesignTokens.border,
+                    )
+                }
                 if (!vipActive) {
                     Text(
                         stringResource(MR.strings.coin_reward_unlimited),
@@ -544,13 +564,6 @@ private fun MslCoinStoreDialog(
                     style = MaterialTheme.typography.labelSmall,
                     color = MslDesignTokens.textMuted,
                 )
-                Text(message, style = MaterialTheme.typography.bodySmall, color = MslDesignTokens.textSecondary)
-                if (busy) {
-                    CircularProgressIndicator(
-                        color = MslDesignTokens.accentBright,
-                        trackColor = MslDesignTokens.border,
-                    )
-                }
             }
         },
         confirmButton = {

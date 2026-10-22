@@ -1,0 +1,17 @@
+flowchart TB
+    U[User] --> UI[Android UI: Jetpack Compose Material 3]
+    UI --> NAV[Voyager navigation and TabbedScreen]
+    NAV --> VM[ViewModels and state flows]
+    VM --> DOMAIN[Domain: use cases, preferences, repository contracts]
+    DOMAIN --> DATA[Data: SQLDelight, OkHttp, ProtoBuf, JSON]
+    VM --> EXT[ExtensionManager and SourceManager]
+    EXT --> SOURCE[Installed source extensions and source-api]
+    DATA --> DB[(Local database and preferences)]
+    DATA --> NET[NetworkHelper and remote repositories]
+    NET --> SUPA[Supabase auth, profile, social, comments]
+    NET --> KEI[Keiyoushi index.pb and APK metadata]
+    SOURCE --> WEBSITES[Independent manga/manhwa websites]
+    TOKENS[MslTheme and MslDesignTokens] --> UI
+    CORE[core/common, core/archive, core/metro, i18n, icons, presentation-core] -. shared foundations .-> UI
+    CORE -. shared foundations .-> DOMAIN
+    CORE -. shared foundations .-> DATA
