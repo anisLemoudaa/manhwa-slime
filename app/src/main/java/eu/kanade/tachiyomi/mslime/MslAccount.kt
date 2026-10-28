@@ -66,7 +66,7 @@ fun MslFirstLoginDialog() {
                 ) {
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("🎁 هدية ترحيب للحسابات الجديدة: 500 عملة", color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold)
-                        Text("تُضاف تلقائيًا عند إنشاء الحساب خلال فترة انتظار قبول الإعلانات، وتكفي لشراء VIP لمدة شهر.", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall)
+                        Text("تُضاف تلقائيًا للحسابات الجديدة؛ ويمكن جمعها مع المكافآت الأخرى للوصول إلى اشتراك VIP.", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 Button(

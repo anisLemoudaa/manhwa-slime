@@ -41,6 +41,7 @@ import eu.kanade.tachiyomi.mslime.MslChapterAccess
 import eu.kanade.tachiyomi.mslime.MslFavoriteItem
 import eu.kanade.tachiyomi.mslime.MslFavoriteKind
 import eu.kanade.tachiyomi.mslime.MslFavorites
+import eu.kanade.tachiyomi.mslime.MslVip
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -577,6 +578,7 @@ class MangaViewModel(
     private fun List<Chapter>.toChapterListItems(manga: Manga): List<ChapterList.Item> {
         val isLocal = manga.isLocal()
         val unlockedKeys = MslChapterAccess.cachedKeys(context)
+        val vipActive = MslVip.cachedActive(context)
         return map { chapter ->
             val activeDownload = if (isLocal) {
                 null
@@ -605,7 +607,7 @@ class MangaViewModel(
                 downloadState = downloadState,
                 downloadProgress = activeDownload?.progress ?: 0,
                 selected = chapter.id in selectedChapterIds,
-                isUnlocked = isLocal ||
+                isUnlocked = isLocal || vipActive ||
                     MslChapterAccess.mangaKey(manga.source, manga.url, chapter.url)?.let { it in unlockedKeys } == true,
             )
         }

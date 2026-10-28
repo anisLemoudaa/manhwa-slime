@@ -1566,20 +1566,28 @@ class NovelReaderScreen(
             html = null
             error = null
             locked = false
-            val accessKey = MslChapterAccess.novelKey(sourceId, novelPath, chapter.path)
-            if (!withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, accessKey) }) {
-                locked = true
-                loading = false
-                return@LaunchedEffect
-            }
             val cachedContent = runCatchingCancellable {
                 withContext(Dispatchers.IO) { offlineStore.read(sourceId, novelPath, chapter.path) }
             }.getOrNull()
-            offlineSaved = cachedContent != null
+            offlineSaved = !cachedContent.isNullOrBlank()
+
+            if (offlineOnly && !offlineSaved) {
+                error = "هذا الفصل غير محفوظ على الجهاز أو تعذّرت قراءة ملفه."
+                loading = false
+                return@LaunchedEffect
+            }
+            if (!offlineSaved) {
+                val accessKey = MslChapterAccess.novelKey(sourceId, novelPath, chapter.path)
+                if (!withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, accessKey) }) {
+                    locked = true
+                    loading = false
+                    return@LaunchedEffect
+                }
+            }
 
             val result = runCatchingCancellable {
-                if (offlineOnly) cachedContent ?: error("هذا الفصل غير محفوظ على الجهاز.")
-                else cachedContent ?: manager.chapter(sourceId, chapter.path)
+                if (offlineSaved) cachedContent.orEmpty()
+                else manager.chapter(sourceId, chapter.path)
             }
 
             result.onSuccess { content ->

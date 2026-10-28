@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import android.content.Context
-import android.net.Uri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -13,6 +12,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import mihon.core.archive.archiveReader
 import tachiyomi.domain.manga.model.Manga
 import uy.kohesive.injekt.injectLazy
+import java.io.FileNotFoundException
 
 /**
  * Loader used to load a chapter from the downloaded chapters.
@@ -61,7 +61,9 @@ internal class DownloadPageLoader(
         val pages = downloadManager.buildPageList(source, manga, chapter.chapter.toDomainChapter()!!)
         return pages.map { page ->
             ReaderPage(page.index, page.url, page.imageUrl) {
-                context.contentResolver.openInputStream(page.uri ?: Uri.EMPTY)!!
+                val uri = page.uri ?: throw FileNotFoundException("Downloaded page has no URI")
+                context.contentResolver.openInputStream(uri)
+                    ?: throw FileNotFoundException("Downloaded page is no longer readable: $uri")
             }.apply {
                 status = Page.State.Ready
             }

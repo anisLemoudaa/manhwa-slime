@@ -457,6 +457,21 @@ class ReaderViewModel(
     private suspend fun hasChapterAccess(chapter: ReaderChapter): Boolean = withIOContext {
         val currentManga = manga ?: return@withIOContext false
         if (!MslWallet.enabled || currentManga.isLocal()) return@withIOContext true
+        val dbChapter = chapter.chapter
+        val downloadedLocally = downloadManager.isChapterDownloaded(
+            dbChapter.name,
+            dbChapter.scanlator,
+            dbChapter.url,
+            currentManga.title,
+            currentManga.source,
+        ) || downloadManager.isChapterDownloadedOnDisk(
+            dbChapter.name,
+            dbChapter.scanlator,
+            dbChapter.url,
+            currentManga.title,
+            sourceManager.getOrStub(currentManga.source),
+        )
+        if (downloadedLocally) return@withIOContext true
         val key = MslChapterAccess.mangaKey(currentManga.source, currentManga.url, chapter.chapter.url)
         MslChapterAccess.hasAccess(context, key)
     }

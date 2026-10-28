@@ -62,7 +62,8 @@ object MslChapterAccess {
         return values
     }
 
-    fun isUnlocked(context: Context, key: String): Boolean = key in cachedKeys(context)
+    fun isUnlocked(context: Context, key: String): Boolean =
+        isValidKey(key) && (MslVip.cachedActive(context) || key in cachedKeys(context))
 
     /**
      * Refresh the current account's complete unlock mirror. Returns null when offline/unauthenticated;
@@ -71,6 +72,7 @@ object MslChapterAccess {
     fun refresh(context: Context): Set<String>? = runCatching {
         if (!MslWallet.enabled) return@runCatching emptySet()
         val token = authenticatedToken(context) ?: return@runCatching null
+        MslVip.refresh(context)
         val keys = mutableSetOf<String>()
         var offset = 0
         while (offset < 50_000) {
@@ -97,9 +99,11 @@ object MslChapterAccess {
      */
     fun hasAccess(context: Context, key: String?): Boolean {
         if (!MslWallet.enabled) return true
-        if (key.isNullOrBlank()) return false
+        if (key.isNullOrBlank() || !isValidKey(key)) return false
+        if (MslVip.cachedActive(context)) return true
         if (key in cachedKeys(context)) return true
-        return key in (refresh(context) ?: return false)
+        val refreshedKeys = refresh(context) ?: return false
+        return MslVip.cachedActive(context) || key in refreshedKeys
     }
 
     /** One RPC handles both one chapter and up to 100 selected chapters atomically. */
@@ -107,6 +111,7 @@ object MslChapterAccess {
         if (!MslWallet.enabled || keys.isEmpty() || keys.size > MAX_UNLOCK_BATCH) return@runCatching null
         val distinct = keys.toSet()
         if (distinct.any { !isValidKey(it) }) return@runCatching null
+        if (MslVip.cachedActive(context)) return@runCatching UnlockResult(true, null, 0, 0, "vip")
         val token = authenticatedToken(context) ?: return@runCatching null
         val response = MslSupabase.call(
             "POST",
@@ -120,6 +125,8 @@ object MslChapterAccess {
         balance?.let(MslWallet::updateBalance)
         val granted = payload.optJSONArray("unlocked")?.let(::stringSet).orEmpty()
         val already = payload.optJSONArray("already_unlocked")?.let(::stringSet).orEmpty()
+        val status = payload.optString("status", "unknown")
+        if (status == "vip") MslVip.refresh(context)
         val old = cachedKeys(context)
         saveCache(context, MslSupabase.uid(context), old + granted + already)
         UnlockResult(
@@ -127,7 +134,7 @@ object MslChapterAccess {
             balance = balance,
             charged = payload.optInt("charged", 0).coerceAtLeast(0),
             required = payload.optInt("required", 0).coerceAtLeast(0),
-            status = payload.optString("status", "unknown"),
+            status = status,
         )
     }.getOrNull()
 

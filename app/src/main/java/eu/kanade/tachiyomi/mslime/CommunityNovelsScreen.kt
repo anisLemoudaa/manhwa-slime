@@ -316,11 +316,25 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
     var reportReason by remember(novel.id) { mutableStateOf("inappropriate") }
     var reportDescription by remember(novel.id) { mutableStateOf("") }
     var reportBusy by remember(novel.id) { mutableStateOf(false) }
+    var novelComments by remember(novel.id) { mutableStateOf(emptyList<CommunityNovelApi.Comment>()) }
+    var novelCommentsLoading by remember(novel.id) { mutableStateOf(false) }
+    var novelCommentDraft by remember(novel.id) { mutableStateOf("") }
+    var novelCommentSending by remember(novel.id) { mutableStateOf(false) }
+    var showNovelComments by remember(novel.id) { mutableStateOf(false) }
     val isOwner = novel.authorId == MslSupabase.uid(context)
     var chapterAccessRevision by remember(novel.id) { mutableIntStateOf(0) }
     var following by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     var downloadedIds by remember(novel.id) { mutableStateOf(emptySet<String>()) }
+    fun loadNovelComments() {
+        scope.launch {
+            novelCommentsLoading = true
+            novelComments = withContext(Dispatchers.IO) {
+                CommunityNovelApi.comments(context, novel.id, null)
+            }
+            novelCommentsLoading = false
+        }
+    }
     LaunchedEffect(novel.id) {
         chapters = withContext(Dispatchers.IO) { CommunityNovelApi.chapters(context, novel.id, isOwner) }
         withContext(Dispatchers.IO) { MslChapterAccess.refresh(context) }
@@ -328,6 +342,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         val likes = withContext(Dispatchers.IO) { CommunityNovelApi.likeSummary(context, novel.id) }
         liked = likes.liked
         likeCount = likes.count
+        loadNovelComments()
         ratingSummary = withContext(Dispatchers.IO) { CommunityNovelApi.ratingSummary(context, novel.id) }
         if (novel.status == "published" && withContext(Dispatchers.IO) { CommunityNovelApi.incrementView(context, novel.id) }) {
             viewCount += 1
@@ -368,6 +383,7 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
                 }
             }, modifier = Modifier.defaultMinSize(minWidth = 56.dp), compact = true, enabled = !likeBusy)
             CommunityFavoriteButton(novel)
+            PdfButton("التعليقات", { showNovelComments = true; loadNovelComments() }, compact = true)
             PdfButton("ابدأ القراءة", { chapters.firstOrNull { it.status == "published" }?.let(onRead) }, true, Modifier.weight(1f))
         }
         Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
@@ -394,6 +410,21 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         }
         Text(novel.description.ifBlank { "وصف الرواية الكامل يظهر هنا." }, color = Color.White, fontSize = 12.sp, lineHeight = 21.sp, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
         Text(if (expanded) "أقل" else "المزيد", color = PdfPurpleSoft, fontSize = 11.sp, modifier = Modifier.clickable { expanded = !expanded }.padding(vertical = 5.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("تعليقات الرواية", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Spacer(Modifier.weight(1f))
+            Text("${novelComments.size}", color = PdfPurpleSoft, fontSize = 11.sp)
+        }
+        when {
+            novelCommentsLoading && novelComments.isEmpty() -> Text("جارٍ تحميل التعليقات…", color = PdfMuted, fontSize = 11.sp)
+            novelComments.isEmpty() -> Text("لا توجد تعليقات بعد. اضغط «التعليقات» لإضافة أول تعليق.", color = PdfMuted, fontSize = 11.sp)
+            else -> novelComments.takeLast(2).forEach { comment ->
+                Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Text("قارئ ${comment.userId.take(8)}", color = PdfPurpleSoft, fontSize = 10.sp)
+                    Text(comment.content, color = Color.White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("آخر تحديث: ${novel.updatedAt.take(10)}", color = PdfMuted, fontSize = 10.sp)
             Text("⚑ إبلاغ عن العمل", color = PdfPurpleSoft, fontSize = 10.sp, modifier = Modifier.clickable { showReportDialog = true })
@@ -501,6 +532,72 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
             },
         )
     }
+    if (showNovelComments) {
+        ModalBottomSheet(onDismissRequest = { showNovelComments = false }, containerColor = PdfSurface) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("تعليقات رواية ${novel.title}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                when {
+                    novelCommentsLoading && novelComments.isEmpty() -> Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = PdfPurpleSoft)
+                    }
+                    novelComments.isEmpty() -> Text("لا توجد تعليقات بعد.", color = PdfMuted)
+                    else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                        items(novelComments, key = { it.id }) { comment ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                Text("قارئ ${comment.userId.take(8)}", color = PdfPurpleSoft, fontSize = 11.sp)
+                                Text(comment.content, color = Color.White, fontSize = 14.sp)
+                                HorizontalDivider(color = PdfLine, modifier = Modifier.padding(top = 8.dp))
+                            }
+                        }
+                    }
+                }
+                if (MslSupabase.uid(context).isBlank()) {
+                    Text("سجّل الدخول لمشاهدة التعليقات ونشرها.", color = PdfMuted, fontSize = 11.sp)
+                } else {
+                    OutlinedTextField(
+                        value = novelCommentDraft,
+                        onValueChange = { novelCommentDraft = it.take(1000) },
+                        enabled = !novelCommentSending,
+                        label = { Text("اكتب تعليقًا (1000 حرف كحد أقصى)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4,
+                    )
+                    PdfButton(
+                        if (novelCommentSending) "جارٍ الإرسال…" else "إرسال التعليق",
+                        onClick = {
+                            val body = novelCommentDraft.trim()
+                            if (body.isNotEmpty() && !novelCommentSending) {
+                                novelCommentSending = true
+                                scope.launch {
+                                    try {
+                                        val saved = withContext(Dispatchers.IO) {
+                                            CommunityNovelApi.addComment(context, novel.id, null, body)
+                                        }
+                                        if (saved) {
+                                            novelCommentDraft = ""
+                                            loadNovelComments()
+                                        } else {
+                                            Toast.makeText(context, "تعذّر نشر التعليق. تحقق من تسجيل الدخول والاتصال.", Toast.LENGTH_LONG).show()
+                                        }
+                                    } finally {
+                                        novelCommentSending = false
+                                    }
+                                }
+                            }
+                        },
+                        primary = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !novelCommentSending && novelCommentDraft.isNotBlank(),
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
 }
 
 @Composable private fun PdfStat(label: String, value: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, color = Color.White, fontSize = 15.sp); Text(label, color = PdfMuted, fontSize = 10.sp) } }
@@ -552,15 +649,18 @@ private suspend fun downloadCommunityNovelChapter(context: android.content.Conte
         chapterLoadError = null
         val current = chapter ?: run { chapterLoading = false; return@LaunchedEffect }
         chapterLoading = true
+        val cached = withContext(Dispatchers.IO) {
+            NovelOfflineStore(context).read("community", novel.id, current.id)
+        }
+        val hasCachedContent = !cached.isNullOrBlank()
         val key = MslChapterAccess.communityKey(novel.id, current.id)
-        val allowed = isOwner || withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, key) }
+        val allowed = isOwner || hasCachedContent || withContext(Dispatchers.IO) { MslChapterAccess.hasAccess(context, key) }
         if (!allowed) {
             chapterLocked = true
             chapterLoading = false
             return@LaunchedEffect
         }
         val text = withContext(Dispatchers.IO) {
-            val cached = NovelOfflineStore(context).read("community", novel.id, current.id)
             cached ?: if (isOwner && current.content.isNotBlank()) current.content
             else CommunityNovelApi.chapterContent(context, novel.id, current.id)
         }

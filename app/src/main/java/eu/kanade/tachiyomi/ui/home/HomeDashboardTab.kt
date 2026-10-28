@@ -62,6 +62,7 @@ import eu.kanade.tachiyomi.mslime.MslDesignTokens
 import eu.kanade.tachiyomi.mslime.MslReadingTasks
 import eu.kanade.tachiyomi.mslime.MslSupabase
 import eu.kanade.tachiyomi.mslime.MslWallet
+import eu.kanade.tachiyomi.mslime.MslVipScreen
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -207,6 +208,29 @@ private fun HomeDashboardContent() {
                 modifier = Modifier.weight(1f),
                 onClick = { tabNavigator.current = UpdatesTab },
             )
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)
+                .clickable { navigator.push(MslVipScreen()) },
+            shape = MslDesignTokens.cardShape,
+            color = MslDesignTokens.surfaceRaised,
+            tonalElevation = 2.dp,
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Surface(shape = RoundedCornerShape(50), color = MslDesignTokens.accent.copy(alpha = 0.2f)) {
+                    Text("VIP", modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp), color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("اشتراك VIP", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold)
+                    Text("افتح جميع الفصول واستفد من مزايا العضوية", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("اشترك ›", color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold)
+            }
         }
 
         Spacer(Modifier.height(22.dp))
