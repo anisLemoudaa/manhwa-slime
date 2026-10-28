@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 Disallow: /admin/
-Sitemap: https://manhwa-slime.pages.dev/sitemap.xml
+Sitemap: https://manhwa-slime.pages.dev/sitemap-20261028.xml
