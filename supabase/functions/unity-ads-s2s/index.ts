@@ -13,6 +13,10 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function isValidTransactionId(value: string): boolean {
+  return value.length >= 1 && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
 function signedParameterString(params: URLSearchParams): string {
   const entries = [...params.entries()];
   const keys = entries.map(([key]) => key);
@@ -50,9 +54,14 @@ Deno.serve(async (request) => {
     const sessionId = params.get("sid") ?? "";
     const transactionId = params.get("oid") ?? "";
     if (params.get("productid") !== EXPECTED_PRODUCT_ID) {
+      console.warn("Unity S2S rejected: unexpected product ID");
       return new Response("Unexpected Unity reward product", { status: 400 });
     }
-    if (!isUuid(sessionId) || transactionId.length < 16 || transactionId.length > 512) {
+    if (!isUuid(sessionId) || !isValidTransactionId(transactionId)) {
+      console.warn("Unity S2S rejected: invalid reward identity", {
+        sessionIdIsUuid: isUuid(sessionId),
+        transactionIdLength: transactionId.length,
+      });
       return new Response("Invalid Unity reward identity", { status: 400 });
     }
 
@@ -71,7 +80,10 @@ Deno.serve(async (request) => {
     }
     const sessions = await sessionResponse.json();
     const userId = Array.isArray(sessions) ? String(sessions[0]?.user_id ?? "") : "";
-    if (!isUuid(userId)) return new Response("Reward session not found", { status: 400 });
+    if (!isUuid(userId)) {
+      console.warn("Unity S2S rejected: reward session not found");
+      return new Response("Reward session not found", { status: 400 });
+    }
 
     const grantResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/grant_ad_reward`, {
       method: "POST",
