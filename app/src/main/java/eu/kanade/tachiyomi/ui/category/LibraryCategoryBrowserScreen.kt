@@ -108,7 +108,7 @@ class LibraryCategoryBrowserScreen : Screen() {
                                         model = cover,
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
+                                        contentScale = ContentScale.Fit,
                                     )
                                 }
                                 Box(

@@ -61,6 +61,14 @@ fun MslFirstLoginDialog() {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("احفظ المفضلة والعملات والمستوى والصور والتعليقات في حسابك، حتى تبقى بعد إعادة تثبيت التطبيق.")
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MslDesignTokens.surfaceRaised),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("🎁 هدية ترحيب للحسابات الجديدة: 500 عملة", color = MslDesignTokens.accentBright, fontWeight = FontWeight.Bold)
+                        Text("تُضاف تلقائيًا للحسابات الجديدة؛ ويمكن جمعها مع المكافآت الأخرى للوصول إلى اشتراك VIP.", color = MslDesignTokens.textSecondary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 Button(
                     onClick = { finishLoginPrompt(ctx); visible = false; MslAuth.startGoogle(ctx, true) },
                     modifier = Modifier.fillMaxWidth(),
@@ -131,7 +139,7 @@ fun MslAccountCard() {
                     Text("لدي حساب سابق")
                 }
             }
-            if (MslAds.privacyOptionsRequired) {
+            if (MslAds.privacyOptionsAvailable) {
                 TextButton(onClick = { ctx.findActivity()?.let(MslAds::showPrivacyOptions) }) {
                     Icon(MaterialSymbols.Rounded.Settings, null)
                     Text("  خيارات الخصوصية والإعلانات")

@@ -9,6 +9,7 @@ import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.model.getComicInfo
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.mslime.MslChapterAccess
 import eu.kanade.tachiyomi.mslime.MslWallet
 import eu.kanade.tachiyomi.mslime.ProComicChapterNotPreparedException
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
@@ -237,36 +238,15 @@ class Downloader(
     private fun CoroutineScope.launchDownloadJob(download: Download) = launchIO {
         try {
             if (MslWallet.enabled) {
-                var reservationId = download.coinReservationId
-                if (reservationId.isNullOrBlank()) {
-                    reservationId = UUID.randomUUID().toString()
-                    download.coinReservationId = reservationId
-                    store.addAll(listOf(download))
-                }
-                var reservation = runCatching {
-                    MslWallet.reserveDownload(
-                        context,
-                        reservationId,
-                        "${download.source.id}:${download.manga.id}:${download.chapter.id}",
-                    )
-                }.getOrNull()
-                if (reservation?.status == "refunded") {
-                    reservationId = UUID.randomUUID().toString()
-                    download.coinReservationId = reservationId
-                    store.addAll(listOf(download))
-                    reservation = runCatching {
-                        MslWallet.reserveDownload(
-                            context,
-                            reservationId,
-                            "${download.source.id}:${download.manga.id}:${download.chapter.id}",
-                        )
-                    }.getOrNull()
-                }
-                if (reservation == null || !reservation.allowed) {
+                val chapterKey = MslChapterAccess.mangaKey(
+                    download.manga.source,
+                    download.manga.url,
+                    download.chapter.url,
+                )
+                if (!MslChapterAccess.hasAccess(context, chapterKey)) {
                     download.status = Download.State.ERROR
                     notifier.onError(
-                        if (reservation == null) context.stringResource(MR.strings.coin_download_balance_check_failed)
-                        else context.stringResource(MR.strings.coin_download_no_balance),
+                        "الفصل مقفل. افتحه مقابل عملة واحدة من قائمة الفصول أولًا.",
                         download.chapter.name,
                         download.manga.title,
                         download.manga.id,
@@ -278,27 +258,6 @@ class Downloader(
 
             downloadChapter(download)
 
-            if (MslWallet.enabled) {
-                val reservationId = download.coinReservationId
-                if (!reservationId.isNullOrBlank()) {
-                    when (download.status) {
-                        Download.State.DOWNLOADED -> {
-                            if (!runCatching { MslWallet.commitDownload(context, reservationId) }.getOrDefault(false)) {
-                                logcat(LogPriority.WARN) { "Coin reservation commit will need reconciliation for ${download.chapter.id}" }
-                            }
-                        }
-                        Download.State.ERROR -> {
-                            if (runCatching { MslWallet.refundDownload(context, reservationId) }.getOrDefault(false)) {
-                                download.coinReservationId = null
-                                store.addAll(listOf(download))
-                            }
-                        }
-                        else -> Unit
-                    }
-                }
-            }
-
-            // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
                 removeFromQueue(download)
             }
@@ -308,8 +267,9 @@ class Downloader(
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
             logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
-            stop()
+            download.status = Download.State.ERROR
+            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            if (areAllDownloadsFinished()) stop()
         }
     }
 

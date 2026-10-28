@@ -30,12 +30,23 @@ object SettingsBrowseScreen : SearchableSettings {
         val context = LocalContext.current
         val navigator = LocalNavigator.currentOrThrow
 
+        val basePreferences = remember { context.appGraph.basePreferences }
         val sourcePreferences = remember { context.appGraph.sourcePreferences }
         val getExtensionStoreCountAsFlow = remember { context.appGraph.getExtensionStoreCountAsFlow }
 
         val reposCount by getExtensionStoreCountAsFlow().collectAsState(0)
 
         return listOf(
+            Preference.PreferenceGroup(
+                title = stringResource(MR.strings.pref_category_content_filter),
+                preferenceItems = listOf(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = basePreferences.hideAdultContent,
+                        title = stringResource(MR.strings.pref_adult_content_filter),
+                        subtitle = stringResource(MR.strings.pref_adult_content_filter_summary),
+                    ),
+                ),
+            ),
             Preference.PreferenceGroup(
                 title = stringResource(MR.strings.label_sources),
                 preferenceItems = listOf(

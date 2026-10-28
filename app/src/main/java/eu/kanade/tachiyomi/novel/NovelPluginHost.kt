@@ -11,6 +11,7 @@ import com.dokar.quickjs.binding.function
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +27,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -97,6 +99,7 @@ class NovelPluginHost(
         q.evaluate<Any?>(asset("lnhost/vendor/protobuf.min.js"))
         q.evaluate<Any?>(asset("lnhost/vendor/noble-ciphers.min.js"))
         q.evaluate<Any?>(asset("lnhost/headless.js"))
+        q.evaluate<Any?>(asset("lnhost/request-bridge.js"))
         quickJs = q
         return q
     }
@@ -161,22 +164,27 @@ class NovelPluginHost(
         mutex.withLock {
             val q = engine()
             val argsJson = JSON.encodeToString(ListSerializer(JsonElement.serializer()), args)
-            q.evaluate<Any?>(
-                "globalThis.__lnPending='__pending__';" +
-                    "globalThis.__lnCallMethod(${jsString(pluginId)},${jsString(method)},${jsString(argsJson)})" +
-                    ".then(function(r){globalThis.__lnPending=r;},function(e){globalThis.__lnPending=JSON.stringify({ok:false,error:String((e&&e.message)||e)});});",
-            )
-            waitForPending(q)
-            val resultJson = q.evaluate<String>("String(globalThis.__lnPending)")
-            val result = JSON.decodeFromString<NovelCallResult>(resultJson)
-            if (!result.ok) error(result.error ?: "$method failed")
-            decode(result.value ?: JsonNull)
+            val requestId = UUID.randomUUID().toString()
+            try {
+                q.evaluate<Any?>(
+                    "globalThis.__lnBeginRequest(${jsString(requestId)},${jsString(pluginId)},${jsString(method)},${jsString(argsJson)});",
+                )
+                waitForPending(q, requestId)
+                val resultJson = q.evaluate<String>("globalThis.__lnGetRequestState(${jsString(requestId)})")
+                val result = JSON.decodeFromString<NovelCallResult>(resultJson)
+                if (!result.ok) error(result.error ?: "$method failed")
+                decode(result.value ?: JsonNull)
+            } finally {
+                withContext(NonCancellable) {
+                    runCatching { q.evaluate<Any?>("globalThis.__lnForgetRequest(${jsString(requestId)});") }
+                }
+            }
         }
     }
 
-    private suspend fun waitForPending(q: QuickJs) {
+    private suspend fun waitForPending(q: QuickJs, requestId: String) {
         repeat(1800) {
-            val state = q.evaluate<String>("String(globalThis.__lnPending)")
+            val state = q.evaluate<String>("globalThis.__lnGetRequestState(${jsString(requestId)})")
             if (state != "__pending__") return
             delay(100)
         }

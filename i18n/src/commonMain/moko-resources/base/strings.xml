@@ -268,6 +268,9 @@
 
     <string name="pref_category_extensions">Extensions</string>
     <string name="pref_allowed_content_warnings">Allowed content warnings</string>
+    <string name="pref_category_content_filter">Content filtering</string>
+    <string name="pref_adult_content_filter">Hide works marked 18+</string>
+    <string name="pref_adult_content_filter_summary">When enabled, hide works and chapters flagged as adult or NSFW. Turn it off to show them, including items that may be mislabeled.</string>
     <string name="pref_apply_content_warnings_to_installed">Also apply to installed extensions</string>
     <string name="pref_apply_content_warnings_to_installed_summary">When off, extensions you already installed keep loading and updating regardless of their warning</string>
     <string name="content_warnings_info">Installed extensions that aren\'t loaded stay listed without their sources; ones you haven\'t installed are hidden. This does not prevent unofficial or potentially incorrectly flagged extensions from surfacing 18+ content within the app.</string>

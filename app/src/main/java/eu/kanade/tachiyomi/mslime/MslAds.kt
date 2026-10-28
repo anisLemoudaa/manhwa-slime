@@ -1,132 +1,197 @@
 package eu.kanade.tachiyomi.mslime
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.google.android.libraries.ads.mobile.sdk.MobileAds
-import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
-import com.google.android.libraries.ads.mobile.sdk.common.PreloadConfiguration
-import com.google.android.libraries.ads.mobile.sdk.common.PreloadCallback
-import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
-import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
-import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdPreloader
-import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
-import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdPreloader
-import com.google.android.libraries.ads.mobile.sdk.rewarded.ServerSideVerificationOptions
-import com.google.android.ump.ConsentInformation
-import com.google.android.ump.ConsentRequestParameters
-import com.google.android.ump.UserMessagingPlatform
+import com.unity3d.ads.IUnityAdsInitializationListener
+import com.unity3d.ads.IUnityAdsLoadListener
+import com.unity3d.ads.IUnityAdsShowListener
+import com.unity3d.ads.UnityAds
+import com.unity3d.ads.UnityAdsLoadOptions
+import com.unity3d.ads.UnityAds.UnityAdsShowCompletionState
+import com.unity3d.ads.UnityAdsShowOptions
+import com.unity3d.ads.metadata.PlayerMetaData
 import eu.kanade.tachiyomi.BuildConfig
 import kotlinx.coroutines.delay
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Consent-gated Google Mobile Ads Next-Gen integration. */
+/** Unity Ads integration. Rewarded coins are granted only by the signed Unity S2S callback. */
 object MslAds {
-    private const val TEST_REWARDED_UNIT = "ca-app-pub-3940256099942544/5224354917"
-    private const val TEST_INTERSTITIAL_UNIT = "ca-app-pub-3940256099942544/1033173712"
     private const val PREFS = "msl_ads"
+    private const val PRIVACY_PREFS = "unity_ads_privacy"
+    private const val PERSONALIZED_ADS_CONSENT = "personalized_ads_consent"
+    private const val LOAD_RETRY_DELAY_MS = 15_000L
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val consentFlowStarted = AtomicBoolean(false)
+    private val consentPromptInProgress = AtomicBoolean(false)
     private val sdkInitialized = AtomicBoolean(false)
+    private val rewardedReady = AtomicBoolean(false)
+    private val rewardedLoading = AtomicBoolean(false)
+    private val interstitialReady = AtomicBoolean(false)
+    private val interstitialLoading = AtomicBoolean(false)
     private val vipInterstitialCheckInProgress = AtomicBoolean(false)
-    private var consentInformation: ConsentInformation? = null
-    private val rewardedPreloadCallback = object : PreloadCallback {
-        override fun onAdPreloaded(preloadId: String, responseInfo: com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo) {
-            Log.i("MslAds", "Rewarded ad ready: $preloadId response=$responseInfo")
-        }
 
-        override fun onAdsExhausted(preloadId: String) {
-            Log.w("MslAds", "Rewarded ad cache exhausted: $preloadId")
-        }
-
-        override fun onAdFailedToPreload(preloadId: String, adError: com.google.android.libraries.ads.mobile.sdk.common.LoadAdError) {
-            Log.e("MslAds", "Rewarded preload failed: id=$preloadId code=${adError.code} message=${adError.message} details=$adError")
-        }
-    }
-
-    var privacyOptionsRequired by mutableStateOf(false)
+    var privacyOptionsAvailable by mutableStateOf(false)
         private set
 
-    private fun rewardedUnitId(): String =
-        if (BuildConfig.DEBUG) TEST_REWARDED_UNIT else BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
+    private fun gameId(): String = BuildConfig.UNITY_ADS_GAME_ID.trim()
+    private fun rewardedUnitId(): String = BuildConfig.UNITY_ADS_REWARDED_AD_UNIT_ID.trim()
+    private fun interstitialUnitId(): String = BuildConfig.UNITY_ADS_INTERSTITIAL_AD_UNIT_ID.trim()
 
-    private fun interstitialUnitId(): String =
-        BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID.ifBlank { if (BuildConfig.DEBUG) TEST_INTERSTITIAL_UNIT else "" }
-
-    private fun appId(): String =
-        if (BuildConfig.DEBUG || BuildConfig.ADMOB_APP_ID_CONFIGURED) BuildConfig.ADMOB_APP_ID else ""
-
-    /** Call once from the launcher activity after it has become the task root. */
+    /** Call from the launcher activity after it has become the task root. */
     fun requestConsentAndInitialize(activity: Activity) {
         if (!consentFlowStarted.compareAndSet(false, true)) return
-        if (appId().isBlank() || (rewardedUnitId().isBlank() && interstitialUnitId().isBlank())) return
+        if (gameId().isBlank() || (rewardedUnitId().isBlank() && interstitialUnitId().isBlank())) return
 
-        val information = UserMessagingPlatform.getConsentInformation(activity)
-        consentInformation = information
-        val parameters = ConsentRequestParameters.Builder().build()
-        information.requestConsentInfoUpdate(
-            activity,
-            parameters,
-            {
-                UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {
-                    refreshConsentState(activity, information)
-                }
-            },
-            {
-                // UMP may still hold a valid previous decision; only request ads if it says so.
-                refreshConsentState(activity, information)
-            },
-        )
+        privacyOptionsAvailable = true
+        val preferences = activity.getSharedPreferences(PRIVACY_PREFS, Context.MODE_PRIVATE)
+        if (preferences.contains(PERSONALIZED_ADS_CONSENT)) {
+            applyPrivacyChoice(
+                activity.applicationContext,
+                preferences.getBoolean(PERSONALIZED_ADS_CONSENT, false),
+            )
+        } else {
+            showConsentDialog(activity, initialPrompt = true)
+        }
     }
 
-    private fun refreshConsentState(context: Context, information: ConsentInformation) {
-        privacyOptionsRequired = information.privacyOptionsRequirementStatus ==
-            ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-        if (information.canRequestAds()) initializeAndPreload(context.applicationContext)
+    /** Presents the in-app consent choice used to update Unity's Developer Consent API. */
+    fun showPrivacyOptions(activity: Activity) {
+        showConsentDialog(activity, initialPrompt = false)
+    }
+
+    private fun showConsentDialog(activity: Activity, initialPrompt: Boolean) {
+        if (!consentPromptInProgress.compareAndSet(false, true)) return
+        activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) {
+                consentPromptInProgress.set(false)
+                return@runOnUiThread
+            }
+            val dialog = AlertDialog.Builder(activity)
+                .setTitle("خيارات خصوصية الإعلانات")
+                .setMessage(
+                    "يمكن أن تستخدم Unity Ads معرّف الإعلانات ومعلومات الجهاز لعرض إعلانات مخصّصة وقياس أدائها. " +
+                        "إذا اخترت عدم الموافقة، سيُطلب عرض إعلانات غير مخصّصة عند توفرها. " +
+                        "يمكنك تغيير اختيارك لاحقًا من إعدادات الخصوصية داخل التطبيق.",
+                )
+                .setPositiveButton("السماح بالإعلانات المخصّصة") { _, _ ->
+                    applyPrivacyChoice(activity.applicationContext, personalizedAdsAllowed = true)
+                }
+                .setNegativeButton("إعلانات غير مخصّصة") { _, _ ->
+                    applyPrivacyChoice(activity.applicationContext, personalizedAdsAllowed = false)
+                }
+                .setCancelable(!initialPrompt)
+                .create()
+            dialog.setOnDismissListener { consentPromptInProgress.set(false) }
+            dialog.show()
+        }
+    }
+
+    private fun applyPrivacyChoice(context: Context, personalizedAdsAllowed: Boolean) {
+        context.getSharedPreferences(PRIVACY_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PERSONALIZED_ADS_CONSENT, personalizedAdsAllowed)
+            .apply()
+
+        // Set the consent signals before first SDK initialization; a decline still permits contextual ads.
+        UnityAds.userConsent = personalizedAdsAllowed
+        UnityAds.userOptOut = !personalizedAdsAllowed
+        if (!sdkInitialized.get()) {
+            initializeAndPreload(context.applicationContext)
+        } else {
+            rewardedReady.set(false)
+            interstitialReady.set(false)
+            preloadRewardedAd()
+            preloadInterstitialAd()
+        }
     }
 
     private fun initializeAndPreload(context: Context) {
         if (!sdkInitialized.compareAndSet(false, true)) return
-        Thread {
-            try {
-                val config = InitializationConfig.Builder(appId()).build()
-                MobileAds.initialize(context, config) {
-                    rewardedUnitId().takeIf(String::isNotBlank)?.let { unitId ->
-                        val request = AdRequest.Builder(unitId).build()
-                        RewardedAdPreloader.start(
-                            unitId,
-                            PreloadConfiguration(request, bufferSize = 2),
-                            rewardedPreloadCallback,
-                        )
-                    }
-                    interstitialUnitId().takeIf(String::isNotBlank)?.let { unitId ->
-                        val request = AdRequest.Builder(unitId).build()
-                        InterstitialAdPreloader.start(unitId, PreloadConfiguration(request))
-                    }
+        UnityAds.initialize(
+            context,
+            gameId(),
+            BuildConfig.DEBUG,
+            object : IUnityAdsInitializationListener {
+                override fun onInitializationComplete() {
+                    Log.i("MslAds", "Unity Ads initialized")
+                    preloadRewardedAd()
+                    preloadInterstitialAd()
                 }
-            } catch (_: Throwable) {
-                sdkInitialized.set(false)
-            }
-        }.start()
+
+                override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError, message: String) {
+                    Log.e("MslAds", "Unity Ads initialization failed: $error $message")
+                    sdkInitialized.set(false)
+                }
+            },
+        )
     }
 
-    fun showPrivacyOptions(activity: Activity) {
-        val information = consentInformation ?: UserMessagingPlatform.getConsentInformation(activity)
-        UserMessagingPlatform.showPrivacyOptionsForm(activity) {
-            privacyOptionsRequired = information.privacyOptionsRequirementStatus ==
-                ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-            if (information.canRequestAds()) initializeAndPreload(activity.applicationContext)
-        }
+    private fun preloadRewardedAd() {
+        val unitId = rewardedUnitId()
+        if (!sdkInitialized.get() || unitId.isBlank() || !rewardedLoading.compareAndSet(false, true)) return
+        UnityAds.load(
+            unitId,
+            UnityAdsLoadOptions(),
+            object : IUnityAdsLoadListener {
+                override fun onUnityAdsAdLoaded(placementId: String) {
+                    rewardedLoading.set(false)
+                    rewardedReady.set(true)
+                    Log.i("MslAds", "Unity rewarded ad ready: $placementId")
+                }
+
+                override fun onUnityAdsFailedToLoad(
+                    placementId: String,
+                    error: UnityAds.UnityAdsLoadError,
+                    message: String,
+                ) {
+                    rewardedLoading.set(false)
+                    rewardedReady.set(false)
+                    Log.w("MslAds", "Unity rewarded load failed: $placementId $error $message")
+                    mainHandler.postDelayed({ preloadRewardedAd() }, LOAD_RETRY_DELAY_MS)
+                }
+            },
+        )
     }
 
-    /** Returns false if no ad has been preloaded or the SDK is not consent-ready. */
+    private fun preloadInterstitialAd() {
+        val unitId = interstitialUnitId()
+        if (!sdkInitialized.get() || unitId.isBlank() || !interstitialLoading.compareAndSet(false, true)) return
+        UnityAds.load(
+            unitId,
+            UnityAdsLoadOptions(),
+            object : IUnityAdsLoadListener {
+                override fun onUnityAdsAdLoaded(placementId: String) {
+                    interstitialLoading.set(false)
+                    interstitialReady.set(true)
+                    Log.i("MslAds", "Unity interstitial ad ready: $placementId")
+                }
+
+                override fun onUnityAdsFailedToLoad(
+                    placementId: String,
+                    error: UnityAds.UnityAdsLoadError,
+                    message: String,
+                ) {
+                    interstitialLoading.set(false)
+                    interstitialReady.set(false)
+                    Log.w("MslAds", "Unity interstitial load failed: $placementId $error $message")
+                    mainHandler.postDelayed({ preloadInterstitialAd() }, LOAD_RETRY_DELAY_MS)
+                }
+            },
+        )
+    }
+
+    /** Returns false if the wallet, signed reward flow, SDK, or preloaded ad is unavailable. */
     fun showRewarded(
         activity: Activity,
-        userId: String,
         sessionId: String,
         onRewardEarned: () -> Unit,
         onAdClosed: () -> Unit,
@@ -136,7 +201,7 @@ object MslAds {
             onAdUnavailable()
             return false
         }
-        if (!BuildConfig.COIN_WALLET_ENABLED || !sdkInitialized.get()) {
+        if (!BuildConfig.COIN_WALLET_ENABLED || (!BuildConfig.DEBUG && !BuildConfig.UNITY_ADS_S2S_ENABLED) || !sdkInitialized.get()) {
             onAdUnavailable()
             return false
         }
@@ -145,44 +210,77 @@ object MslAds {
             onAdUnavailable()
             return false
         }
-        val ad = RewardedAdPreloader.pollAd(unitId)
-        if (ad == null) {
+        if (!rewardedReady.compareAndSet(true, false)) {
+            preloadRewardedAd()
             onAdUnavailable()
             return false
         }
-        ad.setServerSideVerificationOptions(
-            ServerSideVerificationOptions(userId, sessionId),
-        )
-        ad.adEventCallback = object : RewardedAdEventCallback {
-            override fun onAdDismissedFullScreenContent() {
-                onAdClosed()
-            }
 
-            override fun onAdFailedToShowFullScreenContent(fullScreenContentError: com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError) {
-                onAdClosed()
+        runCatching {
+            PlayerMetaData(activity.applicationContext).apply {
+                setServerId(sessionId)
+                commit()
             }
+        }.onFailure {
+            Log.e("MslAds", "Could not attach Unity S2S reward session", it)
+            onAdUnavailable()
+            preloadRewardedAd()
+            return false
         }
-        ad.show(activity) { onRewardEarned() }
+
+        val callbackHandled = AtomicBoolean(false)
+        UnityAds.show(
+            activity,
+            unitId,
+            UnityAdsShowOptions(),
+            object : IUnityAdsShowListener {
+                override fun onUnityAdsShowFailure(
+                    placementId: String,
+                    error: UnityAds.UnityAdsShowError,
+                    message: String,
+                ) {
+                    Log.e("MslAds", "Unity rewarded show failed: $placementId $error $message")
+                    if (callbackHandled.compareAndSet(false, true)) onAdClosed()
+                    preloadRewardedAd()
+                }
+
+                override fun onUnityAdsShowStart(placementId: String) = Unit
+
+                override fun onUnityAdsShowClick(placementId: String) = Unit
+
+                override fun onUnityAdsShowComplete(
+                    placementId: String,
+                    state: UnityAdsShowCompletionState,
+                ) {
+                    if (!callbackHandled.compareAndSet(false, true)) return
+                    if (state == UnityAdsShowCompletionState.COMPLETED) {
+                        // This only starts client-side status polling. The signed S2S callback grants coins.
+                        onRewardEarned()
+                    } else {
+                        onAdClosed()
+                    }
+                    preloadRewardedAd()
+                }
+            },
+        )
         return true
     }
 
-    /**
-     * Waits briefly for the asynchronous preloader instead of treating a still-loading ad as no-fill.
-     * The server session is created before this call, but coins are still granted only by SSV.
-     */
+    /** Wait briefly for Unity's asynchronous load callback before reporting no fill. */
     suspend fun showRewardedWhenReady(
         activity: Activity,
-        userId: String,
         sessionId: String,
         onRewardEarned: () -> Unit,
         onAdClosed: () -> Unit,
         onAdUnavailable: () -> Unit,
     ): Boolean {
-        val retryUnavailable: () -> Unit = {}
+        if (!BuildConfig.COIN_WALLET_ENABLED || (!BuildConfig.DEBUG && !BuildConfig.UNITY_ADS_S2S_ENABLED) || !sdkInitialized.get()) {
+            onAdUnavailable()
+            return false
+        }
+        preloadRewardedAd()
         repeat(20) { attempt ->
-            if (showRewarded(activity, userId, sessionId, onRewardEarned, onAdClosed, retryUnavailable)) {
-                return true
-            }
+            if (showRewarded(activity, sessionId, onRewardEarned, onAdClosed) {}) return true
             if (attempt < 19) delay(500)
         }
         onAdUnavailable()
@@ -237,11 +335,33 @@ object MslAds {
                         .apply()
                     return@runOnUiThread
                 }
-                val ad = InterstitialAdPreloader.pollAd(unitId) ?: return@runOnUiThread
+                if (!interstitialReady.compareAndSet(true, false)) {
+                    preloadInterstitialAd()
+                    return@runOnUiThread
+                }
                 // Consume the cadence before showing, so a failed presentation cannot repeat on every swipe.
                 preferences.edit().putBoolean("interstitial_pending", false).apply()
-                ad.adEventCallback = object : InterstitialAdEventCallback {}
-                ad.show(activity)
+                UnityAds.show(
+                    activity,
+                    unitId,
+                    UnityAdsShowOptions(),
+                    object : IUnityAdsShowListener {
+                        override fun onUnityAdsShowFailure(
+                            placementId: String,
+                            error: UnityAds.UnityAdsShowError,
+                            message: String,
+                        ) {
+                            Log.w("MslAds", "Unity interstitial show failed: $placementId $error $message")
+                            preloadInterstitialAd()
+                        }
+
+                        override fun onUnityAdsShowStart(placementId: String) = Unit
+                        override fun onUnityAdsShowClick(placementId: String) = Unit
+                        override fun onUnityAdsShowComplete(placementId: String, state: UnityAdsShowCompletionState) {
+                            preloadInterstitialAd()
+                        }
+                    },
+                )
             }
         }.start()
     }
