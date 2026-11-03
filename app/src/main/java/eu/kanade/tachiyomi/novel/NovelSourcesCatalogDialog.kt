@@ -302,7 +302,7 @@ fun NovelSourcesCatalogDialog(
     }
 }
 
-private fun isNovelVersionNewer(candidate: String?, installed: String?): Boolean {
+internal fun isNovelVersionNewer(candidate: String?, installed: String?): Boolean {
     if (candidate.isNullOrBlank() || candidate == installed) return false
     if (installed.isNullOrBlank()) return true
     val candidateParts = Regex("\\d+").findAll(candidate).map { it.value.toIntOrNull() ?: 0 }.toList()

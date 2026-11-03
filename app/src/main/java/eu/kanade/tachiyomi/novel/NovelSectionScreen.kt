@@ -63,6 +63,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
+import mihon.icons.materialsymbols.automirroredrounded.ChromeReaderMode
+import mihon.icons.materialsymbols.rounded.CollectionsBookmark
+import mihon.icons.materialsymbols.rounded.Explore
+import mihon.icons.materialsymbols.rounded.LocalLibrary
+import mihon.icons.materialsymbols.rounded.Person
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.mslime.MslAds
@@ -96,6 +101,9 @@ internal suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<
     } catch (failure: Exception) {
         Result.failure(failure)
     }
+
+private fun WebView.scrollableRange(): Int =
+    (contentHeight * scale - height).toInt().coerceAtLeast(1)
 
 @Composable
 private fun NovelToolbar(
@@ -2448,6 +2456,7 @@ class NovelReaderScreen(
         val readerPrefs = remember {
             context.getSharedPreferences("manhwa_slime_reader_prefs", android.content.Context.MODE_PRIVATE)
         }
+        val isDarkTheme = isSystemInDarkTheme()
         var fontSize by remember {
             mutableFloatStateOf(readerPrefs.getFloat("font_size", 20f).coerceIn(14f, 32f))
         }
@@ -2459,7 +2468,7 @@ class NovelReaderScreen(
         }
         var pageTheme by remember {
             mutableStateOf(
-                readerPrefs.getString("page_theme", if (isSystemInDarkTheme()) "night" else "paper") ?: "paper",
+                readerPrefs.getString("page_theme", if (isDarkTheme) "night" else "paper") ?: "paper",
             )
         }
         var textAlignment by remember {
@@ -2533,7 +2542,7 @@ class NovelReaderScreen(
                 delay(2_000)
                 readerWebView?.let { webView ->
                     readerPrefs.edit().putInt(currentScrollKey, webView.scrollY).apply()
-                    val range = (webView.computeVerticalScrollRange() - webView.height).coerceAtLeast(1)
+                    val range = webView.scrollableRange()
                     scrollProgress = (webView.scrollY.toFloat() / range).coerceIn(0f, 1f)
                 }
             }
@@ -2911,9 +2920,7 @@ class NovelReaderScreen(
                                         view.post {
                                             val savedScroll = readerPrefs.getInt(currentScrollKey, 0)
                                             view.scrollTo(0, savedScroll)
-                                            val range = (view.computeVerticalScrollRange() - view.height).coerceAtLeast(
-                                                1,
-                                            )
+                                            val range = view.scrollableRange()
                                             scrollProgress = (savedScroll.toFloat() / range).coerceIn(0f, 1f)
                                         }
                                     }
@@ -2950,7 +2957,7 @@ class NovelReaderScreen(
                                     view.post {
                                         val savedScroll = readerPrefs.getInt(currentScrollKey, 0)
                                         view.scrollTo(0, savedScroll)
-                                        val range = (view.computeVerticalScrollRange() - view.height).coerceAtLeast(1)
+                                        val range = view.scrollableRange()
                                         scrollProgress = (savedScroll.toFloat() / range).coerceIn(0f, 1f)
                                         if (!view.canScrollVertically(1) && !loading) markCurrentChapterRead()
                                     }
@@ -2968,7 +2975,7 @@ class NovelReaderScreen(
                                 else -> "MslDefault"
                             }
                             webView.setOnScrollChangeListener { view, _, scrollY, _, _ ->
-                                val range = (view.computeVerticalScrollRange() - view.height).coerceAtLeast(1)
+                                val range = webView.scrollableRange()
                                 scrollProgress = (scrollY.toFloat() / range).coerceIn(0f, 1f)
                                 if (scrollY > 0 && !view.canScrollVertically(1) && !loading) markCurrentChapterRead()
                             }

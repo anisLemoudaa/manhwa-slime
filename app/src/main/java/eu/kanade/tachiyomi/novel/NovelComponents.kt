@@ -61,7 +61,7 @@ internal fun NovelCover(
             .clip(shape)
             .background(NovelColors.coverFallback)
             .semantics(mergeDescendants = true) {
-                contentDescription?.let { this.contentDescription = listOf(it) }
+                contentDescription?.let { this.contentDescription = it }
             },
     ) {
         url?.takeIf(String::isNotBlank)?.let { imageUrl ->
@@ -88,7 +88,7 @@ internal fun RoundIconButton(
         modifier = modifier
             .sizeIn(minWidth = NovelDimensions.touchTarget, minHeight = NovelDimensions.touchTarget)
             .size(48.dp)
-            .semantics { this.contentDescription = listOf(contentDescription) },
+            .semantics { this.contentDescription = contentDescription },
     ) {
         icon()
     }
