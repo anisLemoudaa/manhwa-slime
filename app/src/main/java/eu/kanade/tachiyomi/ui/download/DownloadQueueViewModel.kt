@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.download
 
 import android.view.MenuItem
+import android.view.View
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.zacsweers.metro.AppScope
@@ -46,12 +47,26 @@ class DownloadQueueViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), emptyList())
 
-    lateinit var controllerBinding: DownloadListBinding
+    private var controllerBinding: DownloadListBinding? = null
 
     /**
      * Adapter containing the active downloads.
      */
     var adapter: DownloadAdapter? = null
+
+    fun attachController(binding: DownloadListBinding, adapter: DownloadAdapter) {
+        controllerBinding = binding
+        this.adapter = adapter
+    }
+
+    fun releaseController(view: View) {
+        if (controllerBinding?.root !== view) return
+        val recyclerView = view as? androidx.recyclerview.widget.RecyclerView ?: return
+        recyclerView.adapter = null
+        recyclerView.layoutManager = null
+        controllerBinding = null
+        adapter = null
+    }
 
     /**
      * Map of jobs for active downloads.
@@ -136,6 +151,7 @@ class DownloadQueueViewModel(
         }
         progressJobs.clear()
         adapter = null
+        controllerBinding = null
     }
 
     val isDownloaderRunning = downloadManager.isDownloaderRunning
@@ -263,6 +279,8 @@ class DownloadQueueViewModel(
      * @return the holder of the download or null if it's not bound.
      */
     private fun getHolder(download: Download): DownloadHolder? {
-        return controllerBinding.root.findViewHolderForItemId(download.chapter.id) as? DownloadHolder
+        val root = controllerBinding?.root ?: return null
+        if (!root.isAttachedToWindow) return null
+        return root.findViewHolderForItemId(download.chapter.id) as? DownloadHolder
     }
 }

@@ -67,6 +67,11 @@ class SourcePreferences(
 
     val extensionRepos: Preference<Set<String>> = preferenceStore.getStringSet("extension_repos", emptySet())
 
+    val keiyoushiRepoAutoAdded: Preference<Boolean> = preferenceStore.getBoolean(
+        "keiyoushi_repo_auto_added",
+        false,
+    )
+
     val extensionUpdatesCount: Preference<Int> = preferenceStore.getInt("ext_updates_count", 0)
 
     val trustedExtensions: Preference<Set<String>> = preferenceStore.getStringSet(

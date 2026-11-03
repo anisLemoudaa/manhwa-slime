@@ -51,7 +51,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
 
-/** Server-confirmed membership data. Local cache is used only to avoid showing ads, never for paid access. */
+/** Entitlements originate from Supabase. Cached status keeps chapter gates responsive; community content remains server-checked. */
 data class MslVipStatus(
     val active: Boolean = false,
     val plan: String? = null,
@@ -350,9 +350,9 @@ fun MslDailyRewardCard() {
 private data class VipPlan(val id: String, val title: String, val duration: String, val price: Int, val description: String)
 
 private val vipPlans = listOf(
-    VipPlan("month", "VIP شهري", "شهر واحد", 500, "امتيازات VIP لمدة شهر"),
-    VipPlan("six_months", "VIP ستة أشهر", "6 أشهر", 1600, "امتيازات VIP لمدة ستة أشهر"),
-    VipPlan("lifetime", "VIP مدى الحياة", "دائم", 8000, "عضوية دائمة لا تنتهي"),
+    VipPlan("month", "VIP شهري", "شهر واحد", 1000, "امتيازات VIP لمدة شهر"),
+    VipPlan("six_months", "VIP ستة أشهر", "6 أشهر", 5000, "امتيازات VIP لمدة ستة أشهر"),
+    VipPlan("lifetime", "VIP مدى الحياة", "دائم", 10000, "عضوية دائمة لا تنتهي"),
 )
 
 class MslVipScreen : Screen {
@@ -412,8 +412,8 @@ class MslVipScreen : Screen {
                 }
 
                 Text("مزايا VIP", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("شارة VIP بجانب الاسم والتعليقات • تنزيل الفصول بلا عملات • تجاوز الإعلانات المعروضة • تثبيت أحدث تعليق لك على العنوان.", color = MslDesignTokens.textSecondary)
-                Text("القراءة عبر الإنترنت مجانية حاليًا للجميع.", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelSmall)
+                Text("فتح جميع الفصول طوال فترة العضوية • شارة VIP بجانب الاسم والتعليقات • تنزيل الفصول بلا عملات • تجاوز الإعلانات المعروضة • تثبيت أحدث تعليق لك على العنوان.", color = MslDesignTokens.textSecondary)
+                Text("الأسعار تُخصم من رصيد العملات: شهر واحد 1000، ستة أشهر 5000، مدى الحياة 10000.", color = MslDesignTokens.textMuted, style = MaterialTheme.typography.labelSmall)
 
                 Text("اختر باقتك", color = MslDesignTokens.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 vipPlans.forEach { plan ->

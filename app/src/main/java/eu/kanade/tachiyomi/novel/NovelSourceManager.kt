@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.novel
 
 import android.content.Context
 import eu.kanade.tachiyomi.network.NetworkHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -31,11 +32,25 @@ class NovelSourceManager(
             "novel-plugins/cenele.js",
         ),
         BundledNovelSource(
-            NovelRepositoryEntry("kolnovel", "ملوك الروايات", "https://kolnovel.com", "ar", "1.0.0", "builtin://kolnovel"),
+            NovelRepositoryEntry(
+                "kolnovel",
+                "ملوك الروايات",
+                "https://kolnovel.com",
+                "ar",
+                "1.0.0",
+                "builtin://kolnovel",
+            ),
             "novel-plugins/kolnovel.js",
         ),
         BundledNovelSource(
-            NovelRepositoryEntry("sunovels", "شمس الروايات", "https://sunovels.com", "ar", "1.0.0", "builtin://sunovels"),
+            NovelRepositoryEntry(
+                "sunovels",
+                "شمس الروايات",
+                "https://sunovels.com",
+                "ar",
+                "1.0.0",
+                "builtin://sunovels",
+            ),
             "novel-plugins/sunovels.js",
         ),
         BundledNovelSource(
@@ -48,6 +63,18 @@ class NovelSourceManager(
 
     fun installed(): List<NovelSourceRuntime> = store.installed().map(::NovelSourceRuntime)
 
+    suspend fun removeRepository(url: String) = withContext(Dispatchers.IO) {
+        store.setRepositories(store.repositories().filterNot { it == url })
+    }
+
+    suspend fun uninstall(sourceId: String) = withContext(Dispatchers.IO) {
+        val installed = store.installed()
+        val removed = installed.firstOrNull { it.metadata.id == sourceId } ?: return@withContext
+        val remaining = installed.filterNot { it.metadata.id == sourceId }
+        store.setInstalled(remaining)
+        if (remaining.none { it.pluginUrl == removed.pluginUrl }) store.deletePlugin(removed.pluginUrl)
+    }
+
     suspend fun loadRepository(url: String): List<NovelRepositoryEntry> = withContext(Dispatchers.IO) {
         val normalized = normalizeHttpUrl(url)
         val request = Request.Builder().url(normalized).get().build()
@@ -58,8 +85,27 @@ class NovelSourceManager(
                 if (!contains(normalized)) add(normalized)
             }
             store.setRepositories(repos)
-            entries
+            entries.map { it.copy(repositoryUrl = normalized) }
         }
+    }
+
+    suspend fun loadRepositories(): List<NovelRepositoryEntry> = withContext(Dispatchers.IO) {
+        val repositoryUrls = (DEFAULT_REPOSITORY_URLS + store.repositories()).distinct()
+        val entries = mutableListOf<NovelRepositoryEntry>()
+        var firstFailure: Exception? = null
+
+        repositoryUrls.forEach { repositoryUrl ->
+            try {
+                entries += loadRepository(repositoryUrl)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (firstFailure == null) firstFailure = failure
+            }
+        }
+
+        if (entries.isEmpty()) firstFailure?.let { throw it }
+        entries.distinctBy { it.id to it.url }
     }
 
     suspend fun install(entry: NovelRepositoryEntry, repositoryUrl: String? = null): NovelSourceRuntime =
@@ -133,9 +179,9 @@ class NovelSourceManager(
         }
     }
 
-    suspend fun popular(sourceId: String) = host.popular(sourceId, 1)
-    suspend fun latest(sourceId: String) = host.latest(sourceId, 1)
-    suspend fun search(sourceId: String, query: String) = host.search(sourceId, query, 1)
+    suspend fun popular(sourceId: String, page: Int = 1) = host.popular(sourceId, page)
+    suspend fun latest(sourceId: String, page: Int = 1) = host.latest(sourceId, page)
+    suspend fun search(sourceId: String, query: String, page: Int = 1) = host.search(sourceId, query, page)
     suspend fun details(sourceId: String, path: String) = host.details(sourceId, path)
     suspend fun chapter(sourceId: String, path: String) = host.chapter(sourceId, path)
 
@@ -147,5 +193,13 @@ class NovelSourceManager(
             "أدخل عنوان URL يبدأ بـ http:// أو https://"
         }
         return normalized
+    }
+
+    private companion object {
+        val DEFAULT_REPOSITORY_URLS = listOf(
+            "https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
+            "https://raw.githubusercontent.com/keyferv/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json",
+            "https://raw.githubusercontent.com/saqlainahsan7/reader_extensions_feed/main/lnreader/.dist/plugins.min.json",
+        )
     }
 }

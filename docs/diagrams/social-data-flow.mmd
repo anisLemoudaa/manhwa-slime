@@ -1,0 +1,13 @@
+flowchart TB
+    USER[المستخدم] --> PROFILE[Compose: الملف الشخصي والتعليقات]
+    PROFILE --> AUTH[MslAuth: تسجيل الدخول والجلسة]
+    PROFILE --> CLOUD[MslCloudSync: مزامنة الملف والمفضلة]
+    PROFILE --> SOCIAL[MslSocial / MslFollowGraph: الملف العام والمتابعة]
+    PROFILE --> COMMENTS[MslComments: تعليق، رد، تصويت، بلاغ]
+    AUTH --> TOKEN[جلسة access token]
+    CLOUD --> API[طبقة طلبات Supabase]
+    SOCIAL --> API
+    COMMENTS --> API
+    TOKEN -. يرفق بطلبات المستخدم .-> API
+    MIGRATIONS[supabase/migrations] --> RLS[Postgres + سياسات RLS + RPC محدودة]
+    API <--> RLS

@@ -1,0 +1,22 @@
+sequenceDiagram
+    actor User as المستخدم
+    participant UI as Browse / الإضافات
+    participant VM as ExtensionsViewModel
+    participant Repo as AddExtensionStore / ExtensionStoreRepository
+    participant Index as Keiyoushi index.pb
+    participant Manager as ExtensionManager
+    participant Android as Android Package Installer
+    User->>UI: فتح الإضافات
+    UI->>VM: إنشاء/استعادة ViewModel
+    VM->>Repo: إضافة الفهرس مرة واحدة إن لم يكن موجودًا
+    Repo->>Index: جلب index.pb
+    Index-->>Repo: بيانات المستودع ومصادر اللغات
+    VM->>Manager: تحديث قائمة الإضافات المتاحة
+    Manager-->>UI: مصادر مرتبة مع lang واسم المصدر
+    User->>UI: اختيار العربية أو الإنجليزية
+    UI->>VM: تحديث languageFilter
+    VM-->>UI: قائمة ar أو en مرتبة أبجديًا
+    User->>UI: الضغط على تثبيت لمصدر
+    UI->>Manager: installExtension(Available)
+    Manager->>Android: تنزيل APK والتحقق من التوقيع وطلب التثبيت
+    Android-->>User: تأكيد التثبيت حسب إعداد Android

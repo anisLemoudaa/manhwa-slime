@@ -75,6 +75,7 @@ fun MangaBottomActionMenu(
     onMarkAsReadClicked: (() -> Unit)? = null,
     onMarkAsUnreadClicked: (() -> Unit)? = null,
     onMarkPreviousAsReadClicked: (() -> Unit)? = null,
+    onUnlockClicked: (() -> Unit)? = null,
     onDownloadClicked: (() -> Unit)? = null,
     onDeleteClicked: (() -> Unit)? = null,
 ) {
@@ -90,7 +91,7 @@ fun MangaBottomActionMenu(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             val haptic = LocalHapticFeedback.current
-            val confirm = remember { mutableStateListOf(false, false, false, false, false, false, false) }
+            val confirm = remember { mutableStateListOf(false, false, false, false, false, false, false, false) }
             var resetJob by remember { mutableStateOf<Job?>(null) }
             val onLongClickItem: (Int) -> Unit = { toConfirmIndex ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -153,6 +154,15 @@ fun MangaBottomActionMenu(
                         toConfirm = confirm[4],
                         onLongClick = { onLongClickItem(4) },
                         onClick = onMarkPreviousAsReadClicked,
+                    )
+                }
+                if (onUnlockClicked != null) {
+                    Button(
+                        title = "فتح الفصول — عملة واحدة لكل فصل",
+                        icon = ImageVector.vectorResource(R.drawable.ic_chapter_lock_24dp),
+                        toConfirm = confirm[7],
+                        onLongClick = { onLongClickItem(7) },
+                        onClick = onUnlockClicked,
                     )
                 }
                 if (onDownloadClicked != null) {

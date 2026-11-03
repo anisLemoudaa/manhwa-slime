@@ -32,11 +32,15 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.download.model.Download
-import eu.kanade.tachiyomi.mslime.MslAds
-import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
+import eu.kanade.tachiyomi.mslime.MslAds
+import eu.kanade.tachiyomi.mslime.MslChapterAccess
+import eu.kanade.tachiyomi.mslime.MslRank
+import eu.kanade.tachiyomi.mslime.MslReadingTasks
+import eu.kanade.tachiyomi.mslime.MslWallet
+import eu.kanade.tachiyomi.mslime.ProComicSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -57,6 +61,7 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -191,6 +196,10 @@ class ReaderViewModel(
     private var chapterReadStartTime: Long? = null
 
     private var chapterToDownload: Download? = null
+
+    /** Server sessions are best-effort and never delay opening or changing a chapter. */
+    private val readingTaskSessions = mutableMapOf<String, String>()
+    private val readingTaskSessionRequests = mutableMapOf<String, CompletableDeferred<String?>>()
 
     private val unfilteredChapterList by lazy {
         val manga = manga!!
@@ -335,8 +344,11 @@ class ReaderViewModel(
                 mutableState.update { it.copy(manga = manga, source = source) }
                 if (chapterId == -1L) chapterId = initialChapterId
 
+                val initialChapter = chapterList.first { it.chapter.id == chapterId }
+                check(hasChapterAccess(initialChapter)) { "الفصل مقفل. افتحه أولًا من قائمة الفصول." }
+
                 if (source is ProComicSource) {
-                    val chapter = chapterList.first { it.chapter.id == chapterId }.chapter
+                    val chapter = initialChapter.chapter
                     val downloaded = downloadManager.isChapterDownloaded(
                         chapter.name,
                         chapter.scanlator,
@@ -376,6 +388,7 @@ class ReaderViewModel(
         loader: ChapterLoader,
         chapter: ReaderChapter,
     ): ViewerChapters {
+        check(hasChapterAccess(chapter)) { "الفصل مقفل. افتحه أولًا من قائمة الفصول." }
         loader.loadChapter(chapter)
 
         val chapterPos = chapterList.indexOf(chapter)
@@ -398,7 +411,69 @@ class ReaderViewModel(
                 )
             }
         }
+        startReadingTaskSession(chapter)
         return newChapters
+    }
+
+    private fun startReadingTaskSession(chapter: ReaderChapter) {
+        if (incognitoMode || !MslWallet.enabled) return
+        val key = readingTaskChapterKey(chapter) ?: return
+        val request = synchronized(readingTaskSessions) {
+            if (key in readingTaskSessions || key in readingTaskSessionRequests) {
+                null
+            } else {
+                CompletableDeferred<String?>().also { readingTaskSessionRequests[key] = it }
+            }
+        }
+        if (request == null) return
+        viewModelScope.launchIO {
+            val sessionId = MslReadingTasks.start(context, key)
+            val pending = synchronized(readingTaskSessions) {
+                if (sessionId != null) readingTaskSessions[key] = sessionId
+                readingTaskSessionRequests.remove(key)
+            }
+            pending?.complete(sessionId)
+        }
+    }
+
+    private suspend fun awaitReadingTaskSession(chapter: ReaderChapter): String? {
+        if (incognitoMode || !MslWallet.enabled) return null
+        val key = readingTaskChapterKey(chapter) ?: return null
+        val existing = synchronized(readingTaskSessions) {
+            readingTaskSessions[key] to readingTaskSessionRequests[key]
+        }
+        existing.first?.let { return it }
+        startReadingTaskSession(chapter)
+        val pending = synchronized(readingTaskSessions) {
+            readingTaskSessions[key] to readingTaskSessionRequests[key]
+        }
+        return pending.first ?: pending.second?.await()
+    }
+
+    private fun readingTaskChapterKey(chapter: ReaderChapter): String? = manga?.let { currentManga ->
+        MslReadingTasks.canonicalChapterKey(currentManga.source, currentManga.url, chapter.chapter.url)
+    }
+
+    private suspend fun hasChapterAccess(chapter: ReaderChapter): Boolean = withIOContext {
+        val currentManga = manga ?: return@withIOContext false
+        if (!MslWallet.enabled || currentManga.isLocal()) return@withIOContext true
+        val dbChapter = chapter.chapter
+        val downloadedLocally = downloadManager.isChapterDownloaded(
+            dbChapter.name,
+            dbChapter.scanlator,
+            dbChapter.url,
+            currentManga.title,
+            currentManga.source,
+        ) || downloadManager.isChapterDownloadedOnDisk(
+            dbChapter.name,
+            dbChapter.scanlator,
+            dbChapter.url,
+            currentManga.title,
+            sourceManager.getOrStub(currentManga.source),
+        )
+        if (downloadedLocally) return@withIOContext true
+        val key = MslChapterAccess.mangaKey(currentManga.source, currentManga.url, chapter.chapter.url)
+        MslChapterAccess.hasAccess(context, key)
     }
 
     /**
@@ -453,6 +528,7 @@ class ReaderViewModel(
      * that the user doesn't have to wait too long to continue reading.
      */
     suspend fun preload(chapter: ReaderChapter) {
+        if (!hasChapterAccess(chapter)) return
         if (chapter.state is ReaderChapter.State.Loaded || chapter.state == ReaderChapter.State.Loading) {
             return
         }
@@ -509,6 +585,7 @@ class ReaderViewModel(
 
         val selectedChapter = page.chapter
         val pages = selectedChapter.pages ?: return
+        if (page.status !is Page.State.Error) startReadingTaskSession(selectedChapter)
 
         // Save last page read and mark as read if needed
         viewModelScope.launchNonCancellable {
@@ -622,7 +699,23 @@ class ReaderViewModel(
     }
 
     private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
+        val newlyCompleted = !readerChapter.chapter.read
         readerChapter.chapter.read = true
+        if (newlyCompleted && !incognitoMode) {
+            val chapterId = readerChapter.chapter.id
+            if (chapterId != null) {
+                val chapterKey = "manga:${readerChapter.chapter.manga_id}:$chapterId"
+                viewModelScope.launchIO {
+                    MslRank.awardCompletedChapter(context, chapterKey)
+                }
+            }
+        }
+        if (!incognitoMode && MslWallet.enabled) {
+            viewModelScope.launchIO {
+                val sessionId = awaitReadingTaskSession(readerChapter) ?: return@launchIO
+                MslReadingTasks.complete(context, sessionId)
+            }
+        }
         updateTrackChapterRead(readerChapter)
         deleteChapterIfNeeded(readerChapter)
         if (readerChapter.pageLoader !is DownloadPageLoader) {

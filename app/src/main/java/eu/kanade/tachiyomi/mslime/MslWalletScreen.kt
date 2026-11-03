@@ -42,7 +42,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-class MslWalletScreen : Screen() {
+class MslWalletScreen(private val openEarnOnOpen: Boolean = false) : Screen() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -83,7 +83,7 @@ class MslWalletScreen : Screen() {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (MslWallet.enabled) {
-                    MslCoinWalletHeader()
+                    MslCoinWalletHeader(openStoreInitially = openEarnOnOpen)
                 } else {
                     StatusCard(stringResource(MR.strings.coin_wallet_disabled))
                 }

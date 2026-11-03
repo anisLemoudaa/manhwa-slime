@@ -10,8 +10,7 @@ import eu.kanade.tachiyomi.R
 
 val MslUiFont =
     FontFamily(Font(R.font.msl_font_regular, FontWeight.Normal), Font(R.font.msl_font_bold, FontWeight.Bold))
-val MslDisplayFont =
-    FontFamily(Font(R.font.msl_font_display, FontWeight.Normal), Font(R.font.msl_font_display, FontWeight.Bold))
+val MslDisplayFont = MslUiFont
 
 fun Typography.withFonts(body: FontFamily, display: FontFamily): Typography = Typography(
     displayLarge = displayLarge.copy(fontFamily = display),

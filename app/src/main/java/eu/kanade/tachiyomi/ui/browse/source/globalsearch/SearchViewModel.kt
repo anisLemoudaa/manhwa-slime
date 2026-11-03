@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.produceState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
@@ -15,6 +16,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -26,6 +28,7 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.isAdultContent
 import tachiyomi.domain.source.service.SourceManager
 
 abstract class SearchViewModel(
@@ -36,6 +39,7 @@ abstract class SearchViewModel(
     private val networkToLocalManga: NetworkToLocalManga,
     private val getManga: GetManga,
     private val preferences: SourcePreferences,
+    private val basePreferences: BasePreferences,
 ) : ViewModel() {
 
     val state: StateFlow<State>
@@ -71,6 +75,12 @@ abstract class SearchViewModel(
         viewModelScope.launch {
             preferences.globalSearchFilterState.changes().collectLatest { onlyShowHasResults ->
                 state.update { it.copy(onlyShowHasResults = onlyShowHasResults) }
+            }
+        }
+        viewModelScope.launch {
+            basePreferences.hideAdultContent.changes().drop(1).collectLatest {
+                lastQuery = null
+                search()
             }
         }
     }
@@ -170,6 +180,7 @@ abstract class SearchViewModel(
                             .map { it.toDomainManga(source.id) }
                             .distinctBy { it.url }
                             .let { networkToLocalManga(it) }
+                            .filterNot { basePreferences.hideAdultContent.get() && it.isAdultContent() }
 
                         if (isActive) {
                             updateItem(source, SearchItemResult.Success(titles))

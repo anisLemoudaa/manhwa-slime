@@ -3,6 +3,7 @@ package eu.kanade.presentation.browse
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +11,20 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -55,6 +60,7 @@ import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
 import eu.kanade.presentation.util.rememberRequestPackageInstallsPermissionState
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.ui.browse.extension.ExtensionLanguageFilter
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionUiModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsViewModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -85,6 +91,8 @@ import tachiyomi.presentation.core.util.plus
 @Composable
 fun ExtensionScreen(
     state: ExtensionsViewModel.State,
+    selectedLanguage: ExtensionLanguageFilter,
+    onLanguageFilterSelected: (ExtensionLanguageFilter) -> Unit,
     contentPadding: PaddingValues,
     searchQuery: String?,
     onLongClickItem: (Extension) -> Unit,
@@ -113,21 +121,33 @@ fun ExtensionScreen(
                 } else {
                     MR.strings.empty_screen
                 }
-                EmptyScreen(
-                    stringRes = msg,
-                    modifier = Modifier.padding(contentPadding),
-                    actions = listOf(
-                        EmptyScreenAction(
-                            stringRes = MR.strings.extensionStores,
-                            icon = MaterialSymbols.Rounded.Settings,
-                            onClick = { navigator.push(ExtensionStoresScreen()) },
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding),
+                ) {
+                    ExtensionLanguageFilterRow(
+                        selected = selectedLanguage,
+                        onSelected = onLanguageFilterSelected,
+                    )
+                    EmptyScreen(
+                        stringRes = msg,
+                        modifier = Modifier.weight(1f),
+                        actions = listOf(
+                            EmptyScreenAction(
+                                stringRes = MR.strings.extensionStores,
+                                icon = MaterialSymbols.Rounded.Settings,
+                                onClick = { navigator.push(ExtensionStoresScreen()) },
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
             }
             else -> {
                 ExtensionContent(
                     state = state,
+                    selectedLanguage = selectedLanguage,
+                    onLanguageFilterSelected = onLanguageFilterSelected,
                     contentPadding = contentPadding,
                     onLongClickItem = onLongClickItem,
                     onClickItemCancel = onClickItemCancel,
@@ -147,6 +167,8 @@ fun ExtensionScreen(
 @Composable
 private fun ExtensionContent(
     state: ExtensionsViewModel.State,
+    selectedLanguage: ExtensionLanguageFilter,
+    onLanguageFilterSelected: (ExtensionLanguageFilter) -> Unit,
     contentPadding: PaddingValues,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
@@ -166,6 +188,13 @@ private fun ExtensionContent(
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
+        item(key = "extension-language-filter") {
+            ExtensionLanguageFilterRow(
+                selected = selectedLanguage,
+                onSelected = onLanguageFilterSelected,
+            )
+        }
+
         if (!installGranted && state.installer?.requiresSystemPermission == true) {
             item(key = "extension-permissions-warning") {
                 WarningBanner(
@@ -302,6 +331,28 @@ private fun ExtensionContent(
             error = error,
             onDismissRequest = { installErrorState = null },
         )
+    }
+}
+
+@Composable
+private fun ExtensionLanguageFilterRow(
+    selected: ExtensionLanguageFilter,
+    onSelected: (ExtensionLanguageFilter) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ExtensionLanguageFilter.entries.forEach { language ->
+            FilterChip(
+                selected = selected == language,
+                onClick = { onSelected(language) },
+                label = { Text(text = language.label) },
+            )
+        }
     }
 }
 

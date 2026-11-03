@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.mslime
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.Application
 import android.app.Dialog
 import android.content.ContentProvider
@@ -27,28 +26,36 @@ import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewConfiguration
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import eu.kanade.tachiyomi.util.system.activeNetworkState
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /** يُشغَّل تلقائياً عند بدء التطبيق ليضيف زر الترجمة في القارئ. */
 class MslInit : ContentProvider() {
     override fun onCreate(): Boolean {
-        (context?.applicationContext as? Application)?.registerActivityLifecycleCallbacks(MslHook)
+        val app = context?.applicationContext as? Application
+        app?.getSharedPreferences("msl", Context.MODE_PRIVATE)
+            ?.edit()
+            ?.remove("ai_key")
+            ?.apply()
+        app?.registerActivityLifecycleCallbacks(MslHook)
         return true
     }
     override fun query(
@@ -87,15 +94,13 @@ object MslHook : Application.ActivityLifecycleCallbacks {
     private fun showMenu(activity: Activity, fab: View) {
         val pm = PopupMenu(activity, fab)
         pm.menu.add(0, 1, 0, "إخفاء الزر (يُعاد من الملف الشخصي)")
-        pm.menu.add(0, 2, 1, "مفتاح الترجمة الذكية")
-        pm.menu.add(0, 3, 2, "إعادة الزر لمكانه")
+        pm.menu.add(0, 2, 1, "إعادة الزر لمكانه")
         pm.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> {
                     setEnabled(activity, false)
                     fab.visibility = View.GONE
                 }
-                2 -> MslTranslate.askKey(activity)
                 else -> resetPosition(activity)
             }
             true
@@ -216,279 +221,476 @@ object MslFont {
     }
 }
 
-/** ترجمة ذكية عبر Anthropic API: طلب واحد لكل صفحة. */
-object MslAi {
-    private const val MODEL = "claude-haiku-4-5-20251001"
-    private const val SYSTEM =
-        "You translate speech bubbles of manhwa/manga pages from English into natural, fluent Arabic " +
-            "that sounds like real comics: casual and lively for dialogue, short for sound effects. " +
-            "Use context from the whole page to fix OCR mistakes and keep names and terms consistent. " +
-            "The user message is a JSON array of strings in reading order. " +
-            "Reply with ONLY a JSON array of the same length containing the Arabic translations, no other text. " +
-            "If an item is not real dialogue (watermark, site name, noise), return an empty string for it."
-
-    fun translate(key: String, texts: List<String>): List<String>? =
-        if (key.startsWith("AIza")) translateGemini(key, texts) else translateClaude(key, texts)
-
-    private fun translateGemini(key: String, texts: List<String>): List<String>? {
-        return try {
-            val arr = JSONArray()
-            texts.forEach { arr.put(it) }
-            val sys = JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM)))
-            val user = JSONObject().put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", arr.toString())))
-            val body = JSONObject()
-                .put("systemInstruction", sys)
-                .put("contents", JSONArray().put(user))
-                .put("generationConfig", JSONObject().put("responseMimeType", "application/json"))
-                .toString()
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 15000
-            conn.readTimeout = 60000
-            conn.doOutput = true
-            conn.setRequestProperty("x-goog-api-key", key)
-            conn.setRequestProperty("content-type", "application/json")
-            conn.outputStream.use { it.write(body.toByteArray()) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val txt = stream.bufferedReader().readText()
-            if (code !in 200..299) return null
-            var out = JSONObject(txt).getJSONArray("candidates").getJSONObject(0)
-                .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
-            out = out.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-            val a = JSONArray(out)
-            List(a.length()) { a.getString(it) }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun translateClaude(key: String, texts: List<String>): List<String>? {
-        return try {
-            val arr = JSONArray()
-            texts.forEach { arr.put(it) }
-            val msg = JSONObject().put("role", "user").put("content", arr.toString())
-            val body = JSONObject()
-                .put("model", MODEL)
-                .put("max_tokens", 3000)
-                .put("system", SYSTEM)
-                .put("messages", JSONArray().put(msg))
-                .toString()
-            val conn = URL("https://api.anthropic.com/v1/messages").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 15000
-            conn.readTimeout = 60000
-            conn.doOutput = true
-            conn.setRequestProperty("x-api-key", key)
-            conn.setRequestProperty("anthropic-version", "2023-06-01")
-            conn.setRequestProperty("content-type", "application/json")
-            conn.outputStream.use { it.write(body.toByteArray()) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val txt = stream.bufferedReader().readText()
-            if (code !in 200..299) return null
-            var out = JSONObject(txt).getJSONArray("content").getJSONObject(0).getString("text").trim()
-            out = out.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-            val a = JSONArray(out)
-            List(a.length()) { a.getString(it) }
-        } catch (e: Exception) {
-            null
-        }
-    }
-}
-
 object MslTranslate {
+    private const val CACHE_PREFERENCES = "msl_translation_cache"
+    private const val GLOSSARY_ASSET = "msl_translation_glossary.json"
+    private const val CACHE_LIMIT = 128
+
     private fun toast(a: Activity, m: String) = Toast.makeText(a, m, Toast.LENGTH_SHORT).show()
 
-    private fun prefs(a: Activity) = a.getSharedPreferences("msl", Context.MODE_PRIVATE)
+    private fun captureTarget(activity: Activity, preferred: View? = null): View {
+        val viewerId = activity.resources.getIdentifier("viewer_container", "id", activity.packageName)
+        val viewer = if (viewerId != 0) activity.findViewById<View>(viewerId) else null
+        return (preferred ?: viewer)?.takeIf { it.width > 0 && it.height > 0 } ?: activity.window.decorView
+    }
 
-    fun askKey(activity: Activity) {
-        val et = EditText(activity)
-        et.hint = "AIza... أو sk-ant-..."
-        et.setSingleLine()
-        et.setText(prefs(activity).getString("ai_key", ""))
-        AlertDialog.Builder(activity)
-            .setTitle("مفتاح الترجمة الذكية (Gemini مجاني أو Claude)")
-            .setView(et)
-            .setPositiveButton("حفظ") { _, _ ->
-                prefs(activity).edit().putString("ai_key", et.text.toString().trim()).apply()
-                toast(activity, "تم الحفظ")
+    private fun requestCapture(
+        activity: Activity,
+        target: View,
+        destination: Bitmap,
+        callback: (Int) -> Unit,
+    ) {
+        val location = IntArray(2)
+        target.getLocationInWindow(location)
+        val sourceRect = Rect(location[0], location[1], location[0] + target.width, location[1] + target.height)
+        PixelCopy.request(
+            activity.window,
+            sourceRect,
+            destination,
+            PixelCopy.OnPixelCopyFinishedListener { result -> callback(result) },
+            Handler(Looper.getMainLooper()),
+        )
+    }
+
+    /** PixelCopy is unavailable on older Android versions and may reject some reader surfaces. */
+    private fun captureWithFallback(activity: Activity, target: View, destination: Bitmap, done: (Boolean) -> Unit) {
+        fun drawView(): Boolean = runCatching {
+            destination.eraseColor(Color.TRANSPARENT)
+            target.draw(Canvas(destination))
+            true
+        }.onFailure { android.util.Log.w("MslTranslate", "Reader view draw fallback failed", it) }
+            .getOrDefault(false)
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+            done(drawView())
+            return
+        }
+        runCatching {
+            requestCapture(activity, target, destination) { code ->
+                if (code == PixelCopy.SUCCESS) {
+                    done(true)
+                } else {
+                    android.util.Log.w("MslTranslate", "PixelCopy failed with code $code; trying view.draw")
+                    done(drawView())
+                }
             }
-            .setNegativeButton("إلغاء", null)
-            .show()
+        }.onFailure {
+            android.util.Log.w("MslTranslate", "PixelCopy request failed; trying view.draw", it)
+            done(drawView())
+        }
     }
 
     fun run(activity: Activity, fab: View) {
-        val v = activity.window.decorView
-        if (v.width <= 0 || v.height <= 0) {
+        if (!fab.isEnabled) return
+        val target = captureTarget(activity)
+        android.util.Log.i("MslTranslate", "Translate tapped; target=${target.javaClass.simpleName}, size=${target.width}x${target.height}")
+        if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
         }
-        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+        val bmp = runCatching { Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888) }
             .getOrElse {
                 toast(activity, "تعذّر تجهيز صورة الصفحة")
                 return
             }
+        val restoreFab = {
+            fab.isEnabled = true
+            fab.alpha = 0.7f
+            fab.visibility = View.VISIBLE
+        }
+        fab.isEnabled = false
+        fab.alpha = 0.35f
         fab.visibility = View.INVISIBLE
         toast(activity, "جارٍ قراءة الصفحة...")
-        v.postDelayed({
-            runCatching {
-                PixelCopy.request(activity.window, bmp, { code ->
+        target.postDelayed({
+            captureWithFallback(activity, target, bmp) { captured ->
+                if (!captured) {
+                    android.util.Log.e("MslTranslate", "Could not capture reader content using PixelCopy or View.draw")
+                    restoreFab()
+                    toast(activity, "تعذّر التقاط الصفحة؛ أعد المحاولة بعد اكتمال تحميلها")
+                } else {
                     fab.visibility = View.VISIBLE
-                    if (code != PixelCopy.SUCCESS) {
-                        toast(activity, "تعذّر التقاط الشاشة")
-                    } else {
-                        process(activity, bmp)
-                    }
-                }, Handler(Looper.getMainLooper()))
-            }.onFailure {
-                fab.visibility = View.VISIBLE
-                toast(activity, "تعذّر التقاط الشاشة")
+                    process(activity, bmp, restoreFab)
+                }
             }
         }, 150)
     }
 
-    /** Captures the visible reader page and translates detected text without hiding a FAB. */
-    fun run(activity: Activity) {
-        val v = activity.window.decorView
-        if (v.width <= 0 || v.height <= 0) {
+    fun run(activity: Activity) = runForView(activity, null)
+
+    fun runForView(activity: Activity, pageView: View?) {
+        val target = captureTarget(activity, pageView)
+        android.util.Log.i("MslTranslate", "Translate page view; target=${target.javaClass.simpleName}, size=${target.width}x${target.height}")
+        if (target.width <= 0 || target.height <= 0) {
             toast(activity, "لا يمكن التقاط الصفحة الآن؛ حاول بعد اكتمال القارئ")
             return
         }
-        val bmp = runCatching { Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888) }
+        val bmp = runCatching { Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888) }
             .getOrElse {
                 toast(activity, "تعذّر تجهيز صورة الصفحة")
                 return
             }
         toast(activity, "جارٍ قراءة الصفحة...")
-        v.postDelayed({
-            runCatching {
-                PixelCopy.request(activity.window, bmp, { code ->
-                    if (code != PixelCopy.SUCCESS) {
-                        toast(activity, "تعذّر التقاط الشاشة")
-                    } else {
-                        process(activity, bmp)
-                    }
-                }, Handler(Looper.getMainLooper()))
-            }.onFailure { toast(activity, "تعذّر التقاط الشاشة") }
+        target.postDelayed({
+            captureWithFallback(activity, target, bmp) { captured ->
+                if (captured) process(activity, bmp)
+                else {
+                    android.util.Log.e("MslTranslate", "Could not capture page view using PixelCopy or View.draw")
+                    toast(activity, "تعذّر التقاط الصفحة؛ أعد المحاولة بعد اكتمال تحميلها")
+                }
+            }
         }, 150)
     }
 
-    private fun process(activity: Activity, bmp: Bitmap) {
-        runCatching {
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                .process(InputImage.fromBitmap(bmp, 0))
-                .addOnSuccessListener { res ->
-                    val items = res.textBlocks
-                        .filter { it.boundingBox != null && it.text.isNotBlank() }
-                        .map { it.boundingBox!! to normalizeOcr(it.text) }
-                        .filter { it.second.isNotBlank() }
-                        .sortedWith(compareBy({ it.first.top }, { it.first.left }))
-                    if (items.isEmpty()) {
-                        toast(activity, "لم أجد نصاً إنجليزياً في الصفحة")
-                    } else {
-                        translateItems(activity, bmp, items)
-                    }
-                }
-                .addOnFailureListener { toast(activity, "فشلت قراءة النص: ${it.message}") }
-        }.onFailure { toast(activity, "فشلت قراءة الصفحة: ${it.message}") }
-    }
-
-    private fun translateItems(activity: Activity, bmp: Bitmap, items: List<Pair<Rect, String>>) {
-        val key = prefs(activity).getString("ai_key", "").orEmpty()
-        if (key.isBlank()) {
-            toast(activity, "ترجمة آلية. للترجمة الذكية: اضغط مطولاً على زر ع وأدخل مفتاح API")
-            mlKit(activity, bmp, items)
+    private fun process(activity: Activity, bmp: Bitmap, onComplete: () -> Unit = {}) {
+        android.util.Log.i("MslTranslate", "Starting OCR for ${bmp.width}x${bmp.height} image")
+        val finish = { activity.runOnUiThread { onComplete() } }
+        val image = runCatching { InputImage.fromBitmap(bmp, 0) }.getOrElse {
+            showOcrUnavailable(activity, it)
+            finish()
             return
         }
-        toast(activity, "جارٍ الترجمة الذكية...")
-        Thread {
-            val res = MslAi.translate(key, items.map { it.second })
-            activity.runOnUiThread {
-                if (res != null && res.size == items.size) {
-                    show(activity, bmp, items.mapIndexed { i, p -> p.first to res[i] })
-                } else {
-                    toast(activity, "تعذّرت الترجمة الذكية، سأستخدم الترجمة الآلية")
-                    mlKit(activity, bmp, items)
-                }
-            }
-        }.start()
-    }
 
-    private fun mlKit(activity: Activity, bmp: Bitmap, items: List<Pair<Rect, String>>) {
-        val sourceLanguage = detectSourceLanguage(items.joinToString(" ") { it.second })
-        val tr = Translation.getClient(
-            TranslatorOptions.Builder()
-                .setSourceLanguage(sourceLanguage)
-                .setTargetLanguage(TranslateLanguage.ARABIC)
-                .build(),
+        // Keep all page OCR options. Translation itself is deliberately English -> Arabic only.
+        val clients = listOfNotNull(
+            runCatching { "ja" to TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "ko" to TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "zh" to TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()) }.getOrNull(),
+            runCatching { "latin" to TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }.getOrNull(),
         )
-        tr.downloadModelIfNeeded(DownloadConditions.Builder().build())
-            .addOnSuccessListener {
-                // Translate the whole page as one scene so names, pronouns and tone share context.
-                val marker = "\n\nMSL_TRANSLATION_BREAK_7F3A\n\n"
-                val scene = items.joinToString(marker) { it.second }
-                tr.translate(scene)
-                    .addOnSuccessListener { translated ->
-                        val chunks = translated.split("MSL_TRANSLATION_BREAK_7F3A")
-                            .map { it.trim() }
-                        if (chunks.size == items.size) {
-                            tr.close()
-                            show(activity, bmp, items.mapIndexed { i, item -> item.first to chunks[i] })
-                        } else {
-                            translateIndividually(activity, bmp, tr, items)
-                        }
-                    }
-                    .addOnFailureListener { translateIndividually(activity, bmp, tr, items) }
+        val tasks = clients.mapNotNull { (script, recognizer) ->
+            runCatching { script to recognizer.process(image) }
+                .onFailure { closeRecognizer(recognizer) }
+                .getOrNull()
+        }
+        if (tasks.isEmpty()) {
+            clients.forEach { closeRecognizer(it.second) }
+            showOcrUnavailable(activity, IllegalStateException("No ML Kit text recognizer could be started"))
+            finish()
+            return
+        }
+
+        Tasks.whenAllComplete(tasks.map { it.second }).addOnCompleteListener {
+            clients.forEach { closeRecognizer(it.second) }
+            if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) {
+                finish()
+                return@addOnCompleteListener
             }
-            .addOnFailureListener { toast(activity, "تعذّر تحميل نموذج الترجمة: ${it.message}") }
+            data class Candidate(val script: String, val items: List<Pair<Rect, String>>, val text: String)
+            val candidates = tasks.mapNotNull { (script, task) ->
+                if (!task.isSuccessful) return@mapNotNull null
+                val items = task.result.textBlocks
+                    .filter { it.boundingBox != null && it.text.isNotBlank() }
+                    .map { it.boundingBox!! to MslTranslationText.normalizeOcr(it.text) }
+                    .filter { it.second.isNotBlank() }
+                    .sortedWith(compareBy({ it.first.top }, { it.first.left }))
+                if (items.isEmpty()) return@mapNotNull null
+                val text = items.joinToString(" ") { it.second }
+                Candidate(script, items, text)
+            }
+            // Do not allow a non-English recognizer result to become input to the translator.
+            val best = candidates.firstOrNull { it.script == "latin" && MslTranslationText.isEnglishCandidate(it.text) }
+            if (best == null) {
+                val failure = tasks.firstOrNull { !it.second.isSuccessful }?.second?.exception
+                if (failure != null) showOcrUnavailable(activity, failure)
+                else if (candidates.isNotEmpty()) toast(activity, "الترجمة المتاحة هنا English → Arabic فقط؛ لم يُرسل النص غير الإنجليزي.")
+                else toast(activity, "لم أجد نصًا واضحًا في الصفحة. جرّب تكبيرها أو تحسين وضوحها.")
+                finish()
+            } else {
+                android.util.Log.d("MslTranslate", "OCR selected ${best.script} recognizer with ${best.items.size} text blocks")
+                translateItems(activity, bmp, best.items, finish)
+            }
+        }.addOnFailureListener { error ->
+            clients.forEach { closeRecognizer(it.second) }
+            showOcrUnavailable(activity, error)
+            finish()
+        }
     }
 
-    private fun translateIndividually(
+    private fun closeRecognizer(recognizer: TextRecognizer) {
+        runCatching { recognizer.close() }
+    }
+
+    private fun showOcrUnavailable(activity: Activity, error: Throwable) {
+        android.util.Log.w("MslTranslate", "ML Kit text recognition failed", error)
+        if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
+        toast(activity, "تعذّر التعرّف على نص الصفحة. جرّب تكبيرها أو صفحة أوضح؛ لا يتطلب OCR الحالي تحديث خدمات Google Play.")
+    }
+
+    private class PreferencesTranslationCacheStore(context: Context) : MslTranslationCacheStore {
+        private val preferences = context.getSharedPreferences(CACHE_PREFERENCES, Context.MODE_PRIVATE)
+
+        override fun get(key: String): String? = preferences.getString(key, null)
+        override fun put(key: String, value: String) { preferences.edit().putString(key, value).apply() }
+        override fun remove(key: String) { preferences.edit().remove(key).apply() }
+        override fun keys(): Set<String> = preferences.all.keys
+    }
+
+    private fun cache(context: Context): MslBoundedTranslationCache = MslBoundedTranslationCache(
+        PreferencesTranslationCacheStore(context.applicationContext),
+        CACHE_LIMIT,
+    )
+
+    private fun glossary(context: Context): MslGlossary = runCatching {
+        context.assets.open(GLOSSARY_ASSET).bufferedReader().use { MslGlossary.fromJson(it.readText()) }
+    }.onFailure {
+        android.util.Log.w("MslTranslate", "Glossary unavailable; using empty glossary", it)
+    }.getOrDefault(MslGlossary.EMPTY)
+
+    private class MlKitTranslationProvider(
+        private val translator: com.google.mlkit.nl.translate.Translator,
+    ) : MslTranslationProvider {
+        override fun translate(source: String, onSuccess: (String) -> Unit, onFailure: (Throwable) -> Unit) {
+            runCatching { translator.translate(source) }
+                .onFailure(onFailure)
+                .onSuccess { task ->
+                    task
+                        .addOnSuccessListener { value -> onSuccess(value) }
+                        .addOnFailureListener { error -> onFailure(error) }
+                }
+        }
+    }
+
+    private fun translateItems(
         activity: Activity,
         bmp: Bitmap,
-        tr: com.google.mlkit.nl.translate.Translator,
         items: List<Pair<Rect, String>>,
+        onComplete: () -> Unit,
     ) {
-        val out = mutableListOf<Pair<Rect, String>>()
-        fun next(i: Int) {
-            if (i >= items.size) {
-                tr.close()
-                show(activity, bmp, out)
+        val processor = MslTranslationProcessor(cache(activity), glossary(activity))
+        val translatedRegions = mutableListOf<Pair<Rect, String>>()
+        var failedRegions = 0
+        val uncachedItems = mutableListOf<Pair<Rect, String>>()
+        items.forEach { item ->
+            val chunks = processor.plan(item.second)
+            if (chunks.isEmpty()) {
+                failedRegions++
+            } else {
+                val cachedResponses = chunks.mapNotNull { processor.cached(it.source) }
+                if (cachedResponses.size == chunks.size) {
+                    val translated = processor.join(chunks, cachedResponses)
+                    if (translated != null && MslTranslationText.isUsableTranslation(translated)) {
+                        translatedRegions += item.first to translated
+                    } else {
+                        failedRegions++
+                    }
+                } else {
+                    uncachedItems += item
+                }
+            }
+        }
+        if (uncachedItems.isEmpty()) {
+            if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+            if (failedRegions > 0) toast(activity, "تعذّرت ترجمة $failedRegions منطقة؛ لم تُخفَ الأخطاء.")
+            if (translatedRegions.isEmpty() && failedRegions == 0) toast(activity, "لم أجد نصًا صالحًا للترجمة.")
+            onComplete()
+            return
+        }
+        val isOnline = runCatching { activity.activeNetworkState().isOnline }.getOrDefault(false)
+        if (!isOnline) {
+            if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+            val message = if (translatedRegions.isNotEmpty()) {
+                "عُرضت الترجمات المحفوظة؛ المناطق الأخرى تحتاج اتصالًا بالإنترنت للترجمة."
+            } else {
+                "لا يوجد اتصال بالإنترنت ولا توجد ترجمة محفوظة لهذه الصفحة."
+            }
+            toast(activity, message)
+            onComplete()
+            return
+        }
+        val terminal = AtomicBoolean(false)
+        val handler = Handler(Looper.getMainLooper())
+        val activeTranslator = AtomicReference<com.google.mlkit.nl.translate.Translator?>(null)
+        val timeout = Runnable {
+            if (terminal.compareAndSet(false, true)) {
+                activeTranslator.get()?.let(::closeTranslator)
+                if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+                toast(activity, "انتهت مهلة الترجمة للمناطق غير المخزنة؛ يمكنك المحاولة لاحقًا.")
+                onComplete()
+            }
+        }
+        handler.postDelayed(timeout, 90_000L)
+        fun finishOnce() {
+            if (terminal.compareAndSet(false, true)) {
+                handler.removeCallbacks(timeout)
+                onComplete()
+            }
+        }
+        val translator = runCatching {
+            Translation.getClient(
+                TranslatorOptions.Builder()
+                    .setSourceLanguage(TranslateLanguage.ENGLISH)
+                    .setTargetLanguage(TranslateLanguage.ARABIC)
+                    .build(),
+            )
+        }.getOrElse {
+            terminal.set(true)
+            handler.removeCallbacks(timeout)
+            if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+            showTranslationUnavailable(activity, it)
+            if (failedRegions > 0) toast(activity, "تعذّرت ترجمة $failedRegions منطقة غير مخزنة.")
+            onComplete()
+            return
+        }
+        activeTranslator.set(translator)
+        val provider = MlKitTranslationProvider(translator)
+
+        toast(activity, "جارٍ تجهيز نموذج الترجمة English → Arabic؛ قد يحتاج تنزيلًا أول مرة...")
+        val modelTask = runCatching {
+            // No API key or cloud provider: ML Kit downloads its on-device model on demand.
+            translator.downloadModelIfNeeded(DownloadConditions.Builder().build())
+        }.getOrElse {
+            terminal.set(true)
+            handler.removeCallbacks(timeout)
+            closeTranslator(translator)
+            if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+            showTranslationModelUnavailable(activity, it)
+            if (failedRegions > 0) toast(activity, "تعذّرت ترجمة $failedRegions منطقة غير مخزنة.")
+            onComplete()
+            return
+        }
+        modelTask
+            .addOnSuccessListener {
+                if (terminal.get()) {
+                    closeTranslator(translator)
+                    return@addOnSuccessListener
+                }
+                if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) {
+                    closeTranslator(translator)
+                    finishOnce()
+                } else {
+                    translateRegions(activity, bmp, uncachedItems, processor, provider, translatedRegions, { terminal.get() }) { failed ->
+                        if (terminal.get()) return@translateRegions
+                        failedRegions += failed
+                        closeTranslator(translator)
+                        if (translatedRegions.isNotEmpty()) {
+                            show(activity, bmp, translatedRegions)
+                        }
+                        if (failedRegions > 0) {
+                            val suffix = if (translatedRegions.isEmpty()) {
+                                "لم تنجح ترجمة أي منطقة."
+                            } else {
+                                "نجحت ترجمة ${translatedRegions.size} منطقة، وتعذّرت ترجمة $failedRegions منطقة؛ لم تُخفَ الأخطاء."
+                            }
+                            toast(activity, suffix)
+                        }
+                        finishOnce()
+                    }
+                }
+            }
+            .addOnFailureListener {
+                if (terminal.get()) return@addOnFailureListener
+                closeTranslator(translator)
+                if (translatedRegions.isNotEmpty()) show(activity, bmp, translatedRegions)
+                showTranslationModelUnavailable(activity, it)
+                finishOnce()
+            }
+    }
+
+    private fun translateRegions(
+        activity: Activity,
+        bmp: Bitmap,
+        items: List<Pair<Rect, String>>,
+        processor: MslTranslationProcessor,
+        provider: MslTranslationProvider,
+        output: MutableList<Pair<Rect, String>>,
+        shouldStop: () -> Boolean,
+        done: (Int) -> Unit,
+    ) {
+        var failed = 0
+
+        fun nextRegion(regionIndex: Int) {
+            if (shouldStop()) return
+            if (regionIndex >= items.size) {
+                done(failed)
                 return
             }
-            tr.translate(items[i].second)
-                .addOnSuccessListener { t ->
-                    out.add(items[i].first to t)
-                    next(i + 1)
+            val (box, source) = items[regionIndex]
+            val chunks = processor.plan(source)
+            if (chunks.isEmpty()) {
+                failed++
+                nextRegion(regionIndex + 1)
+                return
+            }
+            val responses = mutableListOf<String>()
+            var regionFinished = false
+
+            fun failRegion(error: Throwable?) {
+                if (regionFinished || shouldStop()) return
+                regionFinished = true
+                failed++
+                error?.let { android.util.Log.w("MslTranslate", "Translation region failed", it) }
+                nextRegion(regionIndex + 1)
+            }
+
+            fun nextChunk(chunkIndex: Int) {
+                if (regionFinished || shouldStop()) return
+                if (chunkIndex >= chunks.size) {
+                    val combined = processor.join(chunks, responses)
+                    if (combined == null || !MslTranslationText.isUsableTranslation(combined)) {
+                        failRegion(IllegalStateException("Empty translation response"))
+                    } else {
+                        regionFinished = true
+                        output += box to combined
+                        nextRegion(regionIndex + 1)
+                    }
+                    return
                 }
-                .addOnFailureListener { next(i + 1) }
+                val chunk = chunks[chunkIndex]
+                processor.cached(chunk.source)?.let {
+                    responses += it
+                    nextChunk(chunkIndex + 1)
+                    return
+                }
+                val protected = processor.protect(chunk.source)
+                provider.translate(
+                    protected.text,
+                    onSuccess = { translated ->
+                        if (shouldStop()) return@translate
+                        if (!MslTranslationText.isUsableTranslation(translated)) {
+                            failRegion(IllegalStateException("Empty translation response"))
+                        } else {
+                            val restored = protected.restore(translated)
+                            if (restored == null || !MslTranslationText.isUsableTranslation(restored)) {
+                                failRegion(IllegalStateException("Empty restored translation response"))
+                            } else {
+                                processor.cache(chunk.source, restored)
+                                responses += restored
+                                nextChunk(chunkIndex + 1)
+                            }
+                        }
+                    },
+                    onFailure = { if (!shouldStop()) failRegion(it) },
+                )
+            }
+            nextChunk(0)
         }
-        next(0)
+
+        nextRegion(0)
     }
 
-    private fun normalizeOcr(value: String): String {
-        return value
-            .replace('“', '"')
-            .replace('”', '"')
-            .replace('’', '\'')
-            .replace(Regex("\\s+"), " ")
-            .trim()
+    private fun closeTranslator(tr: com.google.mlkit.nl.translate.Translator) {
+        runCatching { tr.close() }
     }
 
-    private fun detectSourceLanguage(text: String): String = when {
-        text.any { it in '\u3040'..'\u30ff' } -> TranslateLanguage.JAPANESE
-        text.any { it in '\uac00'..'\ud7af' } -> TranslateLanguage.KOREAN
-        text.any { it in '\u4e00'..'\u9fff' } -> TranslateLanguage.CHINESE
-        else -> TranslateLanguage.ENGLISH
+    private fun showTranslationModelUnavailable(activity: Activity, error: Throwable) {
+        android.util.Log.w("MslTranslate", "ML Kit English-Arabic model unavailable", error)
+        if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
+        toast(activity, "تعذّر تنزيل أو تجهيز نموذج English → Arabic. افحص اتصال الإنترنت وخدمات Google Play ثم أعد المحاولة.")
+    }
+
+    private fun showTranslationUnavailable(activity: Activity, error: Throwable) {
+        android.util.Log.w("MslTranslate", "ML Kit English-Arabic translator unavailable", error)
+        if (activity.isFinishing || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return
+        toast(activity, "تعذّرت تهيئة ترجمة English → Arabic؛ لم تُعرض نتيجة غير مؤكدة.")
     }
 
     private fun layoutFor(text: String, tp: TextPaint, size: Float, width: Int): StaticLayout {
         tp.textSize = size
         return StaticLayout.Builder.obtain(text, 0, text.length, tp, width.coerceAtLeast(10))
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setTextDirection(android.text.TextDirectionHeuristics.RTL)
+            .setIncludePad(false)
             .build()
     }
 
@@ -509,16 +711,20 @@ object MslTranslate {
         for ((box, text) in items) {
             if (text.isBlank()) continue
             val r = Rect(box)
-            r.inset(-8, -8)
+            val inset = (box.width() / 24).coerceIn(3, 8)
+            r.inset(-inset, -inset)
+            r.intersect(0, 0, bmp.width, bmp.height)
+            if (r.width() < 12 || r.height() < 12) continue
             c.drawRoundRect(r.left.toFloat(), r.top.toFloat(), r.right.toFloat(), r.bottom.toFloat(), 18f, 18f, bg)
-            var size = 44f
-            var layout = layoutFor(text, tp, size, r.width() - 12)
-            while (layout.height > r.height() && size > 12f) {
-                size -= 2f
-                layout = layoutFor(text, tp, size, r.width() - 12)
+            var size = minOf(44f, r.height() * 0.72f)
+            var layout = layoutFor(text, tp, size, r.width() - 8)
+            while ((layout.height > r.height() - 4 || layout.lineCount > 4) && size > 8f) {
+                size -= 1f
+                layout = layoutFor(text, tp, size, r.width() - 8)
             }
             c.save()
-            c.translate(r.left + 6f, r.top + (r.height() - layout.height).coerceAtLeast(0) / 2f)
+            c.clipRect(r.left + 2, r.top + 2, r.right - 2, r.bottom - 2)
+            c.translate(r.left + 4f, r.top + (r.height() - layout.height).coerceAtLeast(0) / 2f)
             layout.draw(c)
             c.restore()
         }

@@ -1,0 +1,2 @@
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/frame_fire,@drawable/frame_ice,@drawable/frame_dark,@drawable/frame_king,@drawable/frame_galaxy,@drawable/frame_samurai" />

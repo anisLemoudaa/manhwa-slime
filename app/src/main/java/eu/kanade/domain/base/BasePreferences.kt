@@ -23,6 +23,11 @@ class BasePreferences(
 
     val incognitoMode: Preference<Boolean> = preferenceStore.getBoolean(Preference.appStateKey("incognito_mode"), false)
 
+    val hideAdultContent: Preference<Boolean> = preferenceStore.getBoolean(
+        Preference.appStateKey("hide_adult_content"),
+        true,
+    )
+
     val extensionInstaller: ExtensionInstallerPreference = ExtensionInstallerPreference(context, preferenceStore)
 
     val shownOnboardingFlow: Preference<Boolean> = preferenceStore.getBoolean(

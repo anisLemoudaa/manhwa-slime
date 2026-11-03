@@ -32,6 +32,7 @@ fun extensionsTab(
     val context = LocalContext.current
 
     val updatesCount by extensionsViewModel.updatesCount.collectAsStateWithLifecycle()
+    val languageFilter by extensionsViewModel.languageFilter.collectAsStateWithLifecycle()
     var privateExtensionToUninstall by remember { mutableStateOf<Extension.Installed?>(null) }
 
     return TabContent(
@@ -57,6 +58,8 @@ fun extensionsTab(
 
             ExtensionScreen(
                 state = state,
+                selectedLanguage = languageFilter,
+                onLanguageFilterSelected = extensionsViewModel::setLanguageFilter,
                 contentPadding = contentPadding,
                 searchQuery = state.searchQuery,
                 onLongClickItem = { extension ->

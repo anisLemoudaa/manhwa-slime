@@ -1,8 +1,5 @@
 package eu.kanade.tachiyomi.mslime
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,15 +21,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-private fun findActivity(ctx: Context): Activity? {
-    var c: Context = ctx
-    while (c is ContextWrapper) {
-        if (c is Activity) return c
-        c = c.baseContext
-    }
-    return null
-}
-
 @Composable
 fun MslReaderSettingsCard() {
     val ctx = LocalContext.current
@@ -43,15 +31,16 @@ fun MslReaderSettingsCard() {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "زر الترجمة «ع» في القارئ", fontWeight = FontWeight.Bold)
                     Text(text = "اسحبه لأي مكان، أو أخفِه من هنا", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = "ترجمة آلية عبر ML Kit؛ قد يلزم تنزيل النموذج عند أول استخدام.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 Switch(checked = on, onCheckedChange = {
                     on = it
                     MslHook.setEnabled(ctx, it)
                 })
             }
-            TextButton(onClick = {
-                findActivity(ctx)?.let { MslTranslate.askKey(it) }
-            }) { Text("مفتاح الترجمة الذكية") }
             TextButton(
                 onClick = {
                     MslHook.resetPosition(ctx)

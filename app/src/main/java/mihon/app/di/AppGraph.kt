@@ -7,6 +7,8 @@ import dev.zacsweers.metro.Provides
 import dev.zacsweers.metrox.viewmodel.MetroViewModelFactory
 import dev.zacsweers.metrox.viewmodel.ViewModelGraph
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.manga.interactor.UpdateManga
+import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
@@ -118,6 +120,8 @@ interface AppGraph : ViewModelGraph {
     val javaScriptEngine: JavaScriptEngine
 
     val getFavorites: GetFavorites
+    val getMangaByUrlAndSourceId: GetMangaByUrlAndSourceId
+    val updateManga: UpdateManga
     val networkToLocalManga: NetworkToLocalManga
     val getCategories: GetCategories
     val resetViewerFlags: ResetViewerFlags

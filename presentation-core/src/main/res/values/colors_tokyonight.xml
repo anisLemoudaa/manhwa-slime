@@ -1,43 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Colors for Tokyo Night Day
-
-  https://github.com/folke/tokyonight.nvim/blob/main/lua/tokyonight/colors/day.lua
--->
+<!-- Brand-tinted Tokyo Night Day palette for Manhwa Slime. -->
 <resources>
-    <color name="tokyonight_primary">#2e7de9</color>
-    <color name="tokyonight_onPrimary">#ffffff</color>
-    <color name="tokyonight_primaryContainer">#92a6d5</color>
-    <color name="tokyonight_onPrimaryContainer">#15386a</color>
-    <color name="tokyonight_secondary">#007197</color>
-    <color name="tokyonight_onSecondary">#ffffff</color>
-    <color name="tokyonight_secondaryContainer">#a9c6d3</color>
-    <color name="tokyonight_onSecondaryContainer">#006a83</color>
-    <color name="tokyonight_tertiary">#9854f1</color>
-    <color name="tokyonight_onTertiary">#ffffff</color>
-    <color name="tokyonight_tertiaryContainer">#cfbfea</color>
-    <color name="tokyonight_onTertiaryContainer">#7847bd</color>
-    <color name="tokyonight_error">#f52a65</color>
-    <color name="tokyonight_onError">#ffffff</color>
-    <color name="tokyonight_errorContainer">#e6b4c7</color>
-    <color name="tokyonight_onErrorContainer">#6e132d</color>
-    <color name="tokyonight_background">#e1e2e7</color>
-    <color name="tokyonight_onBackground">#3760bf</color>
-    <color name="tokyonight_surface">#e1e2e7</color>
-    <color name="tokyonight_onSurface">#3760bf</color>
-    <color name="tokyonight_surfaceVariant">#c4c8da</color>
-    <color name="tokyonight_onSurfaceVariant">#6172b0</color>
-    <color name="tokyonight_outline">#68709a</color>
-    <color name="tokyonight_outlineVariant">#a8aecb</color>
+    <color name="tokyonight_primary">#6738B8</color>
+    <color name="tokyonight_onPrimary">#FFFFFF</color>
+    <color name="tokyonight_primaryContainer">#EBDDFF</color>
+    <color name="tokyonight_onPrimaryContainer">#2B0E53</color>
+    <color name="tokyonight_secondary">#006D91</color>
+    <color name="tokyonight_onSecondary">#FFFFFF</color>
+    <color name="tokyonight_secondaryContainer">#C6F0FF</color>
+    <color name="tokyonight_onSecondaryContainer">#003548</color>
+    <color name="tokyonight_tertiary">#875900</color>
+    <color name="tokyonight_onTertiary">#FFFFFF</color>
+    <color name="tokyonight_tertiaryContainer">#FFE2A6</color>
+    <color name="tokyonight_onTertiaryContainer">#2B1B00</color>
+    <color name="tokyonight_error">#BA1A44</color>
+    <color name="tokyonight_onError">#FFFFFF</color>
+    <color name="tokyonight_errorContainer">#FFD9E0</color>
+    <color name="tokyonight_onErrorContainer">#41000D</color>
+    <color name="tokyonight_background">#F7F4FC</color>
+    <color name="tokyonight_onBackground">#1D1728</color>
+    <color name="tokyonight_surface">#FCF9FF</color>
+    <color name="tokyonight_onSurface">#1D1728</color>
+    <color name="tokyonight_surfaceVariant">#ECE5F5</color>
+    <color name="tokyonight_onSurfaceVariant">#4D455A</color>
+    <color name="tokyonight_outline">#7C718A</color>
+    <color name="tokyonight_outlineVariant">#D5C9E2</color>
     <color name="tokyonight_scrim">#000000</color>
-    <color name="tokyonight_inverseSurface">#3760bf</color>
-    <color name="tokyonight_inverseOnSurface">#e1e2e7</color>
-    <color name="tokyonight_inversePrimary">#7890dd</color>
-    <color name="tokyonight_surfaceContainerLowest">#e4e5e9</color>
-    <color name="tokyonight_surfaceDim">#9195b1</color>
-    <color name="tokyonight_surfaceContainerLow">#d0d5e3</color>
-    <color name="tokyonight_surfaceContainer">#c1c9df</color>
-    <color name="tokyonight_surfaceContainerHigh">#c4c8da</color>
-    <color name="tokyonight_surfaceContainerHighest">#a1a6c5</color>
-    <color name="tokyonight_surfaceBright">#e1e2e7</color>
+    <color name="tokyonight_inverseSurface">#322A3E</color>
+    <color name="tokyonight_inverseOnSurface">#F5EFFA</color>
+    <color name="tokyonight_inversePrimary">#D8BDFF</color>
+    <color name="tokyonight_surfaceContainerLowest">#FFFFFF</color>
+    <color name="tokyonight_surfaceDim">#DCD4E4</color>
+    <color name="tokyonight_surfaceContainerLow">#F6F0FB</color>
+    <color name="tokyonight_surfaceContainer">#F0EAF5</color>
+    <color name="tokyonight_surfaceContainerHigh">#EAE3F0</color>
+    <color name="tokyonight_surfaceContainerHighest">#E3DCEB</color>
+    <color name="tokyonight_surfaceBright">#FCF9FF</color>
 </resources>

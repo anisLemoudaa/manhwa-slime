@@ -8,6 +8,7 @@ import dev.zacsweers.metro.AssistedInject
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metrox.viewmodel.ManualViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ManualViewModelAssistedFactoryKey
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
@@ -26,6 +27,7 @@ class MigrateSearchViewModel(
     networkToLocalManga: NetworkToLocalManga,
     getManga: GetManga,
     preferences: SourcePreferences,
+    basePreferences: BasePreferences,
     private val sourceManager: SourceManager,
 ) : SearchViewModel(
     sourcePreferences = sourcePreferences,
@@ -34,6 +36,7 @@ class MigrateSearchViewModel(
     networkToLocalManga = networkToLocalManga,
     getManga = getManga,
     preferences = preferences,
+    basePreferences = basePreferences,
 ) {
     @AssistedFactory
     @ManualViewModelAssistedFactoryKey
