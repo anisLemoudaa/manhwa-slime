@@ -32,11 +32,25 @@ class NovelSourceManager(
             "novel-plugins/cenele.js",
         ),
         BundledNovelSource(
-            NovelRepositoryEntry("kolnovel", "ملوك الروايات", "https://kolnovel.com", "ar", "1.0.0", "builtin://kolnovel"),
+            NovelRepositoryEntry(
+                "kolnovel",
+                "ملوك الروايات",
+                "https://kolnovel.com",
+                "ar",
+                "1.0.0",
+                "builtin://kolnovel",
+            ),
             "novel-plugins/kolnovel.js",
         ),
         BundledNovelSource(
-            NovelRepositoryEntry("sunovels", "شمس الروايات", "https://sunovels.com", "ar", "1.0.0", "builtin://sunovels"),
+            NovelRepositoryEntry(
+                "sunovels",
+                "شمس الروايات",
+                "https://sunovels.com",
+                "ar",
+                "1.0.0",
+                "builtin://sunovels",
+            ),
             "novel-plugins/sunovels.js",
         ),
         BundledNovelSource(
@@ -48,6 +62,18 @@ class NovelSourceManager(
     suspend fun repositories(): List<String> = store.repositories()
 
     fun installed(): List<NovelSourceRuntime> = store.installed().map(::NovelSourceRuntime)
+
+    suspend fun removeRepository(url: String) = withContext(Dispatchers.IO) {
+        store.setRepositories(store.repositories().filterNot { it == url })
+    }
+
+    suspend fun uninstall(sourceId: String) = withContext(Dispatchers.IO) {
+        val installed = store.installed()
+        val removed = installed.firstOrNull { it.metadata.id == sourceId } ?: return@withContext
+        val remaining = installed.filterNot { it.metadata.id == sourceId }
+        store.setInstalled(remaining)
+        if (remaining.none { it.pluginUrl == removed.pluginUrl }) store.deletePlugin(removed.pluginUrl)
+    }
 
     suspend fun loadRepository(url: String): List<NovelRepositoryEntry> = withContext(Dispatchers.IO) {
         val normalized = normalizeHttpUrl(url)
@@ -153,9 +179,9 @@ class NovelSourceManager(
         }
     }
 
-    suspend fun popular(sourceId: String) = host.popular(sourceId, 1)
-    suspend fun latest(sourceId: String) = host.latest(sourceId, 1)
-    suspend fun search(sourceId: String, query: String) = host.search(sourceId, query, 1)
+    suspend fun popular(sourceId: String, page: Int = 1) = host.popular(sourceId, page)
+    suspend fun latest(sourceId: String, page: Int = 1) = host.latest(sourceId, page)
+    suspend fun search(sourceId: String, query: String, page: Int = 1) = host.search(sourceId, query, page)
     suspend fun details(sourceId: String, path: String) = host.details(sourceId, path)
     suspend fun chapter(sourceId: String, path: String) = host.chapter(sourceId, path)
 

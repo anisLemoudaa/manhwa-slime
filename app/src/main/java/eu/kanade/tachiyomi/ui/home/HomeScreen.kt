@@ -154,7 +154,7 @@ object HomeScreen : Screen() {
                             ),
                             containerColor = MslDesignTokens.background,
                             topBar = {
-                                if (!CommunityReaderChromeState.readerVisible) {
+                                if (!CommunityReaderChromeState.readerVisible && tabNavigator.current != NovelTab) {
                                     RootTopBar(onOpenMenu = { scope.launch { drawerState.open() } })
                                 }
                             },
@@ -185,7 +185,10 @@ object HomeScreen : Screen() {
                     launch {
                         openTabEvent.receiveAsFlow().collect { target ->
                             tabNavigator.current = when (target) {
+                                Tab.Home -> HomeDashboardTab
                                 is Tab.Library -> LibraryTab
+                                Tab.Novel -> NovelTab
+                                Tab.Account -> ProfileTab
                                 Tab.Updates -> UpdatesTab
                                 Tab.History -> HistoryTab
                                 is Tab.Browse -> {
@@ -356,7 +359,10 @@ object HomeScreen : Screen() {
     suspend fun showBottomNav(show: Boolean) = Unit
 
     sealed interface Tab {
+        data object Home : Tab
         data class Library(val mangaIdToOpen: Long? = null) : Tab
+        data object Novel : Tab
+        data object Account : Tab
         data object Updates : Tab
         data object History : Tab
         data class Browse(val toExtensions: Boolean = false) : Tab
