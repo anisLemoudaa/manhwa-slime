@@ -4,7 +4,16 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-/** Default MANHWA SLIME brand palette. The user's selected light/dark mode is preserved. */
+/**
+ * Default MANHWA SLIME brand palette (Update 1.2).
+ * Light mode follows the official identity:
+ * - Background: #F3F5F8
+ * - Surface / cards: #FFFFFF
+ * - Primary blue: #287BEA
+ * - Light blue: #8DBBFA
+ * - Limited red accents via tertiary
+ * Purple is fully removed.
+ */
 internal object TachiyomiColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
@@ -44,34 +53,45 @@ internal object TachiyomiColorScheme : BaseColorScheme() {
     )
 
     override val lightScheme = lightColorScheme(
-        primary = Color(0xFF1F63C8),
+        // Official 1.2 primary blue
+        primary = Color(0xFF287BEA),
         onPrimary = Color(0xFFFFFFFF),
         primaryContainer = Color(0xFFE1ECFB),
-        onPrimaryContainer = Color(0xFF253142),
-        inversePrimary = Color(0xFFBFD8FA),
-        secondary = Color(0xFF2B7BEA),
+        onPrimaryContainer = Color(0xFF0D2B5C),
+        inversePrimary = Color(0xFF8DBBFA),
+
+        // Secondary uses the same blue family for consistency
+        secondary = Color(0xFF287BEA),
         onSecondary = Color(0xFFFFFFFF),
         secondaryContainer = Color(0xFFE8F0FD),
-        onSecondaryContainer = Color(0xFF253142),
-        tertiary = Color(0xFFEF777E),
+        onSecondaryContainer = Color(0xFF0D2B5C),
+
+        // Limited red accent (for ranking / highlights)
+        tertiary = Color(0xFFE57373),
         onTertiary = Color(0xFF253142),
         tertiaryContainer = Color(0xFFFBD3D3),
         onTertiaryContainer = Color(0xFF253142),
+
+        // Exact background and surface from the 1.2 document
         background = Color(0xFFF3F5F8),
         onBackground = Color(0xFF253142),
         surface = Color(0xFFFFFFFF),
         onSurface = Color(0xFF253142),
         surfaceVariant = Color(0xFFE8F0FD),
         onSurfaceVariant = Color(0xFF5B6878),
-        surfaceTint = Color(0xFF1F63C8),
+        surfaceTint = Color(0xFF287BEA),
+
         inverseSurface = Color(0xFF253142),
         inverseOnSurface = Color(0xFFF3F5F8),
+
         error = Color(0xFFCC565E),
         onError = Color(0xFFFFFFFF),
         errorContainer = Color(0xFFFBD3D3),
         onErrorContainer = Color(0xFF253142),
+
         outline = Color(0xFF8A97A7),
         outlineVariant = Color(0xFFE1E8EC),
+
         surfaceContainerLowest = Color(0xFFFFFFFF),
         surfaceContainerLow = Color(0xFFF8FAFC),
         surfaceContainer = Color(0xFFF3F5F8),
