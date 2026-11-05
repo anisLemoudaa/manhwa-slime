@@ -21,7 +21,7 @@ class UiPreferences(
 
     val themeMode: Preference<ThemeMode> = preferenceStore.getEnum("pref_theme_mode_key", ThemeMode.DARK)
 
-    val appTheme: Preference<AppTheme> = preferenceStore.getEnum("pref_app_theme", AppTheme.TOKYONIGHT)
+    val appTheme: Preference<AppTheme> = preferenceStore.getEnum("pref_app_theme", AppTheme.DEFAULT)
 
     val themeDarkAmoled: Preference<Boolean> = preferenceStore.getBoolean("pref_theme_dark_amoled_key", false)
 
